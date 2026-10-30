@@ -1,0 +1,19 @@
+{{define "content"}}
+<h1>Réglages</h1>
+<p class="muted">Lus dans l'environnement au démarrage, en lecture seule.</p>
+<table><tbody>
+<tr><th>PALIER_DOCKER_HOST</th><td>{{.DockerHost}}</td></tr>
+<tr><th>PALIER_DATA_DIR</th><td>{{.DataDir}}</td></tr>
+<tr><th>PALIER_LISTEN</th><td>{{.Listen}}</td></tr>
+<tr><th>IA</th><td>{{if .AIKey}}clé définie, modèle {{.AIModel}}{{else}}pas de clé : plans sans analyse{{end}}</td></tr>
+<tr><th>PALIER_SCAN_INTERVAL</th><td>{{.ScanInterval}}</td></tr>
+<tr><th>PALIER_MATURATION</th><td>{{.Maturation}}</td></tr>
+<tr><th>PALIER_STABLE_SECONDS</th><td>{{.StableSeconds}}</td></tr>
+<tr><th>PALIER_AUTO</th><td>{{.Auto}}</td></tr>
+<tr><th>PALIER_WEBHOOK_URL</th><td>{{if .WebhookURL}}définie{{else}}absente{{end}}</td></tr>
+<tr><th>PALIER_GITHUB_TOKEN</th><td>{{if .GitHubToken}}défini{{else}}absent{{end}}</td></tr>
+<tr><th>PALIER_GITLAB_TOKEN</th><td>{{if .GitLabToken}}défini{{else}}absent{{end}}</td></tr>
+<tr><th>PALIER_REGISTRY_MIRROR</th><td>{{with .RegistryMirror}}{{.}}{{else}}absent{{end}}</td></tr>
+<tr><th>DOCKER_CONFIG</th><td>{{.DockerConfig}}</td></tr>
+</tbody></table>
+{{end}}

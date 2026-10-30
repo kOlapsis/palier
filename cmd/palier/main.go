@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,22 +13,30 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/kolapsis/palier/internal/ai"
 	"github.com/kolapsis/palier/internal/config"
 	"github.com/kolapsis/palier/internal/docker"
 	"github.com/kolapsis/palier/internal/inventory"
+	"github.com/kolapsis/palier/internal/notes"
+	"github.com/kolapsis/palier/internal/plan"
 	"github.com/kolapsis/palier/internal/registry"
+	"github.com/kolapsis/palier/internal/run"
 	"github.com/kolapsis/palier/internal/store"
 	"github.com/kolapsis/palier/internal/web"
 )
 
+const usage = "usage: palier [serve | scan | plan <stack> | apply <stack> [--dry-run] | runs]"
+
 func main() {
+	args := os.Args[1:]
 	cmd := "serve"
-	if len(os.Args) > 1 {
-		cmd = os.Args[1]
+	if len(args) > 0 {
+		cmd, args = args[0], args[1:]
 	}
 	logOut := os.Stdout
 	if cmd != "serve" {
@@ -34,13 +44,62 @@ func main() {
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(logOut, nil)))
 	var err error
-	switch cmd {
-	case "serve":
+	switch {
+	case cmd == "serve" && len(args) == 0:
 		err = serve()
-	case "scan":
-		err = scanOnce()
+	case cmd == "scan" && len(args) == 0:
+		err = withApp(func(ctx context.Context, a *app) error {
+			stacks, err := a.scan(ctx)
+			if err != nil {
+				return err
+			}
+			return printJSON(stacks)
+		})
+	case cmd == "plan" && len(args) == 1:
+		err = withApp(func(ctx context.Context, a *app) error {
+			st, err := a.stack(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			rec, err := a.planFor(ctx, st)
+			if err != nil {
+				return err
+			}
+			return printJSON(rec)
+		})
+	case cmd == "apply" && (len(args) == 1 || len(args) == 2 && args[1] == "--dry-run"):
+		err = withApp(func(ctx context.Context, a *app) error {
+			st, err := a.stack(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			id, p, err := a.begin(ctx, st, "cli", len(args) == 2)
+			if err != nil {
+				return err
+			}
+			a.eng.Execute(ctx, id, st, p, len(args) == 2)
+			v, err := run.Load(ctx, a.db, id)
+			if err != nil {
+				return err
+			}
+			if err := printJSON(v); err != nil {
+				return err
+			}
+			if v.Status != run.Done {
+				return fmt.Errorf("exécution %d : %s", id, v.Status)
+			}
+			return nil
+		})
+	case cmd == "runs" && len(args) == 0:
+		err = withApp(func(ctx context.Context, a *app) error {
+			runs, err := run.List(ctx, a.db, "", 50)
+			if err != nil {
+				return err
+			}
+			return printJSON(runs)
+		})
 	default:
-		fmt.Fprintln(os.Stderr, "usage: palier [serve|scan]")
+		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
 	}
 	if err != nil {
@@ -49,11 +108,19 @@ func main() {
 	}
 }
 
+func printJSON(v any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
 type app struct {
 	cfg config.Config
 	db  *sql.DB
 	dc  *docker.Client
 	reg *registry.Client
+	nc  *notes.Client
+	eng *run.Engine
 }
 
 func setup() (*app, error) {
@@ -84,7 +151,19 @@ func setup() (*app, error) {
 			slog.Info("identifiants de registre chargés", "registry", domain, "docker_config", cfg.DockerConfig)
 		}
 	}
-	return &app{cfg: cfg, db: db, dc: dc, reg: reg}, nil
+	eng := &run.Engine{DB: db, Docker: dc, DockerHost: cfg.DockerHost, Registry: reg, Stable: time.Duration(cfg.StableSeconds) * time.Second}
+	return &app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken), eng: eng}, nil
+}
+
+func withApp(f func(context.Context, *app) error) error {
+	a, err := setup()
+	if err != nil {
+		return err
+	}
+	defer a.db.Close()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return f(ctx, a)
 }
 
 func (a *app) scan(ctx context.Context) ([]*inventory.Stack, error) {
@@ -92,23 +171,159 @@ func (a *app) scan(ctx context.Context) ([]*inventory.Stack, error) {
 	if err != nil {
 		return nil, err
 	}
-	inventory.Detect(ctx, stacks, a.reg, a.cfg.Maturation)
-	return stacks, nil
+	inventory.Detect(ctx, stacks, a.reg, a.nc, a.cfg.Maturation)
+	rows, err := a.db.QueryContext(ctx, `SELECT stack, service, version FROM decisions WHERE kind = 'ignore'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ignored := map[[3]string]bool{}
+	for rows.Next() {
+		var k [3]string
+		if err := rows.Scan(&k[0], &k[1], &k[2]); err != nil {
+			return nil, err
+		}
+		ignored[k] = true
+	}
+	for _, st := range stacks {
+		for _, s := range st.Services {
+			drop := func(r inventory.Release) bool { return ignored[[3]string{st.Name, s.Name, r.Tag}] }
+			s.Available = slices.DeleteFunc(s.Available, drop)
+			s.Maturing = slices.DeleteFunc(s.Maturing, drop)
+		}
+	}
+	return stacks, rows.Err()
 }
 
-func scanOnce() error {
-	a, err := setup()
+func (a *app) stack(ctx context.Context, name string) (*inventory.Stack, error) {
+	stacks, err := a.scan(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer a.db.Close()
-	stacks, err := a.scan(context.Background())
+	for _, st := range stacks {
+		if st.Name == name && !st.Observed {
+			return st, nil
+		}
+	}
+	return nil, fmt.Errorf("pas de stack Compose %q", name)
+}
+
+func inputHash(st *inventory.Stack, cfg config.Config) string {
+	type svc struct {
+		Name, Version string
+		Available     []inventory.Release
+		Notes         []string
+	}
+	in := struct {
+		Model    string
+		Prompt   string
+		AI       bool
+		Files    map[string]string
+		Services []svc
+	}{Model: cfg.AIModel, Prompt: ai.Fingerprint, AI: cfg.AIKey != "", Files: map[string]string{}}
+	for _, f := range st.ConfigFiles {
+		data, _ := os.ReadFile(f)
+		in.Files[f] = string(data)
+	}
+	for _, s := range st.Services {
+		v := svc{Name: s.Name, Version: s.Version, Available: s.Available}
+		for _, n := range s.Notes {
+			v.Notes = append(v.Notes, n.Tag+"\x00"+n.Body)
+		}
+		in.Services = append(in.Services, v)
+	}
+	b, _ := json.Marshal(in)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func (a *app) storedPlan(ctx context.Context, stack string) (*plan.Record, error) {
+	rec := &plan.Record{Stack: stack}
+	var body, created string
+	err := a.db.QueryRowContext(ctx, `SELECT input_hash, source, body, created FROM plans WHERE stack = ?`, stack).Scan(&rec.InputHash, &rec.Source, &body, &created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(stacks)
+	rec.Created, _ = time.Parse(time.RFC3339, created)
+	return rec, json.Unmarshal([]byte(body), &rec.Plan)
+}
+
+// planFor returns the plan of st, computed again only when what it depends on changed.
+func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, error) {
+	if !slices.ContainsFunc(st.Services, func(s *inventory.Service) bool { return len(s.Available) > 0 }) {
+		_, err := a.db.ExecContext(ctx, `DELETE FROM plans WHERE stack = ?`, st.Name)
+		return nil, err
+	}
+	hash := inputHash(st, a.cfg)
+	if rec, err := a.storedPlan(ctx, st.Name); err != nil || rec != nil && rec.InputHash == hash {
+		return rec, err
+	}
+	rec := &plan.Record{Stack: st.Name, Source: "versions", Created: time.Now().UTC(), InputHash: hash}
+	hasNotes := slices.ContainsFunc(st.Services, func(s *inventory.Service) bool { return len(s.Notes) > 0 })
+	switch {
+	case a.cfg.AIKey == "":
+		rec.Plan = plan.Fallback(st, "Pas de clé d'IA : plan calculé sur les versions seules.")
+	case !hasNotes:
+		rec.Plan = plan.Fallback(st, "Aucune note de version trouvée : plan calculé sur les versions seules.")
+	default:
+		slog.Info("calcul du plan par l'IA", "stack", st.Name, "model", a.cfg.AIModel)
+		p, err := ai.Propose(ctx, a.cfg.AIKey, a.cfg.AIModel, st)
+		if err != nil {
+			rec.Plan = plan.Fallback(st, "Plan calculé sur les versions seules.")
+			rec.Plan.Incomplete = append(rec.Plan.Incomplete, "l'IA n'a pas rendu de plan : "+err.Error())
+			plan.Validate(rec.Plan, st)
+			return rec, nil
+		}
+		rec.Plan, rec.Source = p, "ai"
+	}
+	plan.Validate(rec.Plan, st)
+	body, err := json.Marshal(rec.Plan)
+	if err != nil {
+		return nil, err
+	}
+	_, err = a.db.ExecContext(ctx, `INSERT INTO plans (stack, input_hash, source, body, created) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (stack) DO UPDATE SET input_hash = excluded.input_hash, source = excluded.source, body = excluded.body, created = excluded.created`,
+		st.Name, hash, rec.Source, string(body), rec.Created.Format(time.RFC3339))
+	return rec, err
+}
+
+func (a *app) decide(ctx context.Context, stack, kind, service, version, until, author string) error {
+	_, err := a.db.ExecContext(ctx, `INSERT INTO decisions (stack, kind, service, version, until, author, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		stack, kind, service, version, until, author, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
+func (a *app) postponed(ctx context.Context, stack string) time.Time {
+	var until sql.NullString
+	a.db.QueryRowContext(ctx, `SELECT max(until) FROM decisions WHERE kind = 'postpone' AND stack = ?`, stack).Scan(&until)
+	t, _ := time.Parse("2006-01-02", until.String)
+	return t
+}
+
+// begin records the decision and a new run of the stored plan of st.
+func (a *app) begin(ctx context.Context, st *inventory.Stack, author string, dryRun bool) (int64, *plan.Plan, error) {
+	rec, err := a.planFor(ctx, st)
+	if err != nil {
+		return 0, nil, err
+	}
+	if rec == nil || len(rec.Plan.Steps) == 0 {
+		return 0, nil, fmt.Errorf("%s est à jour", st.Name)
+	}
+	if len(rec.Plan.Incomplete) > 0 {
+		return 0, nil, fmt.Errorf("le plan de %s est incomplet et ne s'applique pas", st.Name)
+	}
+	kind := "apply"
+	if dryRun {
+		kind = "dry_run"
+	}
+	if err := a.decide(ctx, st.Name, kind, "", "", "", author); err != nil {
+		return 0, nil, err
+	}
+	id, err := a.eng.Begin(ctx, st.Name, rec.Plan, author, dryRun)
+	return id, rec.Plan, err
 }
 
 func serve() error {
@@ -127,37 +342,107 @@ func serve() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if err := a.eng.Recover(ctx); err != nil {
+		return err
+	}
 
 	var mu sync.Mutex
 	var snap web.Snapshot
+	current := func() web.Snapshot {
+		mu.Lock()
+		defer mu.Unlock()
+		return snap
+	}
+	rescan := make(chan struct{}, 1)
+	start := func(st *inventory.Stack, author string, dryRun bool) (int64, error) {
+		id, p, err := a.begin(ctx, st, author, dryRun)
+		if err != nil {
+			return 0, err
+		}
+		go func() {
+			a.eng.Execute(ctx, id, st, p, dryRun)
+			select {
+			case rescan <- struct{}{}:
+			default:
+			}
+		}()
+		return id, nil
+	}
 	go func() {
 		for {
-			start := time.Now()
+			began := time.Now()
 			stacks, err := a.scan(ctx)
 			next := web.Snapshot{Stacks: stacks, At: time.Now()}
 			if err != nil {
 				next.Err = err.Error()
 				slog.Error("inspection", "err", err)
 			} else {
-				slog.Info("inspection terminée", "stacks", len(stacks), "duration", time.Since(start).Round(time.Millisecond).String())
+				slog.Info("inspection terminée", "stacks", len(stacks), "duration", time.Since(began).Round(time.Millisecond).String())
 			}
 			mu.Lock()
 			snap = next
 			mu.Unlock()
+			for _, st := range stacks {
+				if st.Observed {
+					continue
+				}
+				rec, err := a.planFor(ctx, st)
+				if err != nil {
+					slog.Error("plan", "stack", st.Name, "err", err)
+				}
+				if rec == nil || a.cfg.Auto == "off" {
+					continue
+				}
+				ok, why := plan.Automatic(rec.Plan, a.cfg.Auto)
+				if until := a.postponed(ctx, st.Name); ok && time.Now().Before(until) {
+					ok, why = false, "reporté jusqu'au "+until.Format("2006-01-02")
+				}
+				if !ok {
+					slog.Info("application automatique écartée", "stack", st.Name, "auto", a.cfg.Auto, "reason", why)
+					continue
+				}
+				if id, err := start(st, "auto", false); err != nil {
+					slog.Error("application automatique", "stack", st.Name, "err", err)
+				} else {
+					slog.Info("application automatique", "stack", st.Name, "run", id)
+				}
+			}
 			select {
 			case <-ctx.Done():
 				return
+			case <-rescan:
 			case <-time.After(a.cfg.ScanInterval):
 			}
 		}
 	}()
-	current := func() web.Snapshot {
-		mu.Lock()
-		defer mu.Unlock()
-		return snap
-	}
 
-	srv := &http.Server{Addr: a.cfg.Listen, Handler: web.New(a.cfg.Token, current), ReadHeaderTimeout: 10 * time.Second}
+	deps := web.Deps{
+		Current: current,
+		Plan:    func(stack string) (*plan.Record, error) { return a.storedPlan(ctx, stack) },
+		Apply: func(stack string, dryRun bool) (int64, error) {
+			for _, st := range current().Stacks {
+				if st.Name == stack && !st.Observed {
+					return start(st, "interface", dryRun)
+				}
+			}
+			return 0, fmt.Errorf("pas de stack Compose %q", stack)
+		},
+		Decide: func(stack, kind, service, version, until string) error {
+			if err := a.decide(ctx, stack, kind, service, version, until, "interface"); err != nil {
+				return err
+			}
+			select {
+			case rescan <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+		Postponed: func(stack string) time.Time { return a.postponed(ctx, stack) },
+		Run:       func(id int64) (*run.View, error) { return run.Load(ctx, a.db, id) },
+		Runs:      func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 10) },
+		Config:    a.cfg,
+	}
+	srv := &http.Server{Addr: a.cfg.Listen, Handler: web.New(a.cfg.Token, deps), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
 	slog.Info("palier démarré", "listen", a.cfg.Listen, "data_dir", a.cfg.DataDir, "ai", a.cfg.AIKey != "", "auto", a.cfg.Auto)

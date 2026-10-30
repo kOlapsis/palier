@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/kolapsis/palier/internal/docker"
+	"github.com/kolapsis/palier/internal/notes"
 	"github.com/kolapsis/palier/internal/registry"
 	"github.com/kolapsis/palier/internal/version"
 )
@@ -25,37 +26,42 @@ type Stack struct {
 	Observed    bool       `json:"observed_only,omitempty"`
 	WorkingDir  string     `json:"working_dir,omitempty"`
 	ConfigFiles []string   `json:"config_files,omitempty"`
+	EnvFiles    []string   `json:"env_files,omitempty"`
 	Services    []*Service `json:"services"`
 	Errors      []string   `json:"errors,omitempty"`
 }
 
 // Service is one service of a stack, as it runs.
 type Service struct {
-	Name           string    `json:"name"`
-	Container      string    `json:"container"`
-	Image          string    `json:"image"`
-	Tag            string    `json:"tag"`
-	Digest         string    `json:"digest,omitempty"`
-	Version        string    `json:"version,omitempty"`
-	VersionSource  string    `json:"version_source,omitempty"`
-	Republished    bool      `json:"republished,omitempty"`
-	State          string    `json:"state"`
-	Healthcheck    bool      `json:"healthcheck"`
-	Health         string    `json:"health,omitempty"`
-	Restarts       int       `json:"restarts"`
-	Volumes        []string  `json:"volumes,omitempty"`
-	DependsOn      []string  `json:"depends_on,omitempty"`
-	Role           string    `json:"role"`
-	Available      []Release `json:"available,omitempty"`
-	Maturing       []Release `json:"maturing,omitempty"`
-	DetectionError string    `json:"detection_error,omitempty"`
+	Name           string       `json:"name"`
+	Container      string       `json:"container"`
+	Image          string       `json:"image"`
+	Tag            string       `json:"tag"`
+	Digest         string       `json:"digest,omitempty"`
+	Version        string       `json:"version,omitempty"`
+	VersionSource  string       `json:"version_source,omitempty"`
+	Republished    bool         `json:"republished,omitempty"`
+	State          string       `json:"state"`
+	Healthcheck    bool         `json:"healthcheck"`
+	Health         string       `json:"health,omitempty"`
+	Restarts       int          `json:"restarts"`
+	Volumes        []string     `json:"volumes,omitempty"`
+	DependsOn      []string     `json:"depends_on,omitempty"`
+	Role           string       `json:"role"`
+	Available      []Release    `json:"available,omitempty"`
+	Maturing       []Release    `json:"maturing,omitempty"`
+	DetectionError string       `json:"detection_error,omitempty"`
+	ImageID        string       `json:"image_id"`
+	Source         string       `json:"source,omitempty"`
+	Notes          []notes.Note `json:"notes,omitempty"`
+	NotesError     string       `json:"notes_error,omitempty"`
 
 	current      version.V
 	digests      []string
 	labelVersion string
 }
 
-// Release is a newer tag with the date Palier first saw it pushed.
+// Release is a newer tag with its date: the publication of its release note, else the first push Palier saw.
 type Release struct {
 	Tag    string    `json:"tag"`
 	Pushed time.Time `json:"pushed,omitzero"`
@@ -73,6 +79,7 @@ const (
 	labelWorkingDir  = "com.docker.compose.project.working_dir"
 	labelConfigFiles = "com.docker.compose.project.config_files"
 	labelService     = "com.docker.compose.service"
+	labelEnvFiles    = "com.docker.compose.project.environment_file"
 	labelDependsOn   = "palier.depends_on"
 )
 
@@ -113,6 +120,9 @@ func Scan(ctx context.Context, dc *docker.Client) ([]*Stack, error) {
 				st.Name, st.Observed = svc.Container, true
 			} else if files := c.Labels[labelConfigFiles]; files != "" {
 				st.ConfigFiles = strings.Split(files, ",")
+			}
+			if files := c.Labels[labelEnvFiles]; files != "" {
+				st.EnvFiles = strings.Split(files, ",")
 			}
 			stacks[key] = st
 		}
@@ -176,6 +186,8 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 		svc.Digest = svc.digests[0]
 	}
 	svc.labelVersion = img.Config.Labels["org.opencontainers.image.version"]
+	svc.Source = img.Config.Labels["org.opencontainers.image.source"]
+	svc.ImageID = c.ImageID
 	for _, m := range d.Mounts {
 		if m.Type == "volume" {
 			svc.Volumes = append(svc.Volumes, m.Name+":"+m.Destination)
@@ -314,17 +326,17 @@ func resolve(ctx context.Context, s *Service, ref registry.Ref, tags []string, r
 }
 
 // Detect fills the newer versions of every service, holding back those pushed less than maturation ago.
-func Detect(ctx context.Context, stacks []*Stack, reg *registry.Client, maturation time.Duration) {
+func Detect(ctx context.Context, stacks []*Stack, reg *registry.Client, nc *notes.Client, maturation time.Duration) {
 	var wg sync.WaitGroup
 	for _, st := range stacks {
 		for _, s := range st.Services {
-			wg.Go(func() { detect(ctx, s, reg, maturation) })
+			wg.Go(func() { detect(ctx, s, reg, nc, maturation) })
 		}
 	}
 	wg.Wait()
 }
 
-func detect(ctx context.Context, s *Service, reg *registry.Client, maturation time.Duration) {
+func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Client, maturation time.Duration) {
 	ref := registry.ParseRef(s.Image + ":" + s.Tag)
 	tags, err := reg.Tags(ctx, ref)
 	if err != nil {
@@ -335,10 +347,28 @@ func detect(ctx context.Context, s *Service, reg *registry.Client, maturation ti
 		s.DetectionError = err.Error()
 		return
 	}
-	for _, v := range version.Newer(s.current, tags) {
+	newer := version.Newer(s.current, tags)
+	if repo := notes.Repo(s.Source); repo != "" && len(newer) > 0 {
+		releases, err := nc.Releases(ctx, repo, s.current)
+		if err != nil {
+			s.NotesError = err.Error()
+		}
+		last := newer[len(newer)-1]
+		for _, n := range releases {
+			if v, ok := version.Parse(strings.TrimPrefix(n.Tag, "v")); ok && !notes.Less(last, v) {
+				s.Notes = append(s.Notes, n)
+			}
+		}
+	}
+	for _, v := range newer {
 		pushed, err := reg.Pushed(ctx, ref, v.Tag)
 		if err != nil {
 			s.DetectionError = err.Error()
+		}
+		for _, n := range s.Notes {
+			if notes.Same(n.Tag, v) && !n.Published.IsZero() {
+				pushed = n.Published
+			}
 		}
 		r := Release{Tag: v.Tag, Pushed: pushed}
 		if !pushed.IsZero() && time.Since(pushed) < maturation {

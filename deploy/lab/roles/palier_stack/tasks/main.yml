@@ -41,6 +41,7 @@
     src: compose.env.j2
     dest: "{{ palier_dir }}/compose.env"
     mode: "0600"
+  no_log: true
   vars:
     palier_token: "{{ palier_token_file.content | b64decode | trim }}"
 

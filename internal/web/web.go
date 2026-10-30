@@ -5,13 +5,20 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/kolapsis/palier/internal/config"
 	"github.com/kolapsis/palier/internal/inventory"
+	"github.com/kolapsis/palier/internal/plan"
+	"github.com/kolapsis/palier/internal/run"
 )
 
 //go:embed templates
@@ -26,63 +33,197 @@ type Snapshot struct {
 	Err    string
 }
 
-type server struct {
-	token   string
-	current func() Snapshot
-	mux     *http.ServeMux
-	pages   map[string]*template.Template
+// Deps is what the interface reads and asks of the rest of Palier.
+type Deps struct {
+	Current   func() Snapshot
+	Plan      func(stack string) (*plan.Record, error)
+	Apply     func(stack string, dryRun bool) (int64, error)
+	Decide    func(stack, kind, service, version, until string) error
+	Postponed func(stack string) time.Time
+	Run       func(id int64) (*run.View, error)
+	Runs      func(stack string) ([]run.View, error)
+	Config    config.Config
 }
 
-var funcs = template.FuncMap{
-	"state": func(st *inventory.Stack) string {
-		if st.Observed {
-			return "observée seulement"
+type server struct {
+	token string
+	deps  Deps
+	mux   *http.ServeMux
+	pages map[string]*template.Template
+}
+
+var stateNames = map[string]string{
+	run.Running:    "en cours",
+	run.Failed:     "échec",
+	run.RolledBack: "revenue en arrière",
+}
+
+func (s *server) state(st *inventory.Stack) string {
+	if st.Observed {
+		return "observée seulement"
+	}
+	if runs, _ := s.deps.Runs(st.Name); len(runs) > 0 && !runs[0].DryRun {
+		if name, ok := stateNames[runs[0].Status]; ok {
+			return name
 		}
-		state := "à jour"
-		for _, s := range st.Services {
-			if len(s.Available) > 0 {
-				return "versions disponibles"
-			}
-			if s.DetectionError != "" {
-				state = "détection incomplète"
-			}
+	}
+	rec, _ := s.deps.Plan(st.Name)
+	switch {
+	case rec != nil && len(rec.Plan.Steps) > 0 && len(rec.Plan.Incomplete) > 0:
+		return "plan incomplet"
+	case rec != nil && len(rec.Plan.Steps) > 0:
+		if ok, _ := plan.Automatic(rec.Plan, s.deps.Config.Auto); ok {
+			return "plan prêt"
 		}
-		return state
-	},
-	"since": func(t time.Time) string {
-		if t.IsZero() {
-			return "jamais"
+		return "en attente de décision"
+	}
+	for _, svc := range st.Services {
+		if svc.DetectionError != "" {
+			return "détection incomplète"
 		}
-		d := time.Since(t).Round(time.Second)
-		if d < time.Minute {
-			return fmt.Sprintf("il y a %d s", int(d.Seconds()))
-		}
+	}
+	return "à jour"
+}
+
+func since(t time.Time) string {
+	if t.IsZero() {
+		return "jamais"
+	}
+	d := time.Since(t).Round(time.Second)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("il y a %d s", int(d.Seconds()))
+	case d < time.Hour:
 		return fmt.Sprintf("il y a %d min", int(d.Minutes()))
-	},
+	}
+	return fmt.Sprintf("il y a %d h", int(d.Hours()))
+}
+
+var labels = map[string]string{
+	"safe": "sûr", "attention": "attention", "blocking": "bloquant", "unknown": "inconnu",
+	"yes": "oui", "conditional": "sous condition", "no": "non",
+	"done": "terminée", "rolled_back": "revenue en arrière", "failed": "échec", "abandoned": "abandonnée", "running": "en cours",
+	"application": "application", "dependency": "dépendance", "observed": "observé",
+	"ai": "IA", "versions": "versions seules",
 }
 
 // New returns the handler of the interface, protected by token everywhere but on /login.
-func New(token string, current func() Snapshot) http.Handler {
-	s := &server{token: token, current: current, mux: http.NewServeMux(), pages: map[string]*template.Template{}}
-	for _, p := range []string{"index.html", "login.html", "stack.html"} {
+func New(token string, deps Deps) http.Handler {
+	s := &server{token: token, deps: deps, mux: http.NewServeMux(), pages: map[string]*template.Template{}}
+	funcs := template.FuncMap{
+		"state": s.state,
+		"since": since,
+		"label": func(v string) string {
+			if l, ok := labels[v]; ok {
+				return l
+			}
+			return v
+		},
+		"join": func(v []string) string { return strings.Join(v, ", ") },
+		"inc":  func(i int) int { return i + 1 },
+	}
+	for _, p := range []string{"index.html", "login.html", "stack.html", "run.html", "settings.html"} {
 		s.pages[p] = template.Must(template.New("").Funcs(funcs).ParseFS(templates, "templates/layout.html", "templates/"+p))
 	}
 	s.mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) { s.render(w, http.StatusOK, "login.html", nil) })
 	s.mux.HandleFunc("POST /login", s.login)
-	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { s.render(w, http.StatusOK, "index.html", s.current()) })
+	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		s.render(w, http.StatusOK, "index.html", s.deps.Current())
+	})
 	s.mux.HandleFunc("GET /stacks/{name}", s.stack)
+	s.mux.HandleFunc("POST /stacks/{name}/apply", s.apply(false))
+	s.mux.HandleFunc("POST /stacks/{name}/dry-run", s.apply(true))
+	s.mux.HandleFunc("POST /stacks/{name}/ignore", s.decide("ignore"))
+	s.mux.HandleFunc("POST /stacks/{name}/postpone", s.decide("postpone"))
+	s.mux.HandleFunc("GET /runs/{id}", s.run)
+	s.mux.HandleFunc("GET /settings", func(w http.ResponseWriter, r *http.Request) {
+		s.render(w, http.StatusOK, "settings.html", s.deps.Config)
+	})
 	return s
 }
 
-func (s *server) stack(w http.ResponseWriter, r *http.Request) {
-	snap := s.current()
+func (s *server) find(name string) (*inventory.Stack, time.Time) {
+	snap := s.deps.Current()
 	for _, st := range snap.Stacks {
-		if st.Name == r.PathValue("name") {
-			s.render(w, http.StatusOK, "stack.html", map[string]any{"Stack": st, "At": snap.At})
-			return
+		if st.Name == name {
+			return st, snap.At
 		}
 	}
-	http.NotFound(w, r)
+	return nil, snap.At
+}
+
+func (s *server) stack(w http.ResponseWriter, r *http.Request) {
+	st, at := s.find(r.PathValue("name"))
+	if st == nil {
+		http.NotFound(w, r)
+		return
+	}
+	data := map[string]any{"Stack": st, "At": at, "Error": r.URL.Query().Get("erreur")}
+	if rec, err := s.deps.Plan(st.Name); err != nil {
+		data["Error"] = err.Error()
+	} else {
+		data["Record"] = rec
+		if rec != nil {
+			data["Auto"], data["AutoWhy"] = plan.Automatic(rec.Plan, s.deps.Config.Auto)
+		}
+	}
+	if until := s.deps.Postponed(st.Name); time.Now().Before(until) {
+		data["Postponed"] = until.Format("2006-01-02")
+	}
+	data["Runs"], _ = s.deps.Runs(st.Name)
+	s.render(w, http.StatusOK, "stack.html", data)
+}
+
+func back(w http.ResponseWriter, r *http.Request, err error) {
+	target := "/stacks/" + url.PathEscape(r.PathValue("name"))
+	if err != nil {
+		target += "?erreur=" + url.QueryEscape(err.Error())
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func (s *server) apply(dryRun bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := s.deps.Apply(r.PathValue("name"), dryRun)
+		if err != nil {
+			back(w, r, err)
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("/runs/%d", id), http.StatusSeeOther)
+	}
+}
+
+func (s *server) decide(kind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		service, version, until := r.FormValue("service"), r.FormValue("version"), r.FormValue("until")
+		var err error
+		switch {
+		case kind == "ignore" && (service == "" || version == ""):
+			err = errors.New("service et version à ignorer manquants")
+		case kind == "postpone":
+			if _, e := time.Parse("2006-01-02", until); e != nil {
+				err = errors.New("date de report invalide")
+			}
+		}
+		if err == nil {
+			err = s.deps.Decide(r.PathValue("name"), kind, service, version, until)
+		}
+		back(w, r, err)
+	}
+}
+
+func (s *server) run(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	v, err := s.deps.Run(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.render(w, http.StatusOK, "run.html", v)
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -1,7 +1,7 @@
 ---
 - name: Install the packages the bench needs
   ansible.builtin.apt:
-    name: [ca-certificates, curl, rsync]
+    name: [ca-certificates, curl, rsync, sqlite3]
     update_cache: true
     cache_valid_time: 86400
 

@@ -13,7 +13,8 @@ services:
       - palier-data:/var/lib/palier
     read_only: true
     cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
+    # /palier holds these as file capabilities, which no-new-privileges would cancel.
+    cap_add: [CHOWN, DAC_OVERRIDE]
 
 volumes:
   palier-data: {}

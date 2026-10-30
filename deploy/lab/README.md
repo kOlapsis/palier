@@ -35,6 +35,7 @@ All commands are `deploy/lab/lab <command>`.
 | `up` | Creates what is missing (base image in cache, storage pools, system disk on top of the base image, cloud-init seed with your key and the static address, NAT network, machine), then provisions it with the `docker`, `palier_stack` and `lab_apps` roles. A second `up` changes nothing. |
 | `status` | Prints the state of the machine, Palier, webhook-tester and each stack of `topology.yml`, checked over HTTP from the host. Exits 0 only if all of them are in service, 1 otherwise. |
 | `ssh [cmd]` | Opens a shell on the machine as `debian`, or runs `cmd` there. |
+| `scenario <name>` | Copies `scenarios/common.sh` and `scenarios/<name>.sh` to the machine and runs them as root: the replayable scenarios of `EVIDENCE.md` (`whoami-apply`, `whoami-missing-tag`, `whoami-exits`, `whoami-kill`, and `whoami-reset` to put whoami back to v1.10.1 between them). |
 | `reset-apps` | Stops the stacks of `topology.yml`, deletes their data and their compose files, then starts them again at the versions of `versions.yml` with fresh data (and, for GitLab and Immich, the seed: a project, an account). Use it to replay an upgrade scenario. |
 | `down` | Deletes the machine, its disks, its seed, its storage pool and its network. Only the base image stays, in `~/.cache/palier-lab` and in the `palier-lab-base` pool, so the next `up` downloads nothing. |
 
@@ -74,7 +75,7 @@ The access token of Palier is generated at the first `up` and kept on the machin
 deploy/lab/lab ssh sudo cat /opt/palier/token
 ```
 
-The `lab` script reads its variables from the environment and from `deploy/lab/lab.env` when that file exists (one `NAME=value` per line, ignored by git and never copied to the machine): `LAB_SSH_KEY`, and the registry credentials `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, `REGISTRY_ADDRESS`, `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`. `up` writes the credentials into `/opt/palier/docker/config.json` on the machine, which Palier reads through `DOCKER_CONFIG`.
+The `lab` script reads its variables from the environment and from `deploy/lab/lab.env` when that file exists (one `NAME=value` per line, ignored by git and never copied to the machine): `LAB_SSH_KEY`, `LAB_ANTHROPIC_API_KEY`, which becomes `PALIER_AI_KEY`, and the registry credentials `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, `REGISTRY_ADDRESS`, `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`. `up` writes the credentials into `/opt/palier/docker/config.json` on the machine, which Palier reads through `DOCKER_CONFIG`.
 
 On the machine, Palier lives in `/opt/palier`: `src/` is the copy of the working tree, `compose.env` holds the values the override reads (ports, group of the Docker socket, token). To drive it by hand:
 

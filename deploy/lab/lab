@@ -52,6 +52,9 @@ usage: lab <command>
   status       state of the machine and of every service; exits 0 only if
                all of them are in service
   ssh [cmd]    open a shell on the machine, or run cmd there
+  scenario <name>
+               run scenarios/<name>.sh on the machine, as root,
+               after scenarios/common.sh
   reset-apps   put the stacks under /apps back to their starting versions,
                with fresh data
   down         delete the machine, its disks and its network; only the base
@@ -60,6 +63,8 @@ usage: lab <command>
 environment (also read from lab.env next to this script, kept out of git):
   LAB_SSH_KEY  private key installed on the machine, its .pub next to it
                (default: the first of ~/.ssh/id_ed25519, id_ecdsa, id_rsa)
+  LAB_ANTHROPIC_API_KEY
+               Claude API key, given to Palier as PALIER_AI_KEY
   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
                Docker Hub credentials given to Palier
   REGISTRY_ADDRESS, REGISTRY_USERNAME, REGISTRY_PASSWORD
@@ -171,6 +176,12 @@ ssh)
 	ssh_vm "$@"
 	;;
 reset-apps) cmd_reset_apps ;;
+scenario)
+	[ -f "$LAB_DIR/scenarios/${2:-}.sh" ] || die "no scenario ${2:-}; see $LAB_DIR/scenarios" 2
+	need_key
+	cat "$LAB_DIR/scenarios/common.sh" "$LAB_DIR/scenarios/$2.sh" | ssh_vm 'cat > /tmp/palier-scenario.sh'
+	ssh_vm 'sudo bash /tmp/palier-scenario.sh'
+	;;
 -h | --help | help) usage ;;
 *)
 	usage >&2

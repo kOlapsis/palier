@@ -8,6 +8,8 @@ services:
     environment:
       PALIER_TOKEN: ${PALIER_TOKEN:?}
       DOCKER_CONFIG: /etc/palier/docker
+      PALIER_AI_KEY: ${PALIER_AI_KEY:-}
+      PALIER_AUTO: patch
     ports: !override
       - "${LAB_PALIER_PORT:?}:8080"
     volumes:

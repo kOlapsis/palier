@@ -13,11 +13,15 @@ header a { color: inherit; text-decoration: none; font-weight: 600; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; vertical-align: top; padding: .3rem .5rem; border-bottom: 1px solid #ddd; }
 .muted { color: #666; }
-@media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #141414; } header, th, td { border-color: #333; } .muted { color: #999; } .error { color: #ff7a8a; } }
+form.inline { display: inline-block; margin: 0 .5rem .5rem 0; }
+blockquote { margin: .3rem 0 .3rem 1rem; padding-left: .5rem; border-left: 3px solid #ccc; white-space: pre-wrap; }
+pre { white-space: pre-wrap; background: #f4f4f4; padding: .5rem; }
+.step { border: 1px solid #ddd; padding: .5rem 1rem; margin: 1rem 0; }
+@media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #141414; } header, th, td, .step { border-color: #333; } pre { background: #222; } .muted { color: #999; } .error { color: #ff7a8a; } }
 </style>
 </head>
 <body>
-<header><p><a href="/">Palier</a></p></header>
+<header><p><a href="/">Palier</a> · <a href="/settings">Réglages</a></p></header>
 <main>{{template "content" .}}</main>
 </body>
 </html>

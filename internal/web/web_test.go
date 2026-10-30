@@ -6,10 +6,19 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/kolapsis/palier/internal/inventory"
+	"github.com/kolapsis/palier/internal/plan"
+	"github.com/kolapsis/palier/internal/run"
 )
 
 func TestTokenGuardsEverything(t *testing.T) {
-	h := New("secret", func() Snapshot { return Snapshot{} })
+	h := New("secret", Deps{
+		Current: func() Snapshot { return Snapshot{} },
+		Runs:    func(string) ([]run.View, error) { return nil, nil },
+		Plan:    func(string) (*plan.Record, error) { return nil, nil },
+	})
 	do := func(method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		if body != "" {
@@ -39,5 +48,32 @@ func TestTokenGuardsEverything(t *testing.T) {
 	}
 	if w := do("GET", "/", "", cookies[0]); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Stacks") {
 		t.Fatalf("authorized /: %d", w.Code)
+	}
+}
+
+func TestPagesRender(t *testing.T) {
+	st := &inventory.Stack{Name: "whoami", Services: []*inventory.Service{{Name: "whoami", Role: "application", Image: "docker.io/traefik/whoami", Tag: "v1.10.1", Version: "v1.10.1", Available: []inventory.Release{{Tag: "v1.12.0"}}}}}
+	p := &plan.Plan{Steps: []plan.Step{{Risk: "safe", Reversible: "yes", Why: "Une phrase.",
+		Changes:    []plan.Change{{Service: "whoami", From: "v1.10.1", To: "v1.12.0"}},
+		Operations: []plan.Operation{{Op: "set_image", Service: "whoami", Image: "traefik/whoami", Tag: "v1.12.0"}, {Op: "recreate", Services: []string{"whoami"}}},
+		Facts:      []plan.Fact{{Category: "security_fix", Service: "whoami", Version: "v1.12.0", Quote: "<script>alert(1)</script> a quote", SourceURL: "https://github.com/traefik/whoami/releases"}}}}}
+	h := New("secret", Deps{
+		Current:   func() Snapshot { return Snapshot{Stacks: []*inventory.Stack{st}} },
+		Runs:      func(string) ([]run.View, error) { return []run.View{{ID: 1, Status: "rolled_back"}}, nil },
+		Plan:      func(string) (*plan.Record, error) { return &plan.Record{Stack: "whoami", Source: "ai", Plan: p}, nil },
+		Postponed: func(string) time.Time { return time.Time{} },
+		Run:       func(int64) (*run.View, error) { return &run.View{ID: 1, Stack: "whoami", Status: "running", Events: []run.Event{{Message: "étape 1"}}}, nil },
+	})
+	for path, want := range map[string]string{"/": "revenue en arrière", "/stacks/whoami": "Étape 1", "/runs/1": "étape 1", "/settings": "PALIER_AUTO"} {
+		r := httptest.NewRequest("GET", path, nil)
+		r.AddCookie(&http.Cookie{Name: cookieName, Value: "secret"})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), want) {
+			t.Errorf("%s: %d, %q missing", path, w.Code, want)
+		}
+		if strings.Contains(w.Body.String(), "<script>alert") {
+			t.Errorf("%s: quote not escaped", path)
+		}
 	}
 }

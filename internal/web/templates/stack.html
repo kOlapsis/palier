@@ -3,22 +3,58 @@
 {{with .Stack}}
 <h1>{{.Name}}</h1>
 <p class="muted">{{state .}}{{with .WorkingDir}} · {{.}}{{end}} · dernière inspection {{since $.At}}</p>
-{{range .Errors}}<p class="error">{{.}}</p>{{end}}
+{{end}}
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+{{with .Postponed}}<p>Application automatique reportée jusqu'au {{.}}.</p>{{end}}
+{{range .Stack.Errors}}<p class="error">{{.}}</p>{{end}}
 <table>
 <thead><tr><th>Service</th><th>Rôle</th><th>En service</th><th>État</th><th>Dépend de</th><th>Versions disponibles</th></tr></thead>
 <tbody>
-{{range .Services}}<tr>
+{{range .Stack.Services}}<tr>
 <td>{{.Name}}</td>
-<td>{{if eq .Role "application"}}application{{else if eq .Role "dependency"}}dépendance{{else}}observé{{end}}</td>
+<td>{{label .Role}}</td>
 <td>{{.Image}}:{{.Tag}}{{if and .Version (ne .Version .Tag)}} ({{.Version}}, d'après {{if eq .VersionSource "digest"}}le digest{{else}}le label OCI{{end}}){{end}}
 {{if .Republished}}<br><span class="muted">tag republié au registre avec un autre contenu : ce n'est pas une nouvelle version</span>{{end}}</td>
 <td>{{.State}}{{with .Health}} · {{.}}{{end}}{{if .Restarts}} · {{.Restarts}} redémarrages{{end}}</td>
-<td>{{range $i, $d := .DependsOn}}{{if $i}}, {{end}}{{$d}}{{end}}</td>
+<td>{{join .DependsOn}}</td>
 <td>{{range $i, $r := .Available}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}
 {{with .Maturing}}<br><span class="muted">en maturation : {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>{{end}}
-{{with .DetectionError}}<br><span class="error">{{.}}</span>{{end}}</td>
+{{with .DetectionError}}<br><span class="error">{{.}}</span>{{end}}
+{{with .NotesError}}<br><span class="error">{{.}}</span>{{end}}</td>
 </tr>
 {{end}}</tbody>
 </table>
+
+{{with .Record}}{{with .Plan}}
+<h2>Plan</h2>
+<p class="muted">Calculé {{since $.Record.Created}} ({{label $.Record.Source}}).
+{{if $.Auto}}L'application automatique le prendra.{{else if $.AutoWhy}}Pas d'application automatique : {{$.AutoWhy}}.{{end}}</p>
+{{if .Incomplete}}<p class="error">Plan incomplet, il ne s'applique pas :</p><ul>{{range .Incomplete}}<li class="error">{{.}}</li>{{end}}</ul>{{end}}
+{{range $i, $s := .Steps}}<div class="step">
+<h3>Étape {{inc $i}} · risque {{label .Risk}} · réversible : {{label .Reversible}}</h3>
+{{with .Why}}<p>{{.}}</p>{{end}}
+<ul>
+{{range .Changes}}<li>{{.Service}} : {{.From}} vers {{.To}}</li>{{end}}
+{{with .StopDuring}}<li>Arrêtés pendant l'étape : {{join .}}</li>{{end}}
+</ul>
+<p>Opérations :</p>
+<ol>{{range .Operations}}<li>{{.Op}}{{with .Service}} {{.}}{{end}}{{with .Services}} {{join .}}{{end}}{{with .Image}} {{.}}{{end}}{{with .Tag}}:{{.}}{{end}}{{with .Seconds}} {{.}} s{{end}}</li>{{end}}</ol>
+{{with .Facts}}<p>Faits cités :</p>
+{{range .}}<p><strong>{{.Category}}</strong> · {{.Service}} {{.Version}}{{with .Dependency}} · {{.}}{{end}}{{with .MinVersion}} min {{.}}{{end}}{{with .MaxVersion}} max {{.}}{{end}} · <a href="{{.SourceURL}}" rel="noreferrer noopener">source</a></p>
+<blockquote>{{.Quote}}</blockquote>{{end}}{{end}}
+</div>{{end}}
+{{if .Steps}}
+<form class="inline" method="post" action="/stacks/{{$.Stack.Name}}/dry-run"><button>Essai à blanc</button></form>
+{{if not .Incomplete}}<form class="inline" method="post" action="/stacks/{{$.Stack.Name}}/apply"><button>Appliquer</button></form>{{end}}
+{{range .Steps}}{{range .Changes}}<form class="inline" method="post" action="/stacks/{{$.Stack.Name}}/ignore"><input type="hidden" name="service" value="{{.Service}}"><input type="hidden" name="version" value="{{.To}}"><button>Ignorer {{.Service}} {{.To}}</button></form>{{end}}{{end}}
+<form class="inline" method="post" action="/stacks/{{$.Stack.Name}}/postpone"><label>Reporter jusqu'au <input type="date" name="until" required></label> <button>Reporter</button></form>
+{{end}}
+{{end}}{{end}}
+
+{{with .Runs}}
+<h2>Exécutions</h2>
+<table><thead><tr><th>N°</th><th>Début</th><th>Par</th><th>Résultat</th></tr></thead><tbody>
+{{range .}}<tr><td><a href="/runs/{{.ID}}">{{.ID}}</a></td><td>{{.Started}}</td><td>{{.Author}}</td><td>{{if .DryRun}}essai à blanc · {{end}}{{label .Status}}</td></tr>{{end}}
+</tbody></table>
 {{end}}
 {{end}}
