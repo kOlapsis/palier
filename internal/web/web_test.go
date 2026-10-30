@@ -9,7 +9,7 @@ import (
 )
 
 func TestTokenGuardsEverything(t *testing.T) {
-	h := New("secret")
+	h := New("secret", func() Snapshot { return Snapshot{} })
 	do := func(method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		if body != "" {

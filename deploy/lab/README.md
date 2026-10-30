@@ -100,6 +100,10 @@ The stacks are Compose projects named after their folder and started from `/apps
 
 nginx and whoami are single containers without data. Outline migrates its database when it starts, so its update changes data; it depends on PostgreSQL 16.4, behind on its own 16.x line, and on Redis 7.2.4.
 
+### lab-observed
+
+A container started with `docker run`, outside Compose, from `ghcr.io/tarampampam/webhook-tester:2.2.0`: a stack Palier only observes, and an image on GHCR.
+
 ### GitLab CE 16.1.6 (large set)
 
 The image carries the label `org.opencontainers.image.version=22.04`, inherited from its Ubuntu base, which contradicts the tag: the tag wins.

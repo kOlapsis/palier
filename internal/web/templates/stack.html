@@ -1,0 +1,23 @@
+{{define "head"}}<meta http-equiv="refresh" content="60">{{end}}
+{{define "content"}}
+{{with .Stack}}
+<h1>{{.Name}}</h1>
+<p class="muted">{{state .}}{{with .WorkingDir}} · {{.}}{{end}} · dernière inspection {{since $.At}}</p>
+{{range .Errors}}<p class="error">{{.}}</p>{{end}}
+<table>
+<thead><tr><th>Service</th><th>Rôle</th><th>En service</th><th>État</th><th>Dépend de</th><th>Versions disponibles</th></tr></thead>
+<tbody>
+{{range .Services}}<tr>
+<td>{{.Name}}</td>
+<td>{{if eq .Role "application"}}application{{else if eq .Role "dependency"}}dépendance{{else}}observé{{end}}</td>
+<td>{{.Image}}:{{.Tag}}{{if and .Version (ne .Version .Tag)}} ({{.Version}}){{end}}</td>
+<td>{{.State}}{{with .Health}} · {{.}}{{end}}{{if .Restarts}} · {{.Restarts}} redémarrages{{end}}</td>
+<td>{{range $i, $d := .DependsOn}}{{if $i}}, {{end}}{{$d}}{{end}}</td>
+<td>{{range $i, $r := .Available}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}
+{{with .Maturing}}<br><span class="muted">en maturation : {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>{{end}}
+{{with .DetectionError}}<br><span class="error">{{.}}</span>{{end}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+{{end}}
+{{end}}

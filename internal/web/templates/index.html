@@ -1,4 +1,14 @@
+{{define "head"}}<meta http-equiv="refresh" content="60">{{end}}
 {{define "content"}}
 <h1>Stacks</h1>
-<p>Aucune stack pour l'instant.</p>
+<p class="muted">Dernière inspection : {{since .At}}.</p>
+{{with .Err}}<p class="error">{{.}}</p>{{end}}
+{{if .Stacks}}
+<table>
+<thead><tr><th>Stack</th><th>État</th><th>Services</th></tr></thead>
+<tbody>
+{{range .Stacks}}<tr><td><a href="/stacks/{{.Name}}">{{.Name}}</a></td><td>{{state .}}</td><td>{{len .Services}}</td></tr>
+{{end}}</tbody>
+</table>
+{{else}}<p>Aucune stack pour l'instant.</p>{{end}}
 {{end}}
