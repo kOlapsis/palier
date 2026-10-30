@@ -10,7 +10,8 @@
 {{range .Services}}<tr>
 <td>{{.Name}}</td>
 <td>{{if eq .Role "application"}}application{{else if eq .Role "dependency"}}dépendance{{else}}observé{{end}}</td>
-<td>{{.Image}}:{{.Tag}}{{if and .Version (ne .Version .Tag)}} ({{.Version}}){{end}}</td>
+<td>{{.Image}}:{{.Tag}}{{if and .Version (ne .Version .Tag)}} ({{.Version}}, d'après {{if eq .VersionSource "digest"}}le digest{{else}}le label OCI{{end}}){{end}}
+{{if .Republished}}<br><span class="muted">tag republié au registre avec un autre contenu : ce n'est pas une nouvelle version</span>{{end}}</td>
 <td>{{.State}}{{with .Health}} · {{.}}{{end}}{{if .Restarts}} · {{.Restarts}} redémarrages{{end}}</td>
 <td>{{range $i, $d := .DependsOn}}{{if $i}}, {{end}}{{$d}}{{end}}</td>
 <td>{{range $i, $r := .Available}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}

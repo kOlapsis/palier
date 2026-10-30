@@ -73,7 +73,18 @@ func setup() (*app, error) {
 		db.Close()
 		return nil, err
 	}
-	return &app{cfg: cfg, db: db, dc: dc, reg: registry.New(db)}, nil
+	auths, err := registry.LoadAuths(cfg.DockerConfig)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	reg := registry.New(db, auths)
+	for _, domain := range []string{"docker.io", "ghcr.io"} {
+		if reg.UsesCredentials(domain) {
+			slog.Info("identifiants de registre chargés", "registry", domain, "docker_config", cfg.DockerConfig)
+		}
+	}
+	return &app{cfg: cfg, db: db, dc: dc, reg: reg}, nil
 }
 
 func (a *app) scan(ctx context.Context) ([]*inventory.Stack, error) {

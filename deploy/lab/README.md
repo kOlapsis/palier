@@ -74,7 +74,7 @@ The access token of Palier is generated at the first `up` and kept on the machin
 deploy/lab/lab ssh sudo cat /opt/palier/token
 ```
 
-The `lab` script reads its variables from the environment and from `deploy/lab/lab.env` when that file exists (one `NAME=value` per line, ignored by git and never copied to the machine): `LAB_SSH_KEY`.
+The `lab` script reads its variables from the environment and from `deploy/lab/lab.env` when that file exists (one `NAME=value` per line, ignored by git and never copied to the machine): `LAB_SSH_KEY`, and the registry credentials `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, `REGISTRY_ADDRESS`, `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`. `up` writes the credentials into `/opt/palier/docker/config.json` on the machine, which Palier reads through `DOCKER_CONFIG`.
 
 On the machine, Palier lives in `/opt/palier`: `src/` is the copy of the working tree, `compose.env` holds the values the override reads (ports, group of the Docker socket, token). To drive it by hand:
 
@@ -100,9 +100,9 @@ The stacks are Compose projects named after their folder and started from `/apps
 
 nginx and whoami are single containers without data. Outline migrates its database when it starts, so its update changes data; it depends on PostgreSQL 16.4, behind on its own 16.x line, and on Redis 7.2.4.
 
-### lab-observed
+### lab-observed and lab-republished
 
-A container started with `docker run`, outside Compose, from `ghcr.io/tarampampam/webhook-tester:2.2.0`: a stack Palier only observes, and an image on GHCR.
+Two containers started with `docker run`, outside Compose, from GHCR images: stacks Palier only observes. `lab-observed` runs the moving tag `2.2`, whose version Palier reads from the digest; `lab-republished` runs the content of 2.2.7 under the tag 2.3.0, as if the registry had republished 2.3.0. The reasons are in `versions.yml`.
 
 ### GitLab CE 16.1.6 (large set)
 

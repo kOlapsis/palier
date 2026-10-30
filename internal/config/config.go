@@ -29,6 +29,7 @@ type Config struct {
 	GitHubToken    string
 	GitLabToken    string
 	RegistryMirror string
+	DockerConfig   string
 }
 
 // Load reads the environment through getenv and applies the defaults.
@@ -51,6 +52,7 @@ func Load(getenv func(string) string) (Config, error) {
 		GitHubToken:    get("PALIER_GITHUB_TOKEN", ""),
 		GitLabToken:    get("PALIER_GITLAB_TOKEN", ""),
 		RegistryMirror: get("PALIER_REGISTRY_MIRROR", ""),
+		DockerConfig:   get("DOCKER_CONFIG", filepath.Join(get("HOME", "/"), ".docker")),
 	}
 	var errs []error
 	duration := func(name, def string) time.Duration {

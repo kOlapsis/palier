@@ -1,6 +1,10 @@
 package registry
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestParseRef(t *testing.T) {
 	cases := map[string]Ref{
@@ -15,5 +19,26 @@ func TestParseRef(t *testing.T) {
 		if got := ParseRef(in); got != want {
 			t.Errorf("ParseRef(%q) = %+v, want %+v", in, got, want)
 		}
+	}
+}
+
+func TestCredentials(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"auths":{"https://index.docker.io/v1/":{"auth":"aHViOnB3"},"ghcr.io":{"auth":"Z2g6cHc="},"empty.io":{}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	auths, err := LoadAuths(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := New(nil, auths)
+	if c.credentials("docker.io") != "aHViOnB3" || c.credentials("ghcr.io") != "Z2g6cHc=" || c.UsesCredentials("empty.io") || c.UsesCredentials("quay.io") {
+		t.Fatalf("credentials: %v", auths)
+	}
+	if a, err := c.authorize(t.Context(), Ref{Domain: "ghcr.io"}, `Basic realm="x"`); err != nil || a != "Basic Z2g6cHc=" {
+		t.Fatalf("basic: %q %v", a, err)
+	}
+	if auths, err := LoadAuths(t.TempDir()); err != nil || auths != nil {
+		t.Fatalf("no config: %v %v", auths, err)
 	}
 }

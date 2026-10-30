@@ -60,6 +60,10 @@ usage: lab <command>
 environment (also read from lab.env next to this script, kept out of git):
   LAB_SSH_KEY  private key installed on the machine, its .pub next to it
                (default: the first of ~/.ssh/id_ed25519, id_ecdsa, id_rsa)
+  DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
+               Docker Hub credentials given to Palier
+  REGISTRY_ADDRESS, REGISTRY_USERNAME, REGISTRY_PASSWORD
+               the same for one more registry
 USAGE
 }
 

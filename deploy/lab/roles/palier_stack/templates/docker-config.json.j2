@@ -1,0 +1,7 @@
+{
+  "auths": {
+{% for r in palier_registries | selectattr('address') | selectattr('user') | selectattr('password') %}
+    {{ r.address | to_json }}: {"auth": {{ (r.user ~ ':' ~ r.password) | b64encode | to_json }}}{{ "," if not loop.last }}
+{% endfor %}
+  }
+}

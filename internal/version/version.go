@@ -35,8 +35,10 @@ func Parse(tag string) (v V, ok bool) {
 	return v, true
 }
 
-// Precise reports whether v names a release rather than a moving line such as "16" or "latest".
-func (v V) Precise() bool { return len(v.Nums) >= 2 }
+// Extends reports whether w is a more precise tag of the line v names, as "2.2.7" extends "2.2".
+func (v V) Extends(w V) bool {
+	return v.Prefix == w.Prefix && v.Suffix == w.Suffix && len(w.Nums) > len(v.Nums) && slices.Equal(v.Nums, w.Nums[:len(v.Nums)])
+}
 
 // SameLine reports whether w is written like v: same prefix, same number of components, same suffix.
 func (v V) SameLine(w V) bool {

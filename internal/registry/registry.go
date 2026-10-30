@@ -5,9 +5,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -47,18 +50,59 @@ func ParseRef(s string) Ref {
 // Name is the reference without its tag.
 func (r Ref) Name() string { return r.Domain + "/" + r.Repo }
 
-// Client queries registries anonymously and keeps push dates in the database.
+// Client queries registries with the credentials of the Docker configuration and keeps push dates in the database.
 type Client struct {
-	http   *http.Client
-	db     *sql.DB
-	mu     sync.Mutex
-	tokens map[string]string
+	http  *http.Client
+	db    *sql.DB
+	auths map[string]string
+	mu    sync.Mutex
+	authz map[string]string
 }
 
-// New returns a registry client whose date cache lives in db.
-func New(db *sql.DB) *Client {
-	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, tokens: map[string]string{}}
+// New returns a registry client whose date cache lives in db; auths maps a registry address to its base64 "user:password", as in config.json.
+func New(db *sql.DB, auths map[string]string) *Client {
+	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, authz: map[string]string{}}
 }
+
+// LoadAuths reads the "auths" section of config.json in the Docker configuration directory dir.
+func LoadAuths(dir string) (map[string]string, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var cfg struct {
+		Auths map[string]struct{ Auth string }
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		return nil, fmt.Errorf("%s : %w", filepath.Join(dir, "config.json"), err)
+	}
+	auths := map[string]string{}
+	for host, a := range cfg.Auths {
+		if a.Auth != "" {
+			auths[host] = a.Auth
+		}
+	}
+	return auths, nil
+}
+
+func (c *Client) credentials(domain string) string {
+	keys := []string{domain, "https://" + domain}
+	if domain == "docker.io" {
+		keys = []string{"https://index.docker.io/v1/", "index.docker.io", "docker.io", "registry-1.docker.io"}
+	}
+	for _, k := range keys {
+		if a := c.auths[k]; a != "" {
+			return a
+		}
+	}
+	return ""
+}
+
+// UsesCredentials reports whether requests to domain carry credentials.
+func (c *Client) UsesCredentials(domain string) bool { return c.credentials(domain) != "" }
 
 func apiHost(domain string) string {
 	if domain == "docker.io" {
@@ -70,8 +114,12 @@ func apiHost(domain string) string {
 var challengeParam = regexp.MustCompile(`(\w+)="([^"]*)"`)
 
 func (c *Client) get(ctx context.Context, r Ref, url, accept string) (*http.Response, error) {
+	return c.do(ctx, http.MethodGet, r, url, accept)
+}
+
+func (c *Client) do(ctx context.Context, method string, r Ref, url, accept string) (*http.Response, error) {
 	for attempt := 0; ; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, method, url, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -79,10 +127,10 @@ func (c *Client) get(ctx context.Context, r Ref, url, accept string) (*http.Resp
 			req.Header.Set("Accept", accept)
 		}
 		c.mu.Lock()
-		token := c.tokens[r.Name()]
+		authz := c.authz[r.Name()]
 		c.mu.Unlock()
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
+		if authz != "" {
+			req.Header.Set("Authorization", authz)
 		}
 		resp, err := c.http.Do(req)
 		if err != nil {
@@ -91,25 +139,32 @@ func (c *Client) get(ctx context.Context, r Ref, url, accept string) (*http.Resp
 		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
 			challenge := resp.Header.Get("WWW-Authenticate")
 			resp.Body.Close()
-			token, err := c.fetchToken(ctx, challenge)
+			authz, err := c.authorize(ctx, r, challenge)
 			if err != nil {
 				return nil, err
 			}
 			c.mu.Lock()
-			c.tokens[r.Name()] = token
+			c.authz[r.Name()] = authz
 			c.mu.Unlock()
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
 			b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 			resp.Body.Close()
-			return nil, fmt.Errorf("GET %s: %s: %s", url, resp.Status, strings.TrimSpace(string(b)))
+			return nil, fmt.Errorf("%s %s: %s: %s", method, url, resp.Status, strings.TrimSpace(string(b)))
 		}
 		return resp, nil
 	}
 }
 
-func (c *Client) fetchToken(ctx context.Context, challenge string) (string, error) {
+func (c *Client) authorize(ctx context.Context, r Ref, challenge string) (string, error) {
+	creds := c.credentials(r.Domain)
+	if strings.HasPrefix(challenge, "Basic ") {
+		if creds == "" {
+			return "", fmt.Errorf("le registre %s demande des identifiants", r.Domain)
+		}
+		return "Basic " + creds, nil
+	}
 	params := map[string]string{}
 	for _, m := range challengeParam.FindAllStringSubmatch(challenge, -1) {
 		params[m[1]] = m[2]
@@ -128,6 +183,9 @@ func (c *Client) fetchToken(ctx context.Context, challenge string) (string, erro
 		}
 	}
 	req.URL.RawQuery = q.Encode()
+	if creds != "" {
+		req.Header.Set("Authorization", "Basic "+creds)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return "", err
@@ -144,9 +202,9 @@ func (c *Client) fetchToken(ctx context.Context, challenge string) (string, erro
 		return "", err
 	}
 	if t.Token == "" {
-		return t.AccessToken, nil
+		t.Token = t.AccessToken
 	}
-	return t.Token, nil
+	return "Bearer " + t.Token, nil
 }
 
 var nextLink = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
@@ -231,6 +289,33 @@ func (c *Client) hubPushed(ctx context.Context, r Ref, tag string) (time.Time, e
 }
 
 const manifestTypes = "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"
+
+// Digest returns the digest the registry serves for tag, without counting as a pull.
+func (c *Client) Digest(ctx context.Context, r Ref, tag string) (string, error) {
+	resp, err := c.do(ctx, http.MethodHead, r, "https://"+apiHost(r.Domain)+"/v2/"+r.Repo+"/manifests/"+tag, manifestTypes)
+	if err != nil {
+		return "", err
+	}
+	resp.Body.Close()
+	d := resp.Header.Get("Docker-Content-Digest")
+	if d == "" {
+		return "", fmt.Errorf("%s:%s : le registre ne donne pas de digest", r.Name(), tag)
+	}
+	return d, nil
+}
+
+// PlatformDigests returns the digests of the per-platform images listed by the index digest.
+func (c *Client) PlatformDigests(ctx context.Context, r Ref, digest string) ([]string, error) {
+	var m struct{ Manifests []struct{ Digest string } }
+	if err := c.getJSON(ctx, r, "https://"+apiHost(r.Domain)+"/v2/"+r.Repo+"/manifests/"+digest, manifestTypes, &m); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, d := range m.Manifests {
+		out = append(out, d.Digest)
+	}
+	return out, nil
+}
 
 func (c *Client) configCreated(ctx context.Context, r Ref, tag string) (time.Time, error) {
 	base := "https://" + apiHost(r.Domain) + "/v2/" + r.Repo

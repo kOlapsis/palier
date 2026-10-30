@@ -44,6 +44,23 @@
   vars:
     palier_token: "{{ palier_token_file.content | b64decode | trim }}"
 
+- name: Create the Docker configuration directory of Palier
+  ansible.builtin.file:
+    path: "{{ palier_dir }}/docker"
+    state: directory
+    owner: "65532"
+    group: "65532"
+    mode: "0700"
+
+- name: Give Palier the registry credentials of lab.env
+  ansible.builtin.template:
+    src: docker-config.json.j2
+    dest: "{{ palier_dir }}/docker/config.json"
+    owner: "65532"
+    group: "65532"
+    mode: "0400"
+  no_log: true
+
 - name: Create /apps
   ansible.builtin.file:
     path: /apps

@@ -7,10 +7,12 @@ services:
       dockerfile: deploy/Dockerfile
     environment:
       PALIER_TOKEN: ${PALIER_TOKEN:?}
+      DOCKER_CONFIG: /etc/palier/docker
     ports: !override
       - "${LAB_PALIER_PORT:?}:8080"
     volumes:
       - /apps:/apps
+      - /opt/palier/docker:/etc/palier/docker:ro
 
   webhook-tester:
     image: ghcr.io/tarampampam/webhook-tester:2

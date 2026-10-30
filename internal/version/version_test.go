@@ -35,11 +35,15 @@ func TestNewer(t *testing.T) {
 	}
 }
 
-func TestPrecise(t *testing.T) {
-	for tag, want := range map[string]bool{"16": false, "16.4": true, "v1.10.1": true, "2": false} {
-		v, _ := Parse(tag)
-		if v.Precise() != want {
-			t.Errorf("Precise(%s) = %v", tag, !want)
+func TestExtends(t *testing.T) {
+	for _, c := range []struct {
+		v, w string
+		want bool
+	}{{"2.2", "2.2.7", true}, {"2", "2.3.0", true}, {"2.2", "2.3.0", false}, {"16.4", "16.4-bookworm", false}, {"2.2.7", "2.2", false}} {
+		v, _ := Parse(c.v)
+		w, _ := Parse(c.w)
+		if v.Extends(w) != c.want {
+			t.Errorf("%s.Extends(%s) = %v", c.v, c.w, !c.want)
 		}
 	}
 	if _, ok := Parse("latest"); ok {

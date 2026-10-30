@@ -70,3 +70,20 @@ vaultwarden:
     new features and the Web Vault update, but no Compose or configuration
     change for a default SQLite setup: Palier must open a non-blocking
     dossier, apply it, verify it and keep it without rollback.
+
+observed:
+  image: ghcr.io/tarampampam/webhook-tester:2.2
+  why: >-
+    Started with docker run, outside Compose: a stack Palier only observes.
+    The tag 2.2 moves with each 2.2.x release, so Palier must read the
+    version in service from the digest (2.2.7), on GHCR.
+
+republished:
+  image: ghcr.io/tarampampam/webhook-tester
+  content: 2.2.7
+  tag: 2.3.0
+  why: >-
+    The content of 2.2.7 under the tag 2.3.0, started outside Compose: the
+    registry serves another content for 2.3.0, as after a republished tag.
+    Palier must keep 2.3.0 as the version in service and not propose 2.3.0
+    again.

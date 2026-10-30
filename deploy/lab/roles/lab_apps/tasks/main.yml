@@ -7,8 +7,8 @@
       loop: "{{ topology.apps }}"
       changed_when: true
 
-    - name: Remove the container started outside Compose
-      ansible.builtin.command: docker rm -f lab-observed
+    - name: Remove the containers started outside Compose
+      ansible.builtin.command: docker rm -f lab-observed lab-republished
       changed_when: true
 
     - name: Delete the stack directories
@@ -45,11 +45,22 @@
   delay: 30
   changed_when: lab_apps_up.stderr is search('Creat|Start')
 
-- name: Start a container outside Compose, which Palier only observes
-  ansible.builtin.command: docker run -d --name lab-observed --restart unless-stopped ghcr.io/tarampampam/webhook-tester:2.2.0
-  register: lab_observed
-  changed_when: lab_observed.rc == 0
-  failed_when: lab_observed.rc != 0 and 'already in use' not in lab_observed.stderr
+- name: Pull the content of the republished tag
+  ansible.builtin.command: docker pull {{ republished.image }}:{{ republished.content }}
+  changed_when: false
+
+- name: Give it the tag it stands for
+  ansible.builtin.command: docker tag {{ republished.image }}:{{ republished.content }} {{ republished.image }}:{{ republished.tag }}
+  changed_when: false
+
+- name: Start the containers outside Compose
+  ansible.builtin.command: docker run -d --name {{ item.name }} --restart unless-stopped {{ item.image }}
+  loop:
+    - {name: lab-observed, image: "{{ observed.image }}"}
+    - {name: lab-republished, image: "{{ republished.image }}:{{ republished.tag }}"}
+  register: lab_outside
+  changed_when: lab_outside.rc == 0
+  failed_when: lab_outside.rc != 0 and 'already in use' not in lab_outside.stderr
 
 - name: Seed the stacks
   ansible.builtin.include_tasks: seed.yml

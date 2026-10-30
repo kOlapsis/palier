@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -36,6 +37,8 @@ type Service struct {
 	Tag            string    `json:"tag"`
 	Digest         string    `json:"digest,omitempty"`
 	Version        string    `json:"version,omitempty"`
+	VersionSource  string    `json:"version_source,omitempty"`
+	Republished    bool      `json:"republished,omitempty"`
 	State          string    `json:"state"`
 	Healthcheck    bool      `json:"healthcheck"`
 	Health         string    `json:"health,omitempty"`
@@ -47,7 +50,9 @@ type Service struct {
 	Maturing       []Release `json:"maturing,omitempty"`
 	DetectionError string    `json:"detection_error,omitempty"`
 
-	current version.V
+	current      version.V
+	digests      []string
+	labelVersion string
 }
 
 // Release is a newer tag with the date Palier first saw it pushed.
@@ -77,8 +82,21 @@ func Scan(ctx context.Context, dc *docker.Client) ([]*Stack, error) {
 	if err := dc.Get(ctx, "/containers/json?all=1", &containers); err != nil {
 		return nil, err
 	}
+	self := selfID()
+	skip := ""
+	for _, c := range containers {
+		if self != "" && c.ID == self {
+			skip = c.Labels[labelProject]
+			if skip == "" {
+				skip = "\x00" + c.ID
+			}
+		}
+	}
 	stacks := map[string]*Stack{}
 	for _, c := range containers {
+		if key := c.Labels[labelProject]; key == skip || "\x00"+c.ID == skip {
+			continue
+		}
 		svc, err := inspect(ctx, dc, c)
 		if err != nil {
 			return nil, err
@@ -150,13 +168,14 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 		svc.Health = d.State.Health.Status
 	}
 	for _, rd := range img.RepoDigests {
-		if _, digest, ok := strings.Cut(rd, "@"); ok {
-			svc.Digest = digest
-			if registry.ParseRef(rd).Name() == ref.Name() {
-				break
-			}
+		if name, digest, ok := strings.Cut(rd, "@"); ok && registry.ParseRef(name).Name() == ref.Name() {
+			svc.digests = append(svc.digests, digest)
 		}
 	}
+	if len(svc.digests) > 0 {
+		svc.Digest = svc.digests[0]
+	}
+	svc.labelVersion = img.Config.Labels["org.opencontainers.image.version"]
 	for _, m := range d.Mounts {
 		if m.Type == "volume" {
 			svc.Volumes = append(svc.Volumes, m.Name+":"+m.Destination)
@@ -164,13 +183,21 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 			svc.Volumes = append(svc.Volumes, m.Source+":"+m.Destination)
 		}
 	}
-	if v, ok := version.Parse(ref.Tag); ok && v.Precise() {
-		svc.current = v
-	} else if v, ok := version.Parse(img.Config.Labels["org.opencontainers.image.version"]); ok && v.Precise() {
-		svc.current = v
-	}
-	svc.Version = svc.current.Tag
 	return svc, nil
+}
+
+var containerPath = regexp.MustCompile(`/containers/([0-9a-f]{64})/`)
+
+// selfID returns the ID of the container Palier runs in, read from the mounts Docker gives it, or "" outside a container.
+func selfID() string {
+	b, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return ""
+	}
+	if m := containerPath.FindSubmatch(b); m != nil {
+		return string(m[1])
+	}
+	return ""
 }
 
 func readDependsOn(files []string) (map[string][]string, error) {
@@ -235,6 +262,57 @@ func assignRoles(st *Stack) {
 	}
 }
 
+const maxDigestChecks = 30
+
+// resolve reads the version from the tag when no tag is more precise, else from the digest, else from the OCI label.
+func resolve(ctx context.Context, s *Service, ref registry.Ref, tags []string, reg *registry.Client) error {
+	running, parsed := version.Parse(s.Tag)
+	var candidates []version.V
+	for _, t := range tags {
+		if w, ok := version.Parse(t); ok && (!parsed || running.Extends(w)) {
+			candidates = append(candidates, w)
+		}
+	}
+	if parsed && len(candidates) == 0 {
+		s.current, s.VersionSource, s.Version = running, "tag", running.Tag
+		d, err := reg.Digest(ctx, ref, s.Tag)
+		if err != nil || slices.Contains(s.digests, d) || len(s.digests) == 0 {
+			return err
+		}
+		platforms, err := reg.PlatformDigests(ctx, ref, d)
+		if err != nil {
+			return err
+		}
+		s.Republished = !slices.ContainsFunc(platforms, func(p string) bool { return slices.Contains(s.digests, p) })
+		return nil
+	}
+	slices.SortFunc(candidates, func(a, b version.V) int {
+		switch {
+		case a.Less(b):
+			return 1
+		case b.Less(a):
+			return -1
+		}
+		return 0
+	})
+	// shortcut: only the 30 highest candidates are compared by digest, enough unless the running image is far behind its moving tag.
+	for _, w := range candidates[:min(len(candidates), maxDigestChecks)] {
+		d, err := reg.Digest(ctx, ref, w.Tag)
+		if err != nil {
+			return err
+		}
+		if slices.Contains(s.digests, d) {
+			s.current, s.VersionSource, s.Version = w, "digest", w.Tag
+			return nil
+		}
+	}
+	if v, ok := version.Parse(s.labelVersion); ok {
+		s.current, s.VersionSource, s.Version = v, "label", v.Tag
+		return nil
+	}
+	return fmt.Errorf("version en service inconnue : le tag %q n'est pas une version précise, aucun tag précis du registre n'a son digest, et l'image n'a pas de label org.opencontainers.image.version", s.Tag)
+}
+
 // Detect fills the newer versions of every service, holding back those pushed less than maturation ago.
 func Detect(ctx context.Context, stacks []*Stack, reg *registry.Client, maturation time.Duration) {
 	var wg sync.WaitGroup
@@ -247,13 +325,13 @@ func Detect(ctx context.Context, stacks []*Stack, reg *registry.Client, maturati
 }
 
 func detect(ctx context.Context, s *Service, reg *registry.Client, maturation time.Duration) {
-	if s.current.Tag == "" {
-		s.DetectionError = "version en service inconnue : ni le tag ni le label org.opencontainers.image.version ne donnent une version précise"
-		return
-	}
 	ref := registry.ParseRef(s.Image + ":" + s.Tag)
 	tags, err := reg.Tags(ctx, ref)
 	if err != nil {
+		s.DetectionError = err.Error()
+		return
+	}
+	if err := resolve(ctx, s, ref, tags, reg); err != nil {
 		s.DetectionError = err.Error()
 		return
 	}
