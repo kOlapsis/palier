@@ -121,6 +121,13 @@ func New(token string, deps Deps) http.Handler {
 		},
 		"join": func(v []string) string { return strings.Join(v, ", ") },
 		"inc":  func(i int) int { return i + 1 },
+		"when": func(v string) string {
+			t, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				return v
+			}
+			return t.Format("02/01/2006 15:04:05") + " UTC"
+		},
 	}
 	for _, p := range []string{"index.html", "login.html", "stack.html", "run.html", "settings.html"} {
 		s.pages[p] = template.Must(template.New("").Funcs(funcs).ParseFS(templates, "templates/layout.html", "templates/"+p))

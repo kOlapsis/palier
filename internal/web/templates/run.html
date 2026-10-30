@@ -1,9 +1,9 @@
 {{define "head"}}{{if eq .Status "running"}}<meta http-equiv="refresh" content="3">{{end}}{{end}}
 {{define "content"}}
 <h1>{{if .DryRun}}Essai à blanc{{else}}Exécution{{end}} {{.ID}} · <a href="/stacks/{{.Stack}}">{{.Stack}}</a></h1>
-<p><strong>{{label .Status}}</strong> · lancée par {{.Author}} le {{.Started}}{{with .Finished}} · finie le {{.}}{{end}}</p>
+<p><strong>{{label .Status}}</strong> · lancée par {{.Author}} le {{when .Started}}{{with .Finished}} · finie le {{when .}}{{end}}</p>
 {{with .Error}}<pre class="error">{{.}}</pre>{{end}}
 <table><thead><tr><th>Heure</th><th>Phase</th></tr></thead><tbody>
-{{range .Events}}<tr><td>{{.At}}</td><td><pre>{{.Message}}</pre></td></tr>{{end}}
+{{range .Events}}<tr><td style="white-space: nowrap">{{when .At}}</td><td><pre>{{.Message}}</pre></td></tr>{{end}}
 </tbody></table>
 {{end}}

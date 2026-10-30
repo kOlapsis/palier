@@ -54,7 +54,7 @@
 {{with .Runs}}
 <h2>Exécutions</h2>
 <table><thead><tr><th>N°</th><th>Début</th><th>Par</th><th>Résultat</th></tr></thead><tbody>
-{{range .}}<tr><td><a href="/runs/{{.ID}}">{{.ID}}</a></td><td>{{.Started}}</td><td>{{.Author}}</td><td>{{if .DryRun}}essai à blanc · {{end}}{{label .Status}}</td></tr>{{end}}
+{{range .}}<tr><td><a href="/runs/{{.ID}}">{{.ID}}</a></td><td>{{when .Started}}</td><td>{{.Author}}</td><td>{{if .DryRun}}essai à blanc · {{end}}{{label .Status}}</td></tr>{{end}}
 </tbody></table>
 {{end}}
 {{end}}

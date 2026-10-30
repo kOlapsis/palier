@@ -1,2 +1,3 @@
 /deploy/lab/lab.env
 /palier
+/.playwright-mcp/

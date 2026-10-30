@@ -31,6 +31,8 @@ const (
 	Abandoned  = "abandoned"
 )
 
+var results = map[string]string{Done: "terminée", RolledBack: "revenue en arrière", Failed: "échec", Abandoned: "abandonnée"}
+
 // Engine applies plans on the local engine.
 type Engine struct {
 	DB         *sql.DB
@@ -96,7 +98,7 @@ func (e *Engine) finish(id int64, status string, cause error) {
 	if _, err := e.DB.Exec(`UPDATE runs SET status = ?, error = ?, finished = ? WHERE id = ?`, status, msg, now(), id); err != nil {
 		slog.Error("fin d'exécution", "run", id, "err", err)
 	}
-	e.event(id, "résultat : %s", status)
+	e.event(id, "résultat : %s", results[status])
 }
 
 // ProjectOf returns the Compose project of a stack.
@@ -126,7 +128,7 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		e.finish(id, Abandoned, fmt.Errorf("point de reprise impossible : %w", err))
 		return
 	}
-	e.event(id, "point de reprise : %d fichiers Compose, %d services", len(cp.Files), len(cp.Services))
+	e.event(id, "point de reprise : fichiers Compose %d, services %d", len(cp.Files), len(cp.Services))
 	for i, step := range p.Steps {
 		e.event(id, "étape %d sur %d : %s", i+1, len(p.Steps), describe(step))
 		if err := e.step(ctx, id, st, cp, step); err != nil {
@@ -301,7 +303,7 @@ const healthGrace = 2 * time.Minute
 
 // verify waits until every service runs, is healthy when it has a healthcheck, and stays so for stable without restarting.
 func (e *Engine) verify(ctx context.Context, id int64, project string, services []string, stable time.Duration) error {
-	e.event(id, "vérification de %s pendant %s", strings.Join(services, ", "), stable)
+	e.event(id, "vérification de %s pendant %d s", strings.Join(services, ", "), int(stable.Seconds()))
 	deadline := time.Now().Add(stable + healthGrace)
 	restarts := map[string]int{}
 	var okSince time.Time
@@ -319,7 +321,7 @@ func (e *Engine) verify(ctx context.Context, id int64, project string, services 
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("pas stable après %s : %s", stable+healthGrace, waiting)
+			return fmt.Errorf("pas stable après %d s : %s", int((stable + healthGrace).Seconds()), waiting)
 		}
 		select {
 		case <-ctx.Done():
