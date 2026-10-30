@@ -1,0 +1,9 @@
+{{define "content"}}
+<h1>Accès</h1>
+{{with .}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="/login">
+<label for="token">Jeton</label>
+<input id="token" name="token" type="password" autocomplete="current-password" required autofocus>
+<button type="submit">Entrer</button>
+</form>
+{{end}}

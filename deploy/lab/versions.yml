@@ -1,0 +1,72 @@
+---
+# The versions the stacks start from, and what each one is meant to show in
+# Palier. `lab reset-apps` brings them back to these versions.
+
+nginx:
+  image: docker.io/library/nginx
+  tag: 1.27.0
+  why: >-
+    One container, no data, a patch and minor release every few weeks, and
+    no HEALTHCHECK in the image: Palier verifies it with what Docker gives,
+    running and stable.
+
+whoami:
+  image: docker.io/traefik/whoami
+  tag: v1.10.1
+  why: >-
+    One container that answers HTTP, with a few releases a year: the
+    smallest upgrade Palier can apply and verify.
+
+outline:
+  image: docker.io/outlinewiki/outline
+  tag: 1.10.1
+  postgres_image: docker.io/library/postgres:16.4
+  redis_image: docker.io/library/redis:7.2.4
+  why: >-
+    An application with a database: Outline migrates its PostgreSQL schema
+    when it starts, so its minor releases (1.11.0, 1.12.0) change data and
+    a rollback is not guaranteed without a backup. PostgreSQL 16.4 is behind
+    on its own 16.x line; the catalog card (catalog/cards/postgresql.json)
+    marks the rollback of a major upgrade as conditional on a pg_dumpall
+    backup.
+
+gitlab:
+  image: docker.io/gitlab/gitlab-ce
+  tag: 16.1.6-ce.0
+  why: >-
+    Required upgrade stops (https://docs.gitlab.com/update/upgrade_paths/):
+    from 16.1 the path to the current release goes through 16.3.9, 16.7.10,
+    16.11.10, 17.1.8, 17.3.7, 17.5.5, 17.8.7, 17.11.7, then the 18.x stops
+    (18.2, 18.5, 18.8, 18.11), and 16.1.8 and 16.2.11 for some instances
+    (NPM packages, large pipeline variable history). Palier must refuse a
+    direct jump, compute the path from its GitLab card and show each stop
+    with its background migrations gate.
+
+immich:
+  tag: v1.105.1
+  postgres_image: registry.hub.docker.com/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0
+  redis_image: registry.hub.docker.com/library/redis:6.2-alpine@sha256:84882e87b54734154586e5f8abd4dce69fe7311315e2fc6d67c29614c8de2672
+  why: >-
+    Last release before the Compose breaking changes of v1.106
+    (https://github.com/immich-app/immich/releases/tag/v1.106.1): the
+    immich-microservices container is removed, `command: ['start.sh', 'immich']`
+    goes away, SERVER_PORT, MICROSERVICES_PORT and MACHINE_LEARNING_PORT become
+    IMMICH_PORT, HOST and MACHINE_LEARNING_HOST become IMMICH_HOST. Later,
+    v1.133.0 (https://github.com/immich-app/immich/releases/tag/v1.133.0)
+    replaces the tensorchord/pgvecto-rs database image with
+    ghcr.io/immich-app/postgres (VectorChord), drops the database `command:`
+    and healthcheck, and only supports upgrading from 1.107.2 or later.
+    Palier must confront these changes with the compose file in service.
+
+vaultwarden:
+  image: docker.io/vaultwarden/server
+  tag: 1.35.4
+  why: >-
+    The upgrade that must go through. One container on SQLite, a semver
+    release every few weeks, and a HEALTHCHECK in the image
+    (/healthcheck.sh), so verification has a signal of its own. From 1.35.4
+    to the latest 1.37.x the release notes
+    (https://github.com/dani-garcia/vaultwarden/releases) list security fixes,
+    new features and the Web Vault update, but no Compose or configuration
+    change for a default SQLite setup: Palier must open a non-blocking
+    dossier, apply it, verify it and keep it without rollback.

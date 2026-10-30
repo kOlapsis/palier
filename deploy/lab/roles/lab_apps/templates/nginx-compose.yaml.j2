@@ -1,0 +1,9 @@
+# Started by the Palier bench; version pinned in deploy/lab/versions.yml.
+name: nginx
+
+services:
+  nginx:
+    image: {{ nginx.image }}:{{ nginx.tag }}
+    restart: always
+    ports:
+      - "{{ topology.ports.nginx }}:80"

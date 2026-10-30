@@ -1,0 +1,6 @@
+<network>
+  <name>{{ topology.network.name }}</name>
+  <bridge name="{{ topology.network.bridge }}" stp="on" delay="0"/>
+  <forward mode="nat"/>
+  <ip address="{{ topology.network.host_address }}" prefix="{{ topology.network.cidr.split('/')[1] }}"/>
+</network>

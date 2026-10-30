@@ -1,0 +1,16 @@
+---
+lab_apps_reset: false
+lab_apps_address: "{{ topology.vm.address }}"
+gitlab_root_password: palier-lab-password
+immich_admin_email: admin@palier.lab
+immich_admin_password: palier-lab-password
+outline_secret_key: "{{ 'palier-lab-outline-secret-key' | hash('sha256') }}"
+outline_utils_secret: "{{ 'palier-lab-outline-utils-secret' | hash('sha256') }}"
+outline_db_password: palier-lab-password
+lab_apps_files:
+  - {name: gitlab, files: [{src: gitlab-compose.yaml.j2, dest: compose.yaml}]}
+  - {name: immich, files: [{src: immich-compose.yaml.j2, dest: docker-compose.yml}, {src: immich.env.j2, dest: .env}]}
+  - {name: vaultwarden, files: [{src: vaultwarden-compose.yaml.j2, dest: compose.yaml}]}
+  - {name: nginx, files: [{src: nginx-compose.yaml.j2, dest: compose.yaml}]}
+  - {name: whoami, files: [{src: whoami-compose.yaml.j2, dest: compose.yaml}]}
+  - {name: outline, files: [{src: outline-compose.yaml.j2, dest: compose.yaml}]}

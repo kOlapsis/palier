@@ -1,0 +1,45 @@
+---
+# The machine and its network on libvirt, as the current user.
+#   lab up   -> provision.yml -e lab_state=present
+#   lab down -> provision.yml -e lab_state=absent
+# Disks live in libvirt storage pools, so libvirtd creates the directories
+# itself: no root is needed. `absent` keeps only the base image pool.
+
+- name: Provision the Palier bench on libvirt
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    lab_state: present
+    libvirt_uri: qemu:///system
+    lab_pool: palier-lab
+    lab_base_pool: palier-lab-base
+    lab_pool_root: /var/lib/libvirt/images
+    lab_cache_dir: "{{ lookup('env', 'XDG_CACHE_HOME') | default(lookup('env', 'HOME') ~ '/.cache', true) }}/palier-lab"
+    lab_ssh_public_key_file: "{{ lookup('env', 'LAB_SSH_KEY') }}.pub"
+    lab_iso_candidates: [/usr/bin/xorrisofs, /usr/bin/genisoimage, /usr/bin/mkisofs]
+
+  tasks:
+    - name: Check the requested state
+      ansible.builtin.assert:
+        that: lab_state in ['present', 'absent']
+        fail_msg: "lab_state must be present or absent, got {{ lab_state }}"
+
+    - name: Load the bench topology
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/topology.yml"
+        name: topology
+
+    - name: Derive the names the bench uses
+      ansible.builtin.set_fact:
+        lab_vm: "{{ topology.vm.name }}"
+        lab_base_volume: "{{ topology.image.url | basename }}"
+        lab_mac: "52:54:00:{{ (topology.vm.name | hash('md5'))[0:2] }}:{{ (topology.vm.name | hash('md5'))[2:4] }}:{{ (topology.vm.name | hash('md5'))[4:6] }}"
+
+    - name: Build the bench
+      ansible.builtin.include_tasks: tasks/provision-present.yml
+      when: lab_state == 'present'
+
+    - name: Destroy the bench
+      ansible.builtin.include_tasks: tasks/provision-absent.yml
+      when: lab_state == 'absent'

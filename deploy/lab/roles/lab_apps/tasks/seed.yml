@@ -1,0 +1,61 @@
+---
+- name: Seed Immich
+  when: "'immich' in topology.apps"
+  block:
+    - name: Wait for Immich
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ topology.ports.immich }}/api/server-info/ping"
+      register: immich_ping
+      until: immich_ping.status == 200
+      retries: 60
+      delay: 5
+
+    - name: Create the Immich administrator
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ topology.ports.immich }}/api/auth/admin-sign-up"
+        method: POST
+        body_format: json
+        body:
+          email: "{{ immich_admin_email }}"
+          password: "{{ immich_admin_password }}"
+          name: Lab admin
+        status_code: [201, 400]
+      register: immich_signup
+      changed_when: immich_signup.status == 201
+
+- name: Seed GitLab
+  when: "'gitlab' in topology.apps"
+  block:
+    - name: Look for the GitLab seed marker
+      ansible.builtin.stat:
+        path: /apps/gitlab/data/.lab-seeded
+      register: gitlab_seeded
+
+    - name: Seed GitLab once
+      when: not gitlab_seeded.stat.exists
+      block:
+        - name: Wait for GitLab to be ready
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ topology.ports.gitlab }}/-/readiness"
+          register: gitlab_ready
+          until: gitlab_ready.status == 200
+          retries: 120
+          delay: 10
+
+        - name: Copy the seed script
+          ansible.builtin.copy:
+            src: seed-gitlab.rb
+            dest: /apps/gitlab/config/seed-gitlab.rb
+            mode: "0644"
+
+        - name: Create a project with an issue
+          ansible.builtin.command: docker compose exec -T gitlab gitlab-rails runner /etc/gitlab/seed-gitlab.rb
+          args:
+            chdir: /apps/gitlab
+          changed_when: true
+
+        - name: Mark GitLab as seeded
+          ansible.builtin.file:
+            path: /apps/gitlab/data/.lab-seeded
+            state: touch
+            mode: "0644"

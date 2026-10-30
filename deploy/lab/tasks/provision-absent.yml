@@ -1,0 +1,65 @@
+---
+- name: List the domains, networks and pools libvirt knows
+  ansible.builtin.command: "virsh --connect {{ libvirt_uri }} {{ item }}"
+  register: lab_known
+  changed_when: false
+  loop:
+    - list --all --name
+    - list --name
+    - net-list --all --name
+    - net-list --name
+    - pool-list --all --name
+    - pool-list --name
+
+- name: Keep the lists at hand
+  ansible.builtin.set_fact:
+    lab_domains: "{{ lab_known.results[0].stdout_lines }}"
+    lab_running: "{{ lab_known.results[1].stdout_lines }}"
+    lab_nets: "{{ lab_known.results[2].stdout_lines }}"
+    lab_active_nets: "{{ lab_known.results[3].stdout_lines }}"
+    lab_pools: "{{ lab_known.results[4].stdout_lines }}"
+    lab_active_pools: "{{ lab_known.results[5].stdout_lines }}"
+
+- name: Stop the machine
+  ansible.builtin.command: "virsh --connect {{ libvirt_uri }} destroy {{ lab_vm }}"
+  when: lab_vm in lab_running
+  changed_when: true
+
+- name: Remove the machine
+  ansible.builtin.command: "virsh --connect {{ libvirt_uri }} undefine {{ lab_vm }} --nvram"
+  when: lab_vm in lab_domains
+  changed_when: true
+
+- name: Stop the network
+  ansible.builtin.command: "virsh --connect {{ libvirt_uri }} net-destroy {{ topology.network.name }}"
+  when: topology.network.name in lab_active_nets
+  changed_when: true
+
+- name: Remove the network
+  ansible.builtin.command: "virsh --connect {{ libvirt_uri }} net-undefine {{ topology.network.name }}"
+  when: topology.network.name in lab_nets
+  changed_when: true
+
+- name: Start the bench pool to empty it
+  ansible.builtin.command: "virsh --connect {{ libvirt_uri }} pool-start {{ lab_pool }}"
+  when: lab_pool in lab_pools and lab_pool not in lab_active_pools
+  changed_when: true
+
+- name: List the bench volumes
+  ansible.builtin.shell: "virsh --connect {{ libvirt_uri }} -q vol-list --pool {{ lab_pool }} | awk '{print $1}'"
+  register: lab_leftovers
+  when: lab_pool in lab_pools
+  changed_when: false
+
+- name: Delete the bench volumes
+  ansible.builtin.command: "virsh --connect {{ libvirt_uri }} vol-delete --pool {{ lab_pool }} {{ item | trim }}"
+  loop: "{{ lab_leftovers.stdout_lines | default([]) | map('trim') | select | list }}"
+  changed_when: true
+
+- name: Remove the bench pool and its directory
+  ansible.builtin.shell: |
+    virsh --connect {{ libvirt_uri }} pool-destroy {{ lab_pool }}
+    virsh --connect {{ libvirt_uri }} pool-delete {{ lab_pool }}
+    virsh --connect {{ libvirt_uri }} pool-undefine {{ lab_pool }}
+  when: lab_pool in lab_pools
+  changed_when: true

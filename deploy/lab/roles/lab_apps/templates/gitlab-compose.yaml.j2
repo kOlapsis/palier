@@ -1,0 +1,26 @@
+# Started by the Palier bench; version pinned in deploy/lab/versions.yml.
+name: gitlab
+
+services:
+  gitlab:
+    image: {{ gitlab.image }}:{{ gitlab.tag }}
+    restart: always
+    hostname: gitlab.palier.lab
+    shm_size: 256m
+    environment:
+      GITLAB_ROOT_PASSWORD: {{ gitlab_root_password }}
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://{{ lab_apps_address }}:{{ topology.ports.gitlab }}'
+        gitlab_rails['gitlab_shell_ssh_port'] = {{ topology.ports.gitlab_ssh }}
+        nginx['listen_port'] = 80
+        gitlab_rails['monitoring_whitelist'] = ['0.0.0.0/0']
+        puma['worker_processes'] = 0
+        sidekiq['concurrency'] = 10
+        prometheus_monitoring['enable'] = false
+    ports:
+      - "{{ topology.ports.gitlab }}:80"
+      - "{{ topology.ports.gitlab_ssh }}:22"
+    volumes:
+      - ./config:/etc/gitlab
+      - ./logs:/var/log/gitlab
+      - ./data:/var/opt/gitlab

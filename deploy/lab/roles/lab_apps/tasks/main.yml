@@ -1,0 +1,45 @@
+---
+- name: Remove the stacks and their data
+  when: lab_apps_reset | bool
+  block:
+    - name: Stop the stacks
+      ansible.builtin.command: docker compose --project-name {{ item }} down --volumes --remove-orphans
+      loop: "{{ topology.apps }}"
+      changed_when: true
+
+    - name: Delete the stack directories
+      ansible.builtin.file:
+        path: "/apps/{{ item }}"
+        state: absent
+      loop: "{{ topology.apps }}"
+
+- name: Create the stack directories
+  ansible.builtin.file:
+    path: "/apps/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ topology.apps }}"
+
+- name: Write the stacks
+  ansible.builtin.template:
+    src: "{{ item.1.src }}"
+    dest: "/apps/{{ item.0.name }}/{{ item.1.dest }}"
+    mode: "0644"
+    force: "{{ lab_apps_reset | bool }}"
+  loop: "{{ lab_apps_files | selectattr('name', 'in', topology.apps) | subelements('files') }}"
+  loop_control:
+    label: "/apps/{{ item.0.name }}/{{ item.1.dest }}"
+
+- name: Start the stacks
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: "/apps/{{ item }}"
+  loop: "{{ topology.apps }}"
+  register: lab_apps_up
+  until: lab_apps_up.rc == 0
+  retries: 3
+  delay: 30
+  changed_when: lab_apps_up.stderr is search('Creat|Start')
+
+- name: Seed the stacks
+  ansible.builtin.include_tasks: seed.yml

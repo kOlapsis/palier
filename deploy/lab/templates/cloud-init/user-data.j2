@@ -1,0 +1,15 @@
+#cloud-config
+hostname: {{ lab_vm }}
+users:
+  - name: {{ topology.image.user }}
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - "{{ lab_ssh_public_key }}"
+ssh_pwauth: false
+disable_root: true
+growpart:
+  mode: auto
+  devices: ["/"]

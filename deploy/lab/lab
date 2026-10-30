@@ -1,0 +1,175 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# The Palier bench: one libvirt machine running Palier, webhook-tester,
+# and the stacks of topology.yml under /apps.
+#
+# Exit codes: 0 success, 1 the bench is not in service, 2 usage,
+# 4 missing prerequisite.
+
+set -eu
+
+LAB_DIR=$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd)
+TOPOLOGY="$LAB_DIR/topology.yml"
+
+if [ -f "$LAB_DIR/lab.env" ]; then
+	set -a
+	. "$LAB_DIR/lab.env"
+	set +a
+fi
+
+ANSIBLE_CONFIG="$LAB_DIR/ansible.cfg"
+LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
+export ANSIBLE_CONFIG LIBVIRT_DEFAULT_URI
+
+if [ -z "${LAB_SSH_KEY:-}" ]; then
+	for k in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/id_ecdsa" "$HOME/.ssh/id_rsa"; do
+		if [ -f "$k" ] && [ -f "$k.pub" ]; then
+			LAB_SSH_KEY=$k
+			break
+		fi
+	done
+fi
+LAB_SSH_KEY="${LAB_SSH_KEY:-$HOME/.ssh/id_ed25519}"
+export LAB_SSH_KEY
+
+die() {
+	printf 'lab: %s\n' "$1" >&2
+	exit "${2:-1}"
+}
+
+need() {
+	command -v "$1" >/dev/null 2>&1 || die "$1 is required but not installed; see deploy/lab/README.md" 4
+}
+
+usage() {
+	cat <<'USAGE'
+usage: lab <command>
+
+  host-setup   one-time host preparation, through sudo: packages, libvirt,
+               libvirt group (then log in again)
+  up           create the machine if needed and provision it; run it again
+               after a code change to redeploy Palier from the working copy
+  status       state of the machine and of every service; exits 0 only if
+               all of them are in service
+  ssh [cmd]    open a shell on the machine, or run cmd there
+  reset-apps   put the stacks under /apps back to their starting versions,
+               with fresh data
+  down         delete the machine, its disks and its network; only the base
+               image stays in cache
+
+environment (also read from lab.env next to this script, kept out of git):
+  LAB_SSH_KEY  private key installed on the machine, its .pub next to it
+               (default: the first of ~/.ssh/id_ed25519, id_ecdsa, id_rsa)
+USAGE
+}
+
+# topo <section> <key>: a scalar of topology.yml, two levels deep.
+topo() {
+	awk -v s="$1:" -v k="$2:" '
+		/^[^ #]/ { in_s = ($1 == s) }
+		in_s && $1 == k { print $2; exit }
+	' "$TOPOLOGY"
+}
+
+# apps: the stacks listed on the apps line of topology.yml.
+apps() {
+	sed -n 's/^apps: *\[\(.*\)\].*/\1/p' "$TOPOLOGY" | tr ',' ' '
+}
+
+VM_NAME=$(topo vm name)
+VM_ADDR=$(topo vm address)
+VM_USER=$(topo image user)
+
+ssh_vm() {
+	ssh -i "$LAB_SSH_KEY" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+		-o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 \
+		"$VM_USER@$VM_ADDR" "$@"
+}
+
+need_key() {
+	if [ ! -f "$LAB_SSH_KEY" ] || [ ! -f "$LAB_SSH_KEY.pub" ]; then
+		die "no ssh key: set LAB_SSH_KEY to a private key whose .pub sits next to it" 4
+	fi
+}
+
+cmd_host_setup() {
+	need ansible-playbook
+	need sudo
+	sudo ansible-playbook "$LAB_DIR/host-setup.yml" -e "lab_operator=$(id -un)"
+	ansible-galaxy collection install -r "$LAB_DIR/requirements.yml"
+}
+
+cmd_up() {
+	need ansible-playbook
+	need virsh
+	need rsync
+	need_key
+	ansible-playbook "$LAB_DIR/provision.yml" -e lab_state=present
+	ansible-playbook "$LAB_DIR/site.yml"
+}
+
+cmd_reset_apps() {
+	need ansible-playbook
+	need_key
+	ansible-playbook "$LAB_DIR/site.yml" --tags apps -e lab_apps_reset=true
+}
+
+cmd_down() {
+	need ansible-playbook
+	need virsh
+	ansible-playbook "$LAB_DIR/provision.yml" -e lab_state=absent
+}
+
+# check <name> <url>: one line per service, and a failure remembered.
+check() {
+	if curl -fsS -o /dev/null --max-time 10 "$2" 2>/dev/null; then
+		printf '%-15s up    %s\n' "$1" "$2"
+	else
+		printf '%-15s down  %s\n' "$1" "$2"
+		STATUS=1
+	fi
+}
+
+cmd_status() {
+	need virsh
+	need curl
+	STATUS=0
+	state=$(LC_ALL=C virsh domstate "$VM_NAME" 2>/dev/null || true)
+	if [ "$state" = "running" ]; then
+		printf '%-15s up    %s\n' machine "$VM_ADDR"
+	else
+		printf '%-15s down  %s\n' machine "${state:-not defined}"
+		exit 1
+	fi
+	base="http://$VM_ADDR"
+	check palier "$base:$(topo ports palier)/login"
+	check webhook-tester "$base:$(topo ports webhook_tester)/"
+	for app in $(apps); do
+		case $app in
+		gitlab) path=/-/readiness ;;
+		vaultwarden) path=/alive ;;
+		outline) path=/_health ;;
+		*) path=/ ;;
+		esac
+		check "$app" "$base:$(topo ports "$app")$path"
+	done
+	exit "$STATUS"
+}
+
+case "${1:-}" in
+host-setup) cmd_host_setup ;;
+up) cmd_up ;;
+down) cmd_down ;;
+status) cmd_status ;;
+ssh)
+	shift
+	need_key
+	ssh_vm "$@"
+	;;
+reset-apps) cmd_reset_apps ;;
+-h | --help | help) usage ;;
+*)
+	usage >&2
+	exit 2
+	;;
+esac

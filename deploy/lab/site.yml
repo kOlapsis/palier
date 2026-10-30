@@ -1,0 +1,51 @@
+---
+# Configures the machine built by provision.yml: Docker, Palier and
+# webhook-tester, then the stacks under /apps.
+
+- name: Reach the bench machine
+  hosts: localhost
+  gather_facts: false
+  tags: [always]
+  tasks:
+    - name: Load the bench topology
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/topology.yml"
+        name: topology
+
+    - name: Add the machine to the inventory
+      ansible.builtin.add_host:
+        name: "{{ topology.vm.name }}"
+        groups: [lab]
+        ansible_host: "{{ topology.vm.address }}"
+        ansible_user: "{{ topology.image.user }}"
+        ansible_ssh_private_key_file: "{{ lookup('env', 'LAB_SSH_KEY') }}"
+        topology: "{{ topology }}"
+      changed_when: false
+
+- name: Configure the bench machine
+  hosts: lab
+  become: true
+  gather_facts: false
+  vars_files:
+    - versions.yml
+  pre_tasks:
+    - name: Wait for the machine to accept ssh
+      tags: [always]
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Wait for cloud-init to finish
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+      tags: [always]
+
+    - name: Gather facts
+      ansible.builtin.setup:
+      tags: [always]
+  roles:
+    - role: docker
+      tags: [docker]
+    - role: palier_stack
+      tags: [palier]
+    - role: lab_apps
+      tags: [apps]

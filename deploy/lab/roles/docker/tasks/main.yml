@@ -1,0 +1,46 @@
+---
+- name: Install the packages the bench needs
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, rsync]
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Add the Docker repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: https://download.docker.com/linux/debian
+    suites: ["{{ ansible_facts.distribution_release }}"]
+    components: [stable]
+    signed_by: https://download.docker.com/linux/debian/gpg
+
+- name: Install the engine and the compose plugin
+  ansible.builtin.apt:
+    name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+    update_cache: true
+
+- name: Pull Docker Hub images through a mirror
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {"registry-mirrors": ["https://mirror.gcr.io"]}
+    mode: "0644"
+  register: docker_daemon_json
+
+- name: Restart the engine on a new configuration
+  ansible.builtin.service:
+    name: docker
+    state: restarted
+  when: docker_daemon_json.changed
+
+- name: Start the engine
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Let the login user run docker
+  ansible.builtin.user:
+    name: "{{ topology.image.user }}"
+    groups: [docker]
+    append: true

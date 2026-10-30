@@ -1,0 +1,165 @@
+---
+- name: Look for /dev/kvm
+  ansible.builtin.stat:
+    path: /dev/kvm
+  register: lab_kvm
+
+- name: Refuse a host without KVM
+  ansible.builtin.assert:
+    that: lab_kvm.stat.exists
+    fail_msg: /dev/kvm is absent; enable virtualisation in the firmware and run lab host-setup.
+
+- name: Look for an ISO builder
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: lab_iso_tools
+  loop: "{{ lab_iso_candidates }}"
+
+- name: Pick the ISO builder
+  ansible.builtin.set_fact:
+    lab_iso_command: "{{ lab_iso_tools.results | selectattr('stat.exists') | map(attribute='item') | first | default('') }}"
+
+- name: Refuse a host without an ISO builder
+  ansible.builtin.assert:
+    that: lab_iso_command | length > 0
+    fail_msg: "none of {{ lab_iso_candidates | join(', ') }} is installed; run lab host-setup."
+
+- name: Read the public key installed on the machine
+  ansible.builtin.slurp:
+    src: "{{ lab_ssh_public_key_file }}"
+  register: lab_pubkey
+
+- name: Create the image cache
+  ansible.builtin.file:
+    path: "{{ lab_cache_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Fetch the base cloud image
+  ansible.builtin.get_url:
+    url: "{{ topology.image.url }}"
+    dest: "{{ lab_cache_dir }}/{{ lab_base_volume }}"
+    checksum: "{{ topology.image.checksum }}"
+    mode: "0644"
+
+- name: Define the storage pools
+  community.libvirt.virt_pool:
+    uri: "{{ libvirt_uri }}"
+    name: "{{ item }}"
+    command: define
+    xml: |
+      <pool type="dir">
+        <name>{{ item }}</name>
+        <target><path>{{ lab_pool_root }}/{{ item }}</path></target>
+      </pool>
+  loop: ["{{ lab_base_pool }}", "{{ lab_pool }}"]
+
+- name: List the active storage pools
+  ansible.builtin.command: "virsh --connect {{ libvirt_uri }} pool-list --name"
+  register: lab_active_pools
+  changed_when: false
+
+- name: Build and start the storage pools
+  ansible.builtin.shell: "virsh --connect {{ libvirt_uri }} pool-build {{ item }} && virsh --connect {{ libvirt_uri }} pool-start {{ item }}"
+  when: item not in lab_active_pools.stdout_lines | map('trim')
+  changed_when: true
+  loop: ["{{ lab_base_pool }}", "{{ lab_pool }}"]
+
+- name: List the volumes
+  ansible.builtin.shell: "virsh --connect {{ libvirt_uri }} -q vol-list --pool {{ item }} | awk '{print $1}'"
+  register: lab_volumes
+  changed_when: false
+  loop: ["{{ lab_base_pool }}", "{{ lab_pool }}"]
+
+- name: Keep the volume lists at hand
+  ansible.builtin.set_fact:
+    lab_base_volumes: "{{ lab_volumes.results[0].stdout_lines | map('trim') | list }}"
+    lab_volumes_present: "{{ lab_volumes.results[1].stdout_lines | map('trim') | list }}"
+
+- name: Upload the base image into its pool
+  ansible.builtin.shell: |
+    set -e
+    size=$(stat -c %s "{{ lab_cache_dir }}/{{ lab_base_volume }}")
+    virsh --connect {{ libvirt_uri }} vol-create-as {{ lab_base_pool }} {{ lab_base_volume }} "$size" --format qcow2
+    virsh --connect {{ libvirt_uri }} vol-upload --pool {{ lab_base_pool }} {{ lab_base_volume }} "{{ lab_cache_dir }}/{{ lab_base_volume }}"
+  when: lab_base_volume not in lab_base_volumes
+  changed_when: true
+
+- name: Create the system disk on top of the base image
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - --connect
+      - "{{ libvirt_uri }}"
+      - vol-create-as
+      - "{{ lab_pool }}"
+      - "{{ lab_vm }}.qcow2"
+      - "{{ topology.vm.disk_gb }}G"
+      - --format
+      - qcow2
+      - --backing-vol
+      - "{{ lab_pool_root }}/{{ lab_base_pool }}/{{ lab_base_volume }}"
+      - --backing-vol-format
+      - qcow2
+  when: (lab_vm ~ '.qcow2') not in lab_volumes_present
+  changed_when: true
+
+- name: Create a scratch directory for the seed
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: palier-lab-seed
+  register: lab_seed_dir
+  changed_when: false
+  when: (lab_vm ~ '-seed.iso') not in lab_volumes_present
+
+- name: Build and upload the cloud-init seed
+  when: (lab_vm ~ '-seed.iso') not in lab_volumes_present
+  block:
+    - name: Render the cloud-init seed
+      ansible.builtin.template:
+        src: "templates/cloud-init/{{ item }}.j2"
+        dest: "{{ lab_seed_dir.path }}/{{ item }}"
+        mode: "0644"
+      loop: [meta-data, user-data, network-config]
+      vars:
+        lab_ssh_public_key: "{{ lab_pubkey.content | b64decode | trim }}"
+
+    - name: Build the seed image and upload it
+      ansible.builtin.shell: |
+        set -e
+        cd "{{ lab_seed_dir.path }}"
+        "{{ lab_iso_command }}" -quiet -output seed.iso -volid cidata -joliet -rock meta-data user-data network-config
+        virsh --connect {{ libvirt_uri }} vol-create-as {{ lab_pool }} {{ lab_vm }}-seed.iso "$(stat -c %s seed.iso)" --format raw
+        virsh --connect {{ libvirt_uri }} vol-upload --pool {{ lab_pool }} {{ lab_vm }}-seed.iso seed.iso
+      changed_when: true
+  always:
+    - name: Remove the scratch directory
+      ansible.builtin.file:
+        path: "{{ lab_seed_dir.path }}"
+        state: absent
+      changed_when: false
+
+- name: Define the network
+  community.libvirt.virt_net:
+    uri: "{{ libvirt_uri }}"
+    name: "{{ topology.network.name }}"
+    command: define
+    xml: "{{ lookup('template', 'templates/network.xml.j2') }}"
+
+- name: Start the network
+  community.libvirt.virt_net:
+    uri: "{{ libvirt_uri }}"
+    name: "{{ topology.network.name }}"
+    state: active
+
+- name: Define the machine
+  community.libvirt.virt:
+    uri: "{{ libvirt_uri }}"
+    command: define
+    xml: "{{ lookup('template', 'templates/domain.xml.j2') }}"
+
+- name: Start the machine
+  community.libvirt.virt:
+    uri: "{{ libvirt_uri }}"
+    name: "{{ lab_vm }}"
+    state: running

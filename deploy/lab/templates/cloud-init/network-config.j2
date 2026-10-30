@@ -1,0 +1,14 @@
+version: 2
+ethernets:
+  lan:
+    match:
+      macaddress: "{{ lab_mac }}"
+    dhcp4: false
+    dhcp6: false
+    addresses:
+      - {{ topology.vm.address }}/{{ topology.network.cidr.split('/')[1] }}
+    routes:
+      - to: default
+        via: {{ topology.network.host_address }}
+    nameservers:
+      addresses: [{{ topology.network.host_address }}]

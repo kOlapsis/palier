@@ -1,0 +1,8 @@
+---
+palier_dir: /opt/palier
+palier_src: "{{ palier_dir }}/src"
+palier_repo: "{{ playbook_dir }}/../.."
+palier_compose: >-
+  docker compose --env-file {{ palier_dir }}/compose.env
+  -f {{ palier_src }}/deploy/compose.yaml
+  -f {{ palier_src }}/deploy/lab/compose.lab.yaml

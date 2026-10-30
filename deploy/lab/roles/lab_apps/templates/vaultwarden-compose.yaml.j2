@@ -1,0 +1,13 @@
+# Started by the Palier bench; version pinned in deploy/lab/versions.yml.
+name: vaultwarden
+
+services:
+  vaultwarden:
+    image: {{ vaultwarden.image }}:{{ vaultwarden.tag }}
+    restart: always
+    environment:
+      DOMAIN: http://{{ lab_apps_address }}:{{ topology.ports.vaultwarden }}
+    ports:
+      - "{{ topology.ports.vaultwarden }}:80"
+    volumes:
+      - ./data:/data

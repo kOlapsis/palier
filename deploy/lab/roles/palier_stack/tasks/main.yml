@@ -1,0 +1,78 @@
+---
+- name: Create the Palier directory
+  ansible.builtin.file:
+    path: "{{ palier_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Copy the working copy to the machine
+  ansible.posix.synchronize:
+    src: "{{ palier_repo }}/"
+    dest: "{{ palier_src }}/"
+    delete: true
+    rsync_opts:
+      - --omit-dir-times
+      - --exclude=.env*
+      - --exclude=/deploy/lab/lab.env
+      - --include=/go.mod
+      - --include=/go.sum
+      - --include=/cmd/***
+      - --include=/internal/***
+      - --include=/deploy/***
+      - --exclude=*
+
+- name: Generate the access token once
+  ansible.builtin.shell: umask 077 && openssl rand -hex 32 > {{ palier_dir }}/token
+  args:
+    creates: "{{ palier_dir }}/token"
+
+- name: Read the access token
+  ansible.builtin.slurp:
+    src: "{{ palier_dir }}/token"
+  register: palier_token_file
+
+- name: Read the group of the Docker socket
+  ansible.builtin.command: stat -c %g /var/run/docker.sock
+  register: palier_docker_gid
+  changed_when: false
+
+- name: Write the values the override reads
+  ansible.builtin.template:
+    src: compose.env.j2
+    dest: "{{ palier_dir }}/compose.env"
+    mode: "0600"
+  vars:
+    palier_token: "{{ palier_token_file.content | b64decode | trim }}"
+
+- name: Create /apps
+  ansible.builtin.file:
+    path: /apps
+    state: directory
+    mode: "0755"
+
+- name: Read the layers of the image built last time
+  ansible.builtin.command: docker image inspect --format '{{ '{{' }}json .RootFS.Layers{{ '}}' }}' palier:local
+  register: palier_image_before
+  changed_when: false
+  failed_when: false
+
+- name: Build Palier from the working copy
+  ansible.builtin.command: "{{ palier_compose }} build palier"
+  register: palier_build
+  until: palier_build.rc == 0
+  retries: 3
+  delay: 30
+  changed_when: false
+
+- name: Read the layers of the image just built
+  ansible.builtin.command: docker image inspect --format '{{ '{{' }}json .RootFS.Layers{{ '}}' }}' palier:local
+  register: palier_image_after
+  changed_when: palier_image_after.stdout != palier_image_before.stdout
+
+- name: Start Palier and webhook-tester
+  ansible.builtin.command: "{{ palier_compose }} up -d --wait"
+  register: palier_up
+  until: palier_up.rc == 0
+  retries: 3
+  delay: 30
+  changed_when: palier_up.stderr is search('Recreate|Creat|Start')

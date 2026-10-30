@@ -1,0 +1,21 @@
+# Bench override of ../compose.yaml; relative paths resolve from deploy/, the
+# directory of the first file. Values come from the --env-file of palier_stack.
+services:
+  palier:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      PALIER_TOKEN: ${PALIER_TOKEN:?}
+    ports: !override
+      - "${LAB_PALIER_PORT:?}:8080"
+    volumes:
+      - /apps:/apps
+
+  webhook-tester:
+    image: ghcr.io/tarampampam/webhook-tester:2
+    restart: unless-stopped
+    environment:
+      AUTO_CREATE_SESSIONS: "true"
+    ports:
+      - "${LAB_WEBHOOK_TESTER_PORT:?}:8080"

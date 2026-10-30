@@ -1,0 +1,47 @@
+<domain type="kvm">
+  <name>{{ lab_vm }}</name>
+  <memory unit="GiB">{{ topology.vm.memory_gb }}</memory>
+  <vcpu>{{ topology.vm.vcpu }}</vcpu>
+  <os>
+    <type arch="x86_64">hvm</type>
+    <boot dev="hd"/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode="host-passthrough"/>
+  <clock offset="utc"/>
+  <devices>
+    <disk type="file" device="disk">
+      <driver name="qemu" type="qcow2" discard="unmap"/>
+      <source file="{{ lab_pool_root }}/{{ lab_pool }}/{{ lab_vm }}.qcow2"/>
+      <target dev="vda" bus="virtio"/>
+    </disk>
+    <!-- The cloud kernel of the Debian image has no AHCI driver: a SATA seed is never seen. -->
+    <disk type="file" device="disk">
+      <driver name="qemu" type="raw"/>
+      <source file="{{ lab_pool_root }}/{{ lab_pool }}/{{ lab_vm }}-seed.iso"/>
+      <target dev="vdb" bus="virtio"/>
+      <readonly/>
+    </disk>
+    <interface type="network">
+      <source network="{{ topology.network.name }}"/>
+      <mac address="{{ lab_mac }}"/>
+      <model type="virtio"/>
+    </interface>
+    <serial type="pty">
+      <target port="0"/>
+    </serial>
+    <console type="pty">
+      <target type="serial" port="0"/>
+    </console>
+    <!-- Without a video device, GRUB of the Debian 13 image resets the machine in a loop. -->
+    <video>
+      <model type="virtio"/>
+    </video>
+    <rng model="virtio">
+      <backend model="random">/dev/urandom</backend>
+    </rng>
+  </devices>
+</domain>

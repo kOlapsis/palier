@@ -1,0 +1,32 @@
+---
+# What the bench needs from the host and cannot do as an ordinary user, run
+# once by `lab host-setup` through sudo: the virtualisation packages, the
+# libvirt daemon and the membership of the operator in the libvirt group.
+
+- name: Set up the libvirt host for the Palier bench
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  tasks:
+    - name: Refuse to run without root
+      ansible.builtin.assert:
+        that: ansible_facts.user_id == 'root'
+        fail_msg: run it through `lab host-setup`, which calls sudo
+
+    - name: Install the virtualisation packages
+      ansible.builtin.apt:
+        name: [qemu-system-x86, qemu-utils, libvirt-daemon-system, libvirt-clients, python3-libvirt, python3-lxml, xorriso, rsync, jq, curl]
+        update_cache: true
+
+    - name: Start libvirt
+      ansible.builtin.service:
+        name: libvirtd
+        state: started
+        enabled: true
+
+    - name: Let the operator drive qemu:///system
+      ansible.builtin.user:
+        name: "{{ lab_operator }}"
+        groups: [libvirt, kvm]
+        append: true

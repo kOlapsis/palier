@@ -1,0 +1,36 @@
+---
+# The bench: one machine on one NAT network. The only place its address,
+# size and base image are set.
+
+vm:
+  name: palier-lab
+  address: 10.10.50.10
+  vcpu: 2
+  memory_gb: 4
+  disk_gb: 60
+
+# The stacks started under /apps. The large set, gitlab, immich and
+# vaultwarden, needs vcpu 4 and memory_gb 10.
+apps: [nginx, whoami, outline]
+
+network:
+  name: palier-lab
+  bridge: palierlab0
+  cidr: 10.10.50.0/24
+  host_address: 10.10.50.1
+
+image:
+  url: https://cloud.debian.org/images/cloud/trixie/20261017-2634/debian-13-genericcloud-amd64-20261017-2634.qcow2
+  checksum: sha512:ec584ccabfef7120b4c4f7482adf0e615894d9292cedec446b64194b951ebe5dd97c336b5dcbae458333764b0edd516334506017f33c4f2020ef8d38b569ffe3
+  user: debian
+
+ports:
+  palier: 8080
+  webhook_tester: 8081
+  gitlab: 8929
+  gitlab_ssh: 2224
+  immich: 2283
+  vaultwarden: 8222
+  nginx: 8088
+  whoami: 8089
+  outline: 3000

@@ -1,0 +1,9 @@
+# Started by the Palier bench; version pinned in deploy/lab/versions.yml.
+name: whoami
+
+services:
+  whoami:
+    image: {{ whoami.image }}:{{ whoami.tag }}
+    restart: always
+    ports:
+      - "{{ topology.ports.whoami }}:80"

@@ -1,0 +1,50 @@
+# Started by the Palier bench; versions pinned in deploy/lab/versions.yml.
+name: outline
+
+services:
+  outline:
+    image: {{ outline.image }}:{{ outline.tag }}
+    restart: always
+    environment:
+      NODE_ENV: production
+      URL: http://{{ lab_apps_address }}:{{ topology.ports.outline }}
+      PORT: "3000"
+      SECRET_KEY: {{ outline_secret_key }}
+      UTILS_SECRET: {{ outline_utils_secret }}
+      DATABASE_URL: postgres://outline:{{ outline_db_password }}@postgres:5432/outline
+      PGSSLMODE: disable
+      REDIS_URL: redis://redis:6379
+      FILE_STORAGE: local
+      FILE_STORAGE_LOCAL_ROOT_DIR: /var/lib/outline/data
+    ports:
+      - "{{ topology.ports.outline }}:3000"
+    volumes:
+      - outline-data:/var/lib/outline/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: {{ outline.postgres_image }}
+    restart: always
+    environment:
+      POSTGRES_USER: outline
+      POSTGRES_PASSWORD: {{ outline_db_password }}
+      POSTGRES_DB: outline
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "outline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: {{ outline.redis_image }}
+    restart: always
+
+volumes:
+  outline-data: {}
+  postgres-data: {}
