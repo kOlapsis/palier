@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,9 +29,9 @@ Rules:
 - Order the steps so that at every step each dependency stays inside the range the application, at its version of that step, supports.
 - One version per service per step. Each "to" is a version from the available list of that service.
 - The application moves one minor version per step, to the highest patch of that minor, unless the notes state that a direct upgrade is supported.
-- In dependency facts, "service" is the client service and "dependency" the dependency service, both named as in the stack.
+- In dependency facts, "service" is the client service and "dependency" the dependency service, both named as in the stack. "version" is the version of the client from which the fact holds; leave it empty for documentation valid for every version. A range without an upper bound (for example "v14+") supports every available major from its minimum on.
 - Use only the operations of the schema. Each change needs a set_image of that service to that tag with the same image, followed by a recreate of the service. Add a wait_stable when the service needs time to settle. Never write a command.
-- A major upgrade of PostgreSQL, MySQL or MariaDB needs db_dump_restore.
+- A major upgrade of PostgreSQL, MySQL or MariaDB needs db_dump_restore. It changes the image, mounts a new volume, stops the clients during the export and restarts everything itself: the step has no set_image nor recreate for that service.
 - Stop a client during a step (stop_during) when a quoted fact says it cannot run while its dependency changes.
 - Every fact carries a quote copied character for character from the release notes, 20 to 1000 characters, and the URL of the note it comes from. Report only what the notes state. Fact categories and their parameters: breaking_change; manual_action with "when" (before or after) and "scope" (conditional when the text asks it only of some installations, otherwise always); configuration_change; data_migration with "reversibility" (reversible, conditional, irreversible, unknown); security_fix; deprecation; mandatory_step with "version"; min_dependency with "dependency" and "min_version"; supported_dependency with "dependency", "min_version", "max_version" and "image" when the application imposes one; storage_format_change with "from_version" and "to_version".
 - risk is safe only when the notes show nothing that needs attention; reversible is yes only when going back to the previous image is enough.
@@ -107,7 +108,11 @@ func Propose(ctx context.Context, key, model string, st *inventory.Stack) (*plan
 	var notesBlock, prompt strings.Builder
 	for _, s := range st.Services {
 		for _, n := range s.Notes {
-			fmt.Fprintf(&notesBlock, "<release_notes service=%q version=%q url=%q>\n%s\n</release_notes>\n", s.Name, n.Tag, n.URL, n.Body)
+			kind := "version=" + strconv.Quote(n.Tag)
+			if n.Tag == "" {
+				kind = `kind="documentation of the application, valid for every version"`
+			}
+			fmt.Fprintf(&notesBlock, "<release_notes service=%q %s url=%q>\n%s\n</release_notes>\n", s.Name, kind, n.URL, n.Body)
 		}
 	}
 	for _, f := range st.ConfigFiles {

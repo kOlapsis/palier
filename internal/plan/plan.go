@@ -101,7 +101,7 @@ type Record struct {
 // Vocabulary of operations, risks, reversibility and fact categories.
 var (
 	Ops         = []string{"set_image", "compose_edit", "recreate", "stop", "start", "wait_stable", "exec_check", "db_dump_restore"}
-	implemented = []string{"set_image", "recreate", "stop", "start", "wait_stable"}
+	implemented = []string{"set_image", "recreate", "stop", "start", "wait_stable", "db_dump_restore"}
 	Risks       = []string{"safe", "attention", "blocking", "unknown"}
 	Reversibles = []string{"yes", "conditional", "no", "unknown"}
 	Categories  = []string{"breaking_change", "manual_action", "configuration_change", "data_migration", "security_fix", "deprecation", "mandatory_step", "min_dependency", "supported_dependency", "storage_format_change"}
@@ -316,6 +316,16 @@ func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Ser
 	if op.Op == "set_image" && (op.Image == "" || op.Tag == "") {
 		p.incomplete("étape %d : set_image sans image ni tag", n)
 	}
+	if op.Op == "db_dump_restore" {
+		switch {
+		case op.Engine != "postgres":
+			p.incomplete("étape %d : pas de méthode d'export et de réimport pour le moteur %q", n, op.Engine)
+		case op.ToTag == "":
+			p.incomplete("étape %d : db_dump_restore sans version cible", n)
+		case services[op.Service] != nil && engine(services[op.Service].Image) != "postgres":
+			p.incomplete("étape %d : db_dump_restore sur %s, qui n'est pas une base PostgreSQL", n, op.Service)
+		}
+	}
 	if op.Op == "wait_stable" && op.Seconds <= 0 {
 		p.incomplete("étape %d : wait_stable sans durée", n)
 	}
@@ -323,9 +333,14 @@ func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Ser
 
 func checkChangeOps(p *Plan, n int, s *Step, c Change, svc *inventory.Service) {
 	set := slices.IndexFunc(s.Operations, func(o Operation) bool { return o.Op == "set_image" && o.Service == c.Service })
+	dump := slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service })
+	if dump && set >= 0 {
+		p.incomplete("étape %d : set_image de %s en plus de db_dump_restore, qui change déjà l'image", n, c.Service)
+		return
+	}
 	if set < 0 {
-		if !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service }) {
-			p.incomplete("étape %d : aucun set_image ne passe %s en %s", n, c.Service, c.To)
+		if !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service && o.ToTag == c.To }) {
+			p.incomplete("étape %d : aucun set_image ni db_dump_restore ne passe %s en %s", n, c.Service, c.To)
 		}
 		return
 	}

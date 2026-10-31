@@ -30,3 +30,17 @@ func TestCurrentImage(t *testing.T) {
 		}
 	}
 }
+
+func TestCompareSummaries(t *testing.T) {
+	before := []string{"role outline", "database outline", "table outline.public.documents=3", "index outline.public.documents_pkey", "constraint outline.documents.documents_pkey"}
+	after := []string{"role outline", "database outline", "table outline.public.documents=3"}
+	if got := compareSummaries(before, after); got == "" {
+		t.Fatal("missing index and constraint not seen")
+	}
+	if got := compareSummaries(before, before); got != "" {
+		t.Fatalf("identical summaries differ: %s", got)
+	}
+	if got := summaryLine(before); got != "rôles 1, bases 1, tables 1, lignes 3, index 1, contraintes 1" {
+		t.Fatal(got)
+	}
+}

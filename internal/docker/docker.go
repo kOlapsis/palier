@@ -137,6 +137,7 @@ type ContainerDetail struct {
 	RestartCount int
 	Config       struct {
 		Image       string
+		Env         []string
 		Labels      map[string]string
 		Healthcheck *struct{ Test []string }
 	}

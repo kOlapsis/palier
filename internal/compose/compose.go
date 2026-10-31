@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,13 @@ type Project struct {
 
 // Run executes docker compose with args on the project and returns its combined output.
 func Run(ctx context.Context, dockerHost string, p Project, args ...string) (string, error) {
+	var out bytes.Buffer
+	err := RunIO(ctx, dockerHost, p, nil, &out, args...)
+	return out.String(), err
+}
+
+// RunIO executes docker compose with args, reading stdin and writing its standard output to stdout.
+func RunIO(ctx context.Context, dockerHost string, p Project, stdin io.Reader, stdout io.Writer, args ...string) error {
 	full := []string{"-p", p.Name, "--project-directory", p.WorkingDir}
 	for _, f := range p.ConfigFiles {
 		full = append(full, "-f", f)
@@ -32,13 +40,14 @@ func Run(ctx context.Context, dockerHost string, p Project, args ...string) (str
 	for _, f := range p.EnvFiles {
 		full = append(full, "--env-file", f)
 	}
+	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "docker-compose", append(full, args...)...)
 	cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(out), fmt.Errorf("docker compose %s : %w : %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker compose %s : %w : %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return string(out), nil
+	return nil
 }
 
 // ImageFile returns the last of the files that sets the image of service.
@@ -167,4 +176,91 @@ func Write(fs FileState) error {
 		return err
 	}
 	return os.Rename(tmp, fs.Path)
+}
+
+// Edit applies fn to the root mapping of a Compose file and writes the document again, keeping its comments.
+func Edit(data []byte, fn func(root *yaml.Node) error) ([]byte, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, errors.New("fichier Compose sans contenu")
+	}
+	if err := fn(doc.Content[0]); err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func scalar(v string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v} }
+
+// MountSource returns what service mounts at target, as written in the file.
+func MountSource(root *yaml.Node, service, target string) (string, error) {
+	vols := child(child(child(root, "services"), service), "volumes")
+	if vols != nil {
+		for _, item := range vols.Content {
+			if parts := strings.Split(item.Value, ":"); item.Kind == yaml.ScalarNode && len(parts) >= 2 && parts[1] == target {
+				return parts[0], nil
+			}
+			if t := child(item, "target"); item.Kind == yaml.MappingNode && t != nil && t.Value == target {
+				if src := child(item, "source"); src != nil {
+					return src.Value, nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("le service %s ne monte rien sur %s", service, target)
+}
+
+// ReplaceMount mounts the named volume at target in place of what service mounted at oldTarget, and declares the volume.
+func ReplaceMount(root *yaml.Node, service, oldTarget, volume, target string) error {
+	vols := child(child(child(root, "services"), service), "volumes")
+	found := false
+	if vols != nil {
+		for _, item := range vols.Content {
+			switch item.Kind {
+			case yaml.ScalarNode:
+				parts := strings.Split(item.Value, ":")
+				if len(parts) >= 2 && parts[1] == oldTarget {
+					parts[0], parts[1] = volume, target
+					item.Value, found = strings.Join(parts, ":"), true
+				}
+			case yaml.MappingNode:
+				if t := child(item, "target"); t != nil && t.Value == oldTarget {
+					t.Value = target
+					if src := child(item, "source"); src != nil {
+						src.Value = volume
+					} else {
+						item.Content = append(item.Content, scalar("source"), scalar(volume))
+					}
+					if typ := child(item, "type"); typ != nil {
+						typ.Value = "volume"
+					}
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		return fmt.Errorf("le service %s ne monte rien sur %s", service, oldTarget)
+	}
+	top := child(root, "volumes")
+	if top == nil {
+		top = &yaml.Node{Kind: yaml.MappingNode}
+		root.Content = append(root.Content, scalar("volumes"), top)
+	}
+	if child(top, volume) == nil {
+		top.Content = append(top.Content, scalar(volume), &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle})
+	}
+	return nil
 }

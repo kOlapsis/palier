@@ -1,0 +1,10 @@
+{
+  "id": "outline",
+  "images": ["docker.io/outlinewiki/outline"],
+  "excerpts": [
+    {
+      "url": "https://docs.getoutline.com/s/hosting/doc/requirements-ULdYnwi4wG",
+      "text": "There are a few minimum services and dependencies that are required for for the Outline software to function correctly.\n\n* [PostgreSQL](https://www.postgresql.org/) (v14+)\n* [Redis](https://redis.io/) (v4+)"
+    }
+  ]
+}

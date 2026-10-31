@@ -3,7 +3,10 @@ package compose
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestSetImage(t *testing.T) {
@@ -70,5 +73,41 @@ func TestWriteKeepsMode(t *testing.T) {
 	after, err := ReadState(path)
 	if err != nil || after.Data != "b" || after.Mode != 0o640 || after.UID != st.UID {
 		t.Fatalf("after: %+v %v", after, err)
+	}
+}
+
+func TestReplaceMount(t *testing.T) {
+	in := `# bench
+name: outline
+services:
+  postgres:
+    image: docker.io/library/postgres:16.4
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  outline:
+    volumes:
+      - type: volume
+        source: outline-data
+        target: /var/lib/outline/data
+volumes:
+  outline-data: {}
+  postgres-data: {}
+`
+	out, err := Edit([]byte(in), func(root *yaml.Node) error {
+		if err := ReplaceMount(root, "postgres", "/var/lib/postgresql/data", "postgres-data-18", "/var/lib/postgresql"); err != nil {
+			return err
+		}
+		return ReplaceMount(root, "outline", "/var/lib/outline/data", "outline-data-2", "/data")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"# bench", "- postgres-data-18:/var/lib/postgresql\n", "source: outline-data-2", "target: /data", "postgres-data-18: {}", "outline-data-2: {}", "postgres-data: {}"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("%q missing in:\n%s", want, out)
+		}
+	}
+	if _, err := Edit([]byte(in), func(root *yaml.Node) error { return ReplaceMount(root, "postgres", "/nope", "v", "/x") }); err == nil {
+		t.Error("missing mount accepted")
 	}
 }

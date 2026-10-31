@@ -19,7 +19,8 @@ func rel(tags ...string) []inventory.Release {
 func outline() *inventory.Stack {
 	return &inventory.Stack{Name: "outline", Services: []*inventory.Service{
 		{Name: "outline", Role: inventory.RoleApplication, Image: "docker.io/outlinewiki/outline", Version: "1.10.1", Available: rel("1.11.0", "1.12.0"),
-			Notes: []notes.Note{{Tag: "v1.12.0", URL: "https://example/1.12.0", Body: "Outline now supports PostgreSQL 14 to 17 in production."}}},
+			Notes: []notes.Note{{Tag: "v1.12.0", URL: "https://example/1.12.0", Body: "Outline now supports PostgreSQL 14 to 17 in production."},
+				{URL: "https://example/requirements", Body: "* [PostgreSQL](https://www.postgresql.org/) (v14+)"}}},
 		{Name: "postgres", Role: inventory.RoleDependency, Image: "docker.io/library/postgres", Version: "16.4", Available: rel("16.10", "17.6", "18.1")},
 		{Name: "redis", Role: inventory.RoleDependency, Image: "docker.io/library/redis", Version: "7.2.4", Available: rel("7.2.16", "8.2.1")},
 	}}
@@ -154,5 +155,23 @@ func TestWithheldSaysWhy(t *testing.T) {
 	got := strings.Join(p.Withheld, "\n")
 	if !strings.Contains(got, "postgres 17.6, 18.1 existent mais ne sont pas proposés : aucune note de outline ne cite de version de postgres ; postgres reste en 16.") || !strings.Contains(got, "redis 8.2.1 existe") {
 		t.Fatalf("withheld:\n%s", got)
+	}
+}
+
+func TestDumpRestoreChecked(t *testing.T) {
+	support := Fact{Category: "supported_dependency", Service: "outline", Dependency: "postgres", MinVersion: "14", Quote: "[PostgreSQL](https://www.postgresql.org/) (v14+)"}
+	good := &Plan{Steps: []Step{{Risk: "attention", Reversible: "yes", Facts: []Fact{support},
+		Changes:    []Change{{"postgres", "16.4", "18.1"}},
+		Operations: []Operation{{Op: "db_dump_restore", Service: "postgres", Engine: "postgres", ToImage: "postgres", ToTag: "18.1"}}}}}
+	Validate(good, outline())
+	if len(good.Incomplete) > 0 {
+		t.Fatal(reasons(good))
+	}
+	mysql := &Plan{Steps: []Step{{Risk: "attention", Reversible: "yes", Facts: []Fact{support},
+		Changes:    []Change{{"postgres", "16.4", "18.1"}},
+		Operations: []Operation{{Op: "db_dump_restore", Service: "postgres", Engine: "mysql", ToTag: "18.1"}}}}}
+	Validate(mysql, outline())
+	if !strings.Contains(reasons(mysql), "pas de méthode") {
+		t.Fatal(reasons(mysql))
 	}
 }

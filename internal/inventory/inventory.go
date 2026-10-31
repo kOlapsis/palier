@@ -14,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/kolapsis/palier/internal/catalog"
 	"github.com/kolapsis/palier/internal/docker"
 	"github.com/kolapsis/palier/internal/notes"
 	"github.com/kolapsis/palier/internal/registry"
@@ -366,6 +367,11 @@ func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Cli
 			if v, ok := version.Parse(strings.TrimPrefix(n.Tag, "v")); ok && !notes.Less(last, v) {
 				s.Notes = append(s.Notes, n)
 			}
+		}
+	}
+	if card := catalog.For(s.Image); card != nil {
+		for _, ex := range card.Excerpts {
+			s.Notes = append(s.Notes, notes.Note{URL: ex.URL, Body: ex.Text})
 		}
 	}
 	for _, v := range newer {

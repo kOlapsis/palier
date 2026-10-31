@@ -151,7 +151,7 @@ func setup() (*app, error) {
 			slog.Info("identifiants de registre chargés", "registry", domain, "docker_config", cfg.DockerConfig)
 		}
 	}
-	eng := &run.Engine{DB: db, Docker: dc, DockerHost: cfg.DockerHost, Registry: reg, Stable: time.Duration(cfg.StableSeconds) * time.Second}
+	eng := &run.Engine{DB: db, Docker: dc, DockerHost: cfg.DockerHost, Registry: reg, Stable: time.Duration(cfg.StableSeconds) * time.Second, DataDir: cfg.DataDir}
 	return &app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken), eng: eng}, nil
 }
 

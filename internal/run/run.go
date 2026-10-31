@@ -40,15 +40,17 @@ type Engine struct {
 	DockerHost string
 	Registry   *registry.Client
 	Stable     time.Duration
+	DataDir    string
 }
 
 // Checkpoint is the state of a stack before its first modification.
 type Checkpoint struct {
-	Project       compose.Project     `json:"project"`
-	Files         []compose.FileState `json:"files"`
-	Services      []Saved             `json:"services"`
-	Snapshots     []Snapshot          `json:"snapshots"`
-	SnapshotsDone bool                `json:"snapshots_done"`
+	Project        compose.Project     `json:"project"`
+	Files          []compose.FileState `json:"files"`
+	Services       []Saved             `json:"services"`
+	Snapshots      []Snapshot          `json:"snapshots"`
+	SnapshotsDone  bool                `json:"snapshots_done"`
+	CreatedVolumes []string            `json:"created_volumes"`
 }
 
 // Saved is a service as it ran before the run.
@@ -134,7 +136,7 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		e.finish(id, Abandoned, err)
 		return
 	}
-	if err := e.snapshot(ctx, id, st, cp, changedServices(p)); err != nil {
+	if err := e.snapshot(ctx, id, st, cp, changedServices(st, p)); err != nil {
 		e.event(id, "copie des volumes impossible : %v", err)
 		e.rollback(context.WithoutCancel(ctx), id, cp, err)
 		return
@@ -153,13 +155,25 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 	e.finish(id, Done, nil)
 }
 
-func changedServices(p *plan.Plan) []string {
+// changedServices returns the services the plan changes and, since an application migrates the data of its
+// dependencies, every service they depend on.
+func changedServices(st *inventory.Stack, p *plan.Plan) []string {
 	var out []string
+	var add func(string)
+	add = func(name string) {
+		if slices.Contains(out, name) {
+			return
+		}
+		out = append(out, name)
+		if s := service(st, name); s != nil {
+			for _, d := range s.DependsOn {
+				add(d)
+			}
+		}
+	}
 	for _, s := range p.Steps {
 		for _, c := range s.Changes {
-			if !slices.Contains(out, c.Service) {
-				out = append(out, c.Service)
-			}
+			add(c.Service)
 		}
 	}
 	return out
@@ -227,7 +241,7 @@ func (e *Engine) step(ctx context.Context, id int64, st *inventory.Stack, cp *Ch
 		}
 	}
 	for _, op := range step.Operations {
-		if err := e.operation(ctx, id, cp, op); err != nil {
+		if err := e.operation(ctx, id, st, cp, op); err != nil {
 			return err
 		}
 	}
@@ -269,7 +283,7 @@ func dependencyOrder(st *inventory.Stack, selected []string) []string {
 	return out
 }
 
-func (e *Engine) operation(ctx context.Context, id int64, cp *Checkpoint, op plan.Operation) error {
+func (e *Engine) operation(ctx context.Context, id int64, st *inventory.Stack, cp *Checkpoint, op plan.Operation) error {
 	services := op.Targets()
 	switch op.Op {
 	case "set_image":
@@ -302,6 +316,8 @@ func (e *Engine) operation(ctx context.Context, id int64, cp *Checkpoint, op pla
 		return err
 	case "wait_stable":
 		return e.verify(ctx, id, cp.Project.Name, services, time.Duration(op.Seconds)*time.Second)
+	case "db_dump_restore":
+		return e.dumpRestore(ctx, id, st, cp, op)
 	}
 	return fmt.Errorf("opération %s non prise en charge", op.Op)
 }
@@ -429,8 +445,17 @@ func (e *Engine) restore(ctx context.Context, id int64, cp *Checkpoint) error {
 		}
 	}
 	e.event(id, "images d'origine retaguées, recreate de la stack")
-	_, err := compose.Run(ctx, e.DockerHost, cp.Project, "up", "-d")
-	return err
+	if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "up", "-d"); err != nil {
+		return err
+	}
+	for _, v := range cp.CreatedVolumes {
+		if err := e.Docker.Delete(ctx, "/volumes/"+url.PathEscape(v)); err != nil {
+			e.event(id, "volume %s créé pendant l'exécution non supprimé : %v", v, err)
+		} else {
+			e.event(id, "volume %s créé pendant l'exécution supprimé", v)
+		}
+	}
+	return nil
 }
 
 // Recover finishes the runs a stopped Palier left running: rolled back when they had modified the stack, abandoned otherwise.
