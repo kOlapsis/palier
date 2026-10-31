@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/kolapsis/palier/internal/catalog"
 	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/notes"
 	"github.com/kolapsis/palier/internal/registry"
@@ -101,9 +102,10 @@ type Record struct {
 // Vocabulary of operations, risks, reversibility and fact categories.
 var (
 	Ops         = []string{"set_image", "compose_edit", "recreate", "stop", "start", "wait_stable", "exec_check", "db_dump_restore"}
-	implemented = []string{"set_image", "recreate", "stop", "start", "wait_stable", "db_dump_restore"}
+	implemented = []string{"set_image", "compose_edit", "recreate", "stop", "start", "wait_stable", "db_dump_restore", "exec_check"}
 	Risks       = []string{"safe", "attention", "blocking", "unknown"}
 	Reversibles = []string{"yes", "conditional", "no", "unknown"}
+	EditActions = []string{"set_env", "unset_env", "rename_env", "set_command", "unset_command", "set_healthcheck", "unset_healthcheck", "add_volume", "remove_volume", "remove_service"}
 	Categories  = []string{"breaking_change", "manual_action", "configuration_change", "data_migration", "security_fix", "deprecation", "mandatory_step", "min_dependency", "supported_dependency", "storage_format_change"}
 	databases   = []string{"postgres", "mysql", "mariadb"}
 )
@@ -119,7 +121,7 @@ func Validate(p *Plan, st *inventory.Stack) {
 	current := map[string]string{}
 	for _, s := range st.Services {
 		services[s.Name] = s
-		current[s.Name] = s.Version
+		current[s.Name] = running(s)
 	}
 	for i := range p.Steps {
 		s := &p.Steps[i]
@@ -138,9 +140,7 @@ func Validate(p *Plan, st *inventory.Stack) {
 		for _, op := range s.Operations {
 			validateOp(p, n, op, services)
 		}
-		if s.Gate != nil && s.Gate.Op != "" && s.Gate.Op != "none" {
-			p.incomplete("étape %d : la condition de passage %s n'est pas encore prise en charge", n, s.Gate.Op)
-		}
+		checkGate(p, n, s, services)
 		seen := map[string]bool{}
 		for _, c := range s.Changes {
 			svc := services[c.Service]
@@ -155,10 +155,10 @@ func Validate(p *Plan, st *inventory.Stack) {
 			if c.From != current[c.Service] {
 				p.incomplete("étape %d : %s part de %s alors qu'il sera en %s", n, c.Service, c.From, current[c.Service])
 			}
-			if !slices.ContainsFunc(svc.Available, func(r inventory.Release) bool { return r.Tag == c.To }) {
+			if !slices.ContainsFunc(svc.Available, func(r inventory.Release) bool { return r.Tag == c.To }) && !citedImageChange(p, s, c, st) {
 				p.incomplete("étape %d : %s %s n'est pas une version disponible au registre", n, c.Service, c.To)
 			}
-			checkChangeOps(p, n, s, c, svc)
+			checkChangeOps(p, n, s, c, svc, st)
 			checkDatabase(p, n, c, svc, s)
 			current[c.Service] = c.To
 		}
@@ -166,7 +166,7 @@ func Validate(p *Plan, st *inventory.Stack) {
 	}
 	current = map[string]string{}
 	for _, s := range st.Services {
-		current[s.Name] = s.Version
+		current[s.Name] = running(s)
 	}
 	for i, s := range p.Steps {
 		for _, c := range s.Changes {
@@ -175,6 +175,87 @@ func Validate(p *Plan, st *inventory.Stack) {
 		checkIntervals(p, i+1, s.Changes, current, services)
 	}
 	p.Withheld = withheld(p, st, current)
+	for _, svc := range st.Services {
+		checkStops(p, svc)
+	}
+}
+
+// checkGate requires the background check of the card after each step that changes a service whose card has one.
+func checkGate(p *Plan, n int, s *Step, services map[string]*inventory.Service) {
+	gated := s.Gate != nil && s.Gate.Op != "" && s.Gate.Op != "none"
+	if gated {
+		svc := services[s.Gate.Service]
+		switch {
+		case s.Gate.Op != "exec_check":
+			p.incomplete("étape %d : condition de passage %s inconnue", n, s.Gate.Op)
+		case svc == nil:
+			p.incomplete("étape %d : la condition de passage vise %s, qui n'existe pas", n, s.Gate.Service)
+		case catalog.For(svc.Image) == nil || catalog.For(svc.Image).Checks[s.Gate.CheckRef] == nil:
+			p.incomplete("étape %d : la condition %s n'est pas une commande de la fiche de %s", n, s.Gate.CheckRef, s.Gate.Service)
+		}
+	}
+	for _, c := range s.Changes {
+		svc := services[c.Service]
+		if svc == nil {
+			continue
+		}
+		if card := catalog.For(svc.Image); card != nil && card.Checks["background_migrations"] != nil && (!gated || s.Gate.Service != c.Service) {
+			p.incomplete("étape %d : %s doit attendre la fin de ses migrations de fond (exec_check background_migrations)", n, c.Service)
+		}
+	}
+}
+
+// checkStops requires every stop of the card between the running version and the last target, at the latest patch of its minor.
+func checkStops(p *Plan, svc *inventory.Service) {
+	card := catalog.For(svc.Image)
+	if card == nil || len(card.Stops) == 0 {
+		return
+	}
+	var targets []string
+	for _, s := range p.Steps {
+		for _, c := range s.Changes {
+			if c.Service == svc.Name {
+				targets = append(targets, c.To)
+			}
+		}
+	}
+	if len(targets) == 0 {
+		return
+	}
+	from, _ := version.Parse(svc.Version)
+	last, _ := version.Parse(targets[len(targets)-1])
+	for _, stop := range card.Stops {
+		minor, ok := version.Parse(stop)
+		if !ok || len(minor.Nums) < 2 || len(from.Nums) < 2 || len(last.Nums) < 2 {
+			continue
+		}
+		after := compareNums(minor.Nums[:2], from.Nums[:2]) > 0
+		before := compareNums(minor.Nums[:2], last.Nums[:2]) < 0
+		if !after || !before {
+			continue
+		}
+		highest := ""
+		for _, r := range svc.Available {
+			if v, ok := version.Parse(r.Tag); ok && len(v.Nums) >= 2 && compareNums(v.Nums[:2], minor.Nums[:2]) == 0 {
+				highest = r.Tag
+			}
+		}
+		if highest == "" {
+			continue
+		}
+		if !slices.Contains(targets, highest) {
+			p.incomplete("%s doit passer par le palier obligatoire %s (%s, dernier correctif de %s)", svc.Name, stop, highest, stop)
+		}
+	}
+}
+
+func compareNums(a, b []int) int {
+	for i := range min(len(a), len(b)) {
+		if a[i] != b[i] {
+			return a[i] - b[i]
+		}
+	}
+	return len(a) - len(b)
 }
 
 // withheld says, for each dependency, which newer majors the plan leaves out and why.
@@ -313,6 +394,21 @@ func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Ser
 			p.incomplete("étape %d : l'opération %s vise le service %s, qui n'existe pas", n, op.Op, name)
 		}
 	}
+	if op.Op == "compose_edit" {
+		if len(op.Edits) == 0 {
+			p.incomplete("étape %d : compose_edit sans modification", n)
+		}
+		for _, e := range op.Edits {
+			switch {
+			case !slices.Contains(EditActions, e.Action):
+				p.incomplete("étape %d : modification %q hors du vocabulaire", n, e.Action)
+			case (e.Action == "set_env" || e.Action == "unset_env" || e.Action == "rename_env") && e.Name == "",
+				e.Action == "rename_env" && e.NewName == "",
+				(e.Action == "set_command" || e.Action == "set_healthcheck" || e.Action == "add_volume" || e.Action == "remove_volume") && e.Value == "":
+				p.incomplete("étape %d : modification %s de %s incomplète", n, e.Action, op.Service)
+			}
+		}
+	}
 	if op.Op == "set_image" && (op.Image == "" || op.Tag == "") {
 		p.incomplete("étape %d : set_image sans image ni tag", n)
 	}
@@ -326,12 +422,56 @@ func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Ser
 			p.incomplete("étape %d : db_dump_restore sur %s, qui n'est pas une base PostgreSQL", n, op.Service)
 		}
 	}
+	if svc := services[op.Service]; op.Op == "exec_check" && (svc == nil || catalog.For(svc.Image) == nil || catalog.For(svc.Image).Checks[op.CheckRef] == nil) {
+		p.incomplete("étape %d : exec_check %s n'est pas une commande de la fiche de %s", n, op.CheckRef, op.Service)
+	}
 	if op.Op == "wait_stable" && op.Seconds <= 0 {
 		p.incomplete("étape %d : wait_stable sans durée", n)
 	}
 }
 
-func checkChangeOps(p *Plan, n int, s *Step, c Change, svc *inventory.Service) {
+// running is the version a plan starts from: the version read for the service, else its tag.
+func running(s *inventory.Service) string {
+	if s.Version != "" {
+		return s.Version
+	}
+	return s.Tag
+}
+
+// citedImageChange reports whether the set_image of c moves the service to another image that its client names in a
+// quoted fact, with a target tag written in the notes.
+func citedImageChange(p *Plan, s *Step, c Change, st *inventory.Stack) bool {
+	i := slices.IndexFunc(s.Operations, func(o Operation) bool { return o.Op == "set_image" && o.Service == c.Service })
+	svc := service(st, c.Service)
+	if i < 0 || svc == nil || registry.ParseRef(s.Operations[i].Image).Name() == svc.Image {
+		return false
+	}
+	target := registry.ParseRef(s.Operations[i].Image).Name()
+	cited := false
+	for _, step := range p.Steps {
+		for _, f := range step.Facts {
+			cited = cited || f.Category == "supported_dependency" && f.Dependency == c.Service && f.Image != "" && registry.ParseRef(f.Image).Name() == target
+		}
+	}
+	inNotes := false
+	for _, other := range st.Services {
+		for _, n := range other.Notes {
+			inNotes = inNotes || strings.Contains(n.Body, c.To)
+		}
+	}
+	return cited && inNotes
+}
+
+func service(st *inventory.Stack, name string) *inventory.Service {
+	for _, s := range st.Services {
+		if s.Name == name {
+			return s
+		}
+	}
+	return nil
+}
+
+func checkChangeOps(p *Plan, n int, s *Step, c Change, svc *inventory.Service, st *inventory.Stack) {
 	set := slices.IndexFunc(s.Operations, func(o Operation) bool { return o.Op == "set_image" && o.Service == c.Service })
 	dump := slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service })
 	if dump && set >= 0 {
@@ -348,8 +488,8 @@ func checkChangeOps(p *Plan, n int, s *Step, c Change, svc *inventory.Service) {
 	if op.Tag != c.To {
 		p.incomplete("étape %d : set_image donne le tag %s à %s, le changement annonce %s", n, op.Tag, c.Service, c.To)
 	}
-	if registry.ParseRef(op.Image).Name() != svc.Image {
-		p.incomplete("étape %d : set_image change l'image de %s (%s au lieu de %s), ce qui n'est pas encore pris en charge", n, c.Service, op.Image, svc.Image)
+	if registry.ParseRef(op.Image).Name() != svc.Image && !citedImageChange(p, s, c, st) {
+		p.incomplete("étape %d : set_image change l'image de %s (%s au lieu de %s) sans fait cité de l'application qui impose cette image", n, c.Service, op.Image, svc.Image)
 	}
 	if !slices.ContainsFunc(s.Operations[set:], func(o Operation) bool { return o.Op == "recreate" && slices.Contains(o.Targets(), c.Service) }) {
 		p.incomplete("étape %d : aucun recreate après le set_image de %s", n, c.Service)

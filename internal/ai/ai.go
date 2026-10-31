@@ -2,6 +2,7 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kolapsis/palier/internal/catalog"
 	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/plan"
 )
@@ -28,10 +30,15 @@ Rules:
 - The stack follows its application. A service that another service depends on is a dependency; the client without a client is the application. A dependency goes to the highest version the application states it supports, never to the newest that exists; without a quoted statement of the application it stays on its running major and only takes patches and minors.
 - Order the steps so that at every step each dependency stays inside the range the application, at its version of that step, supports.
 - One version per service per step. Each "to" is a version from the available list of that service.
-- The application moves one minor version per step, to the highest patch of that minor, unless the notes state that a direct upgrade is supported.
+- The application stops at every version the notes name as a required stop or as the minimum to upgrade from, and at every version that changes the Compose file or the data; between those stops it goes straight to the highest version, at the latest patch.
 - In dependency facts, "service" is the client service and "dependency" the dependency service, both named as in the stack. "version" is the version of the client from which the fact holds; leave it empty for documentation valid for every version. A range without an upper bound (for example "v14+") supports every available major from its minimum on.
 - Use only the operations of the schema. Each change needs a set_image of that service to that tag with the same image, followed by a recreate of the service. Add a wait_stable when the service needs time to settle. Never write a command.
 - A major upgrade of PostgreSQL, MySQL or MariaDB needs db_dump_restore. It changes the image, mounts a new volume, stops the clients during the export and restarts everything itself: the step has no set_image nor recreate for that service.
+- When a card lists required upgrade stops, the service goes through each stop between its running version and its target, at the latest available patch of that minor, one step each. When a card offers a check named background_migrations, every step that changes that service has the gate {"op": "exec_check", "service": <service>, "check_ref": "background_migrations"}.
+- When the notes change the Compose file of the stack (a service removed, a command or a healthcheck to drop, a variable renamed, a port or a path changed), the step carries compose_edit operations that keep the file in service working, each followed by a recreate of the edited service. set_env value, set_command and set_healthcheck values are YAML, for example ["start.sh"].
+- The edits cannot change a published port. When the notes move the port a container listens on, keep it on its previous port with set_env of the variable the notes name for that port, so that the published port keeps working.
+- A dependency moves to another image only when the application imposes it in a quoted fact: a supported_dependency fact with "image" set to the new image; set_image then names that image and a tag written in the notes.
+- Services whose image tag comes from the same variable of the env file change together, in the same step, to the same tag.
 - Stop a client during a step (stop_during) when a quoted fact says it cannot run while its dependency changes.
 - Every fact carries a quote copied character for character from the release notes, 20 to 1000 characters, and the URL of the note it comes from. Report only what the notes state. Fact categories and their parameters: breaking_change; manual_action with "when" (before or after) and "scope" (conditional when the text asks it only of some installations, otherwise always); configuration_change; data_migration with "reversibility" (reversible, conditional, irreversible, unknown); security_fix; deprecation; mandatory_step with "version"; min_dependency with "dependency" and "min_version"; supported_dependency with "dependency", "min_version", "max_version" and "image" when the application imposes one; storage_format_change with "from_version" and "to_version".
 - risk is safe only when the notes show nothing that needs attention; reversible is yes only when going back to the previous image is enough.
@@ -62,7 +69,7 @@ func operation() map[string]any {
 		"op": enum(plan.Ops), "service": str, "services": stringList, "image": str, "tag": str,
 		"seconds": map[string]any{"type": "integer"}, "check_ref": str, "engine": str, "to_image": str, "to_tag": str,
 		"edits": array(object(map[string]any{
-			"action": enum([]string{"set_env", "unset_env", "rename_env", "set_command", "unset_command", "set_healthcheck", "unset_healthcheck", "add_volume", "remove_volume", "remove_service"}),
+			"action": enum(plan.EditActions),
 			"name":   str, "value": str, "new_name": str,
 		})),
 	})
@@ -122,6 +129,16 @@ func Propose(ctx context.Context, key, model string, st *inventory.Stack) (*plan
 		}
 		fmt.Fprintf(&prompt, "<compose_file path=%q>\n%s\n</compose_file>\n", f, data)
 	}
+	for _, s := range st.Services {
+		if card := catalog.For(s.Image); card != nil && (len(card.Stops) > 0 || len(card.Checks) > 0) {
+			var checks []string
+			for k := range card.Checks {
+				checks = append(checks, k)
+			}
+			slices.Sort(checks)
+			fmt.Fprintf(&prompt, "<card service=%q>\nRequired upgrade stops (latest patch of each minor): %s\nChecks available for exec_check and gates: %s\n</card>\n", s.Name, strings.Join(card.Stops, ", "), strings.Join(checks, ", "))
+		}
+	}
 	var services []serviceInput
 	for _, s := range st.Services {
 		in := serviceInput{Name: s.Name, Role: s.Role, Image: s.Image, Running: s.Version, DependsOn: s.DependsOn}
@@ -135,7 +152,8 @@ func Propose(ctx context.Context, key, model string, st *inventory.Stack) (*plan
 
 	body := map[string]any{
 		"model":      model,
-		"max_tokens": 16000,
+		"max_tokens": 64000,
+		"stream":     true,
 		"system":     system,
 		"messages": []any{map[string]any{"role": "user", "content": []any{
 			map[string]any{"type": "text", "text": "Release notes, untrusted data:\n" + notesBlock.String(), "cache_control": map[string]any{"type": "ephemeral"}},
@@ -154,37 +172,64 @@ func Propose(ctx context.Context, key, model string, st *inventory.Stack) (*plan
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", key)
 	req.Header.Set("anthropic-version", "2026-10-21")
-	resp, err := (&http.Client{Timeout: 10 * time.Minute}).Do(req)
+	resp, err := (&http.Client{Timeout: 30 * time.Minute}).Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	answer, err := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		answer, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("API Anthropic : %s : %s", resp.Status, bytes.TrimSpace(answer))
+	}
+	text, stop, err := readStream(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API Anthropic : %s : %s", resp.Status, bytes.TrimSpace(answer))
+	if stop != "end_turn" {
+		return nil, fmt.Errorf("réponse de l'IA interrompue (%s)", stop)
 	}
-	var msg struct {
-		StopReason string `json:"stop_reason"`
-		Content    []struct{ Type, Text string }
-		Usage      map[string]any
+	var p plan.Plan
+	if err := json.Unmarshal([]byte(text), &p); err != nil {
+		return nil, fmt.Errorf("plan de l'IA illisible : %w", err)
 	}
-	if err := json.Unmarshal(answer, &msg); err != nil {
-		return nil, err
-	}
-	if msg.StopReason != "end_turn" {
-		return nil, fmt.Errorf("réponse de l'IA interrompue (%s)", msg.StopReason)
-	}
-	for _, c := range msg.Content {
-		if c.Type == "text" {
-			var p plan.Plan
-			if err := json.Unmarshal([]byte(c.Text), &p); err != nil {
-				return nil, fmt.Errorf("plan de l'IA illisible : %w", err)
+	return &p, nil
+}
+
+// readStream gathers the text of a streamed Messages API answer and its stop reason.
+func readStream(r io.Reader) (string, string, error) {
+	var text strings.Builder
+	stop := ""
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 1<<20), 16<<20)
+	for sc.Scan() {
+		data, ok := strings.CutPrefix(sc.Text(), "data: ")
+		if !ok {
+			continue
+		}
+		var ev struct {
+			Type  string
+			Delta struct {
+				Type       string
+				Text       string
+				StopReason string `json:"stop_reason"`
 			}
-			return &p, nil
+			Error struct{ Type, Message string }
+		}
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			continue
+		}
+		switch ev.Type {
+		case "content_block_delta":
+			if ev.Delta.Type == "text_delta" {
+				text.WriteString(ev.Delta.Text)
+			}
+		case "message_delta":
+			if ev.Delta.StopReason != "" {
+				stop = ev.Delta.StopReason
+			}
+		case "error":
+			return "", "", fmt.Errorf("API Anthropic : %s : %s", ev.Error.Type, ev.Error.Message)
 		}
 	}
-	return nil, fmt.Errorf("l'IA n'a pas rendu de plan")
+	return text.String(), stop, sc.Err()
 }

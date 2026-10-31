@@ -23,7 +23,7 @@
   block:
     - name: Wait for Immich
       ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ topology.ports.immich }}/api/server-info/ping"
+        url: "http://127.0.0.1:{{ topology.ports.immich }}/"
       register: immich_ping
       until: immich_ping.status == 200
       retries: 60
@@ -41,6 +41,39 @@
         status_code: [201, 400]
       register: immich_signup
       changed_when: immich_signup.status == 201
+
+    - name: Sign in to Immich
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ topology.ports.immich }}/api/auth/login"
+        method: POST
+        body_format: json
+        body:
+          email: "{{ immich_admin_email }}"
+          password: "{{ immich_admin_password }}"
+        status_code: [200, 201]
+      register: immich_login
+      no_log: true
+
+    - name: Seed photos into a fresh Immich
+      when: immich_signup.status == 201
+      block:
+        - name: Copy the photos of the seed
+          ansible.builtin.copy:
+            src: "{{ item }}"
+            dest: "/apps/immich/{{ item }}"
+            mode: "0644"
+          loop: [lab-photo-1.png, lab-photo-2.png, lab-photo-3.png]
+
+        - name: Upload three photos
+          ansible.builtin.command: >-
+            curl -sf -H "Authorization: Bearer {{ immich_login.json.accessToken }}"
+            -F assetData=@/apps/immich/{{ item }} -F deviceAssetId={{ item }} -F deviceId=palier-lab
+            -F fileCreatedAt=2026-10-01T12:00:00.000Z -F fileModifiedAt=2026-10-01T12:00:00.000Z
+            http://127.0.0.1:{{ topology.ports.immich }}/api/asset/upload
+          loop: [lab-photo-1.png, lab-photo-2.png, lab-photo-3.png]
+          register: immich_upload
+          changed_when: "'created' in immich_upload.stdout"
+          no_log: true
 
 - name: Seed GitLab
   when: "'gitlab' in topology.apps"

@@ -180,6 +180,7 @@ scenario)
 	[ -f "$LAB_DIR/scenarios/${2:-}.sh" ] || die "no scenario ${2:-}; see $LAB_DIR/scenarios" 2
 	need_key
 	cat "$LAB_DIR/scenarios/common.sh" "$LAB_DIR/scenarios/$2.sh" | ssh_vm 'cat > /tmp/palier-scenario.sh'
+	ssh_vm 'cat > /tmp/immich-check.py' <"$LAB_DIR/scenarios/immich-check.py"
 	ssh_vm 'sudo bash /tmp/palier-scenario.sh'
 	;;
 -h | --help | help) usage ;;

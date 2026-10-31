@@ -10,6 +10,7 @@ services:
       DOCKER_CONFIG: /etc/palier/docker
       PALIER_AI_KEY: ${PALIER_AI_KEY:-}
       PALIER_AUTO: patch
+      PALIER_WEBHOOK_URL: http://webhook-tester:8080/00000000-0000-4000-8000-000000000001
     ports: !override
       - "${LAB_PALIER_PORT:?}:8080"
     volumes:

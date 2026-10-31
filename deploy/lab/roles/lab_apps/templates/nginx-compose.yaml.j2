@@ -5,5 +5,7 @@ services:
   nginx:
     image: {{ nginx.image }}:{{ nginx.tag }}
     restart: always
+    labels:
+      palier.hook.backup: tar czf /backup/nginx-conf.tgz /etc/nginx
     ports:
       - "{{ topology.ports.nginx }}:80"

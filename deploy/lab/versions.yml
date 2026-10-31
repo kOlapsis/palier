@@ -60,17 +60,14 @@ immich:
 
 vaultwarden:
   image: docker.io/vaultwarden/server
-  tag: 1.35.4
+  tag: 1.37.2
   why: >-
-    The upgrade that must go through. One container on SQLite, a semver
-    release every few weeks, and a HEALTHCHECK in the image
-    (/healthcheck.sh), so verification has a signal of its own. From 1.35.4
-    to the latest 1.37.x the release notes
-    (https://github.com/dani-garcia/vaultwarden/releases) list security fixes,
-    new features and the Web Vault update, but no Compose or configuration
-    change for a default SQLite setup: Palier must open a non-blocking
-    dossier, apply it, verify it and keep it without rollback.
-
+    One container on SQLite with a HEALTHCHECK in the image, and only patch
+    releases ahead (1.37.3, 1.37.4), each with real release notes: the stack
+    PALIER_AUTO=patch may apply without a click. Its backup hook
+    (palier.hook.backup) copies the database first. nginx carries a backup
+    hook that writes to /backup, which is not mounted, so it always fails and
+    nothing is applied to nginx.
 observed:
   image: ghcr.io/tarampampam/webhook-tester:2.2
   why: >-

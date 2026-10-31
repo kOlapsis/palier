@@ -5,13 +5,14 @@
 vm:
   name: palier-lab
   address: 10.10.50.10
-  vcpu: 2
-  memory_gb: 4
-  disk_gb: 60
+  vcpu: 6
+  memory_gb: 14
+  disk_gb: 150
 
-# The stacks started under /apps. The large set, gitlab, immich and
-# vaultwarden, needs vcpu 4 and memory_gb 10.
-apps: [nginx, whoami, outline]
+# The stacks started under /apps: the small set (nginx, whoami, outline)
+# and the large set (gitlab, immich, vaultwarden). GitLab keeps every image
+# of its upgrade path, about 3 GB each, hence the disk.
+apps: [nginx, whoami, outline, gitlab, immich, vaultwarden]
 
 network:
   name: palier-lab

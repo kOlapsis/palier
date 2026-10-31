@@ -175,3 +175,35 @@ func TestDumpRestoreChecked(t *testing.T) {
 		t.Fatal(reasons(mysql))
 	}
 }
+
+func gitlab() *inventory.Stack {
+	return &inventory.Stack{Name: "gitlab", Services: []*inventory.Service{{Name: "gitlab", Role: inventory.RoleApplication, Image: "docker.io/gitlab/gitlab-ce", Version: "16.1.6-ce.0",
+		Available: rel("16.1.8-ce.0", "16.3.8-ce.0", "16.3.9-ce.0", "16.7.10-ce.0", "16.8.1-ce.0", "16.11.10-ce.0", "17.0.1-ce.0")}}}
+}
+
+func gitlabStep(from, to string) Step {
+	return Step{Risk: "attention", Reversible: "conditional", Changes: []Change{{"gitlab", from, to}},
+		Operations: []Operation{{Op: "set_image", Service: "gitlab", Image: "gitlab/gitlab-ce", Tag: to}, {Op: "recreate", Service: "gitlab"}},
+		Gate:       &Operation{Op: "exec_check", Service: "gitlab", CheckRef: "background_migrations"}}
+}
+
+func TestStopsAndGates(t *testing.T) {
+	direct := &Plan{Steps: []Step{gitlabStep("16.1.6-ce.0", "17.0.1-ce.0")}}
+	Validate(direct, gitlab())
+	for _, want := range []string{"palier obligatoire 16.3 (16.3.9-ce.0", "16.7 (16.7.10-ce.0", "16.11 (16.11.10-ce.0"} {
+		if !strings.Contains(reasons(direct), want) {
+			t.Errorf("direct jump: %q missing in\n%s", want, reasons(direct))
+		}
+	}
+	path := &Plan{Steps: []Step{gitlabStep("16.1.6-ce.0", "16.3.9-ce.0"), gitlabStep("16.3.9-ce.0", "16.7.10-ce.0"), gitlabStep("16.7.10-ce.0", "16.11.10-ce.0"), gitlabStep("16.11.10-ce.0", "17.0.1-ce.0")}}
+	Validate(path, gitlab())
+	if len(path.Incomplete) > 0 {
+		t.Fatal(reasons(path))
+	}
+	ungated := &Plan{Steps: []Step{gitlabStep("16.1.6-ce.0", "16.3.9-ce.0")}}
+	ungated.Steps[0].Gate = &Operation{Op: "none"}
+	Validate(ungated, gitlab())
+	if !strings.Contains(reasons(ungated), "migrations de fond") {
+		t.Fatal(reasons(ungated))
+	}
+}

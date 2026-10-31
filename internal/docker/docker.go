@@ -139,7 +139,13 @@ type ContainerDetail struct {
 		Image       string
 		Env         []string
 		Labels      map[string]string
-		Healthcheck *struct{ Test []string }
+		Healthcheck *struct {
+			Test        []string
+			Interval    int64
+			Timeout     int64
+			StartPeriod int64
+			Retries     int
+		}
 	}
 	State struct {
 		Status string
@@ -150,6 +156,7 @@ type ContainerDetail struct {
 		Name        string
 		Source      string
 		Destination string
+		RW          bool
 	}
 }
 

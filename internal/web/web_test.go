@@ -56,7 +56,9 @@ func TestPagesRender(t *testing.T) {
 	p := &plan.Plan{Steps: []plan.Step{{Risk: "safe", Reversible: "yes", Why: "Une phrase.",
 		Changes:    []plan.Change{{Service: "whoami", From: "v1.10.1", To: "v1.12.0"}},
 		Operations: []plan.Operation{{Op: "set_image", Service: "whoami", Image: "traefik/whoami", Tag: "v1.12.0"}, {Op: "recreate", Services: []string{"whoami"}}},
-		Facts:      []plan.Fact{{Category: "security_fix", Service: "whoami", Version: "v1.12.0", Quote: "<script>alert(1)</script> a quote", SourceURL: "https://github.com/traefik/whoami/releases"}}}}}
+		Gate:       &plan.Operation{Op: "exec_check", Service: "whoami", CheckRef: "background_migrations"},
+		Facts:      []plan.Fact{{Category: "security_fix", Service: "whoami", Version: "v1.12.0", Quote: "<script>alert(1)</script> a quote", SourceURL: "https://github.com/traefik/whoami/releases"}}},
+		{Risk: "attention", Reversible: "yes", Operations: []plan.Operation{{Op: "compose_edit", Service: "whoami", Edits: []plan.Edit{{Action: "rename_env", Name: "SERVER_PORT", NewName: "IMMICH_PORT"}}}}}}}
 	h := New("secret", Deps{
 		Current:   func() Snapshot { return Snapshot{Stacks: []*inventory.Stack{st}} },
 		Runs:      func(string) ([]run.View, error) { return []run.View{{ID: 1, Status: "rolled_back"}}, nil },
@@ -66,7 +68,7 @@ func TestPagesRender(t *testing.T) {
 			return &run.View{ID: 1, Stack: "whoami", Status: "running", Events: []run.Event{{Message: "étape 1"}}}, nil
 		},
 	})
-	for path, want := range map[string]string{"/": "revenue en arrière", "/stacks/whoami": "Étape 1", "/runs/1": "étape 1", "/settings": "PALIER_AUTO"} {
+	for path, want := range map[string]string{"/": "revenue en arrière", "/stacks/whoami": "rename_env SERVER_PORT → IMMICH_PORT", "/runs/1": "étape 1", "/settings": "PALIER_AUTO"} {
 		r := httptest.NewRequest("GET", path, nil)
 		r.AddCookie(&http.Cookie{Name: cookieName, Value: "secret"})
 		w := httptest.NewRecorder()

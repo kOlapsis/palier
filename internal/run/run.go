@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/kolapsis/palier/internal/catalog"
 	"github.com/kolapsis/palier/internal/compose"
 	"github.com/kolapsis/palier/internal/docker"
 	"github.com/kolapsis/palier/internal/inventory"
@@ -41,6 +44,7 @@ type Engine struct {
 	Registry   *registry.Client
 	Stable     time.Duration
 	DataDir    string
+	Finished   func(stack string, id int64, status, cause string)
 }
 
 // Checkpoint is the state of a stack before its first modification.
@@ -103,6 +107,11 @@ func (e *Engine) finish(id int64, status string, cause error) {
 		slog.Error("fin d'exécution", "run", id, "err", err)
 	}
 	e.event(id, "résultat : %s", results[status])
+	var stack string
+	var dryRun bool
+	if e.Finished != nil && e.DB.QueryRow(`SELECT stack, dry_run FROM runs WHERE id = ?`, id).Scan(&stack, &dryRun) == nil && !dryRun {
+		e.Finished(stack, id, status, msg)
+	}
 }
 
 // ProjectOf returns the Compose project of a stack.
@@ -113,9 +122,13 @@ func ProjectOf(st *inventory.Stack) compose.Project {
 // Execute applies the plan of run id to st, then finishes the run done, rolled_back, failed or abandoned.
 func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *plan.Plan, dryRun bool) {
 	for _, s := range st.Services {
+		running := s.Version
+		if running == "" {
+			running = s.Tag
+		}
 		for _, c := range firstChanges(p, s.Name) {
-			if c.From != s.Version {
-				e.finish(id, Abandoned, fmt.Errorf("la stack a changé depuis le calcul du plan : %s est en %s, le plan part de %s", s.Name, s.Version, c.From))
+			if c.From != running {
+				e.finish(id, Abandoned, fmt.Errorf("la stack a changé depuis le calcul du plan : %s est en %s, le plan part de %s", s.Name, running, c.From))
 				return
 			}
 		}
@@ -123,6 +136,16 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 	if dryRun {
 		e.dryRun(ctx, id, st, p)
 		return
+	}
+	for _, s := range st.Services {
+		if s.BackupHook == "" {
+			continue
+		}
+		e.event(id, "hook de sauvegarde de %s : %s", s.Name, s.BackupHook)
+		if _, err := compose.Run(ctx, e.DockerHost, ProjectOf(st), "exec", "-T", s.Name, "sh", "-c", s.BackupHook); err != nil {
+			e.finish(id, Abandoned, fmt.Errorf("le hook de sauvegarde de %s a échoué, rien n'est appliqué : %w", s.Name, err))
+			return
+		}
 	}
 	cp, err := checkpoint(st)
 	if err == nil {
@@ -204,6 +227,11 @@ func describe(s plan.Step) string {
 func checkpoint(st *inventory.Stack) (*Checkpoint, error) {
 	cp := &Checkpoint{Project: ProjectOf(st)}
 	files := slices.Clone(st.ConfigFiles)
+	if env := envFile(cp.Project); !slices.Contains(files, env) {
+		if _, err := os.Stat(env); err == nil {
+			files = append(files, env)
+		}
+	}
 	for _, f := range files {
 		fs, err := compose.ReadState(f)
 		if err != nil {
@@ -252,7 +280,52 @@ func (e *Engine) step(ctx context.Context, id int64, st *inventory.Stack, cp *Ch
 			return err
 		}
 	}
-	return e.verify(ctx, id, cp.Project.Name, names(cp), e.Stable)
+	if err := e.verify(ctx, id, cp.Project.Name, present(cp), e.Stable); err != nil {
+		return err
+	}
+	if g := step.Gate; g != nil && g.Op == "exec_check" {
+		return e.gate(ctx, id, st, cp, *g)
+	}
+	return nil
+}
+
+const (
+	gateInterval = 30 * time.Second
+	gateTimeout  = 2 * time.Hour
+)
+
+// gate runs the check command of the card until it succeeds.
+func (e *Engine) gate(ctx context.Context, id int64, st *inventory.Stack, cp *Checkpoint, g plan.Operation) error {
+	e.event(id, "attente de %s sur %s", g.CheckRef, g.Service)
+	deadline := time.Now().Add(gateTimeout)
+	for tries := 1; ; tries++ {
+		err := e.runCheck(ctx, st, cp, g)
+		if err == nil {
+			e.event(id, "%s réussi sur %s après %d essai(s)", g.CheckRef, g.Service, tries)
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%s toujours en échec sur %s après %s : %w", g.CheckRef, g.Service, gateTimeout, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(gateInterval):
+		}
+	}
+}
+
+func (e *Engine) runCheck(ctx context.Context, st *inventory.Stack, cp *Checkpoint, op plan.Operation) error {
+	svc := service(st, op.Service)
+	if svc == nil {
+		return fmt.Errorf("service %s introuvable", op.Service)
+	}
+	card := catalog.For(svc.Image)
+	if card == nil || card.Checks[op.CheckRef] == nil {
+		return fmt.Errorf("pas de commande %s dans la fiche de %s", op.CheckRef, op.Service)
+	}
+	_, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"exec", "-T", op.Service}, card.Checks[op.CheckRef]...)...)
+	return err
 }
 
 func names(cp *Checkpoint) []string {
@@ -287,25 +360,9 @@ func (e *Engine) operation(ctx context.Context, id int64, st *inventory.Stack, c
 	services := op.Targets()
 	switch op.Op {
 	case "set_image":
-		file, err := compose.ImageFile(cp.Project.ConfigFiles, op.Service)
-		if err != nil {
-			return err
-		}
-		fs, err := compose.ReadState(file)
-		if err != nil {
-			return err
-		}
-		ref, err := currentImage([]byte(fs.Data), op.Service)
-		if err != nil {
-			return err
-		}
-		data, err := compose.SetImage([]byte(fs.Data), op.Service, ref+":"+op.Tag)
-		if err != nil {
-			return err
-		}
-		fs.Data = string(data)
-		e.event(id, "%s : image de %s passée à %s:%s", file, op.Service, ref, op.Tag)
-		return compose.Write(fs)
+		return e.setImage(id, cp, op)
+	case "compose_edit":
+		return e.composeEdit(ctx, id, cp, op)
 	case "recreate":
 		e.event(id, "recreate de %s", strings.Join(services, ", "))
 		_, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"up", "-d", "--no-deps"}, services...)...)
@@ -318,30 +375,183 @@ func (e *Engine) operation(ctx context.Context, id int64, st *inventory.Stack, c
 		return e.verify(ctx, id, cp.Project.Name, services, time.Duration(op.Seconds)*time.Second)
 	case "db_dump_restore":
 		return e.dumpRestore(ctx, id, st, cp, op)
+	case "exec_check":
+		e.event(id, "exec_check %s sur %s", op.CheckRef, op.Service)
+		return e.runCheck(ctx, st, cp, op)
 	}
 	return fmt.Errorf("opération %s non prise en charge", op.Op)
 }
 
 func currentImage(data []byte, service string) (string, error) {
-	var doc struct {
-		Services map[string]struct{ Image string }
-	}
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	raw, err := compose.ImageValue(data, service)
+	if err != nil {
 		return "", err
 	}
-	image, _, _ := strings.Cut(doc.Services[service].Image, "@")
+	if repo, _, ok := compose.ImageVariable(raw); ok {
+		return repo, nil
+	}
+	image, _, _ := strings.Cut(raw, "@")
 	if i := strings.LastIndex(image, ":"); i > strings.LastIndex(image, "/") {
 		image = image[:i]
 	}
 	return image, nil
 }
 
-const healthGrace = 2 * time.Minute
+// envFile is the file Compose reads its variables from: the one given to the project, else .env in its directory.
+func envFile(p compose.Project) string {
+	if len(p.EnvFiles) > 0 {
+		return p.EnvFiles[0]
+	}
+	return filepath.Join(p.WorkingDir, ".env")
+}
+
+// setImage writes the new tag where the Compose file takes it: the image itself, or the variable that holds its tag.
+func (e *Engine) setImage(id int64, cp *Checkpoint, op plan.Operation) error {
+	file, err := compose.ImageFile(cp.Project.ConfigFiles, op.Service)
+	if err != nil {
+		return err
+	}
+	fs, err := compose.ReadState(file)
+	if err != nil {
+		return err
+	}
+	raw, err := compose.ImageValue([]byte(fs.Data), op.Service)
+	if err != nil {
+		return err
+	}
+	if repo, variable, ok := compose.ImageVariable(raw); ok {
+		if op.Image != "" && registry.ParseRef(op.Image).Name() != registry.ParseRef(repo).Name() {
+			return fmt.Errorf("l'image de %s passe par la variable %s : Palier ne change pas son dépôt", op.Service, variable)
+		}
+		env, err := compose.ReadState(envFile(cp.Project))
+		if err != nil {
+			return err
+		}
+		if current, _ := compose.EnvVar([]byte(env.Data), variable); current == op.Tag {
+			e.event(id, "%s : %s vaut déjà %s", env.Path, variable, op.Tag)
+			return nil
+		}
+		env.Data = string(compose.SetEnvVar([]byte(env.Data), variable, op.Tag))
+		e.event(id, "%s : %s passe à %s (image de %s)", env.Path, variable, op.Tag, op.Service)
+		return compose.Write(env)
+	}
+	ref, err := currentImage([]byte(fs.Data), op.Service)
+	if err != nil {
+		return err
+	}
+	if op.Image != "" && registry.ParseRef(op.Image).Name() != registry.ParseRef(ref).Name() {
+		ref, _, _ = strings.Cut(op.Image, "@")
+		if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+			ref = ref[:i]
+		}
+	}
+	data, err := compose.SetImage([]byte(fs.Data), op.Service, ref+":"+op.Tag)
+	if err != nil {
+		return err
+	}
+	fs.Data = string(data)
+	e.event(id, "%s : image de %s passée à %s:%s", file, op.Service, ref, op.Tag)
+	return compose.Write(fs)
+}
+
+// composeEdit applies the structured edits of one service; a removed service is stopped and deleted first.
+func (e *Engine) composeEdit(ctx context.Context, id int64, cp *Checkpoint, op plan.Operation) error {
+	for _, ed := range op.Edits {
+		if ed.Action == "remove_service" {
+			e.event(id, "arrêt et suppression du conteneur de %s", op.Service)
+			if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "rm", "-s", "-f", op.Service); err != nil {
+				return err
+			}
+		}
+	}
+	for _, file := range cp.Project.ConfigFiles {
+		fs, err := compose.ReadState(file)
+		if err != nil {
+			return err
+		}
+		names, err := compose.Services([]byte(fs.Data))
+		if err != nil || !slices.Contains(names, op.Service) {
+			continue
+		}
+		var done []string
+		data, err := compose.Edit([]byte(fs.Data), func(root *yaml.Node) error {
+			for _, ed := range op.Edits {
+				what, err := compose.ApplyEdit(root, op.Service, ed.Action, ed.Name, ed.Value, ed.NewName)
+				if err != nil {
+					return err
+				}
+				done = append(done, what)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		fs.Data = string(data)
+		if err := compose.Write(fs); err != nil {
+			return err
+		}
+		e.event(id, "%s : %s", file, strings.Join(done, " ; "))
+		return nil
+	}
+	return fmt.Errorf("aucun fichier Compose ne déclare le service %s", op.Service)
+}
+
+// present returns the services of the checkpoint the Compose files still declare.
+func present(cp *Checkpoint) []string {
+	var declared []string
+	for _, f := range cp.Project.ConfigFiles {
+		if data, err := os.ReadFile(f); err == nil {
+			names, _ := compose.Services(data)
+			declared = append(declared, names...)
+		}
+	}
+	var out []string
+	for _, n := range names(cp) {
+		if slices.Contains(declared, n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+const minHealthGrace = 2 * time.Minute
+
+// healthGrace is the time Docker itself gives the services to become healthy: start period, then retries of the check.
+func (e *Engine) healthGrace(ctx context.Context, project string, services []string) time.Duration {
+	grace := minHealthGrace
+	filters := url.QueryEscape(fmt.Sprintf(`{"label":["com.docker.compose.project=%s"]}`, project))
+	var list []docker.Container
+	if e.Docker.Get(ctx, "/containers/json?all=1&filters="+filters, &list) != nil {
+		return grace
+	}
+	for _, c := range list {
+		if !slices.Contains(services, c.Labels["com.docker.compose.service"]) {
+			continue
+		}
+		var d docker.ContainerDetail
+		if e.Docker.Get(ctx, "/containers/"+c.ID+"/json", &d) != nil || d.Config.Healthcheck == nil {
+			continue
+		}
+		h := d.Config.Healthcheck
+		interval := time.Duration(h.Interval)
+		if interval == 0 {
+			interval = 30 * time.Second
+		}
+		retries := h.Retries
+		if retries == 0 {
+			retries = 3
+		}
+		grace = max(grace, time.Duration(h.StartPeriod)+(interval+time.Duration(h.Timeout))*time.Duration(retries+1))
+	}
+	return grace
+}
 
 // verify waits until every service runs, is healthy when it has a healthcheck, and stays so for stable without restarting.
 func (e *Engine) verify(ctx context.Context, id int64, project string, services []string, stable time.Duration) error {
 	e.event(id, "vérification de %s pendant %d s", strings.Join(services, ", "), int(stable.Seconds()))
-	deadline := time.Now().Add(stable + healthGrace)
+	grace := e.healthGrace(ctx, project, services)
+	deadline := time.Now().Add(stable + grace)
 	restarts := map[string]int{}
 	var okSince time.Time
 	for {
@@ -358,7 +568,7 @@ func (e *Engine) verify(ctx context.Context, id int64, project string, services 
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("pas stable après %d s : %s", int((stable + healthGrace).Seconds()), waiting)
+			return fmt.Errorf("pas stable après %d s : %s", int((stable + grace).Seconds()), waiting)
 		}
 		select {
 		case <-ctx.Done():
@@ -508,8 +718,12 @@ func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *p
 				continue
 			}
 			svc := st.Services[slices.IndexFunc(st.Services, func(s *inventory.Service) bool { return s.Name == op.Service })]
-			if _, err := e.Registry.Digest(ctx, registry.ParseRef(svc.Image+":"+op.Tag), op.Tag); err != nil {
-				problems = append(problems, fmt.Sprintf("%s:%s absente du registre : %v", svc.Image, op.Tag, err))
+			repo := svc.Image
+			if op.Image != "" {
+				repo = registry.ParseRef(op.Image).Name()
+			}
+			if _, err := e.Registry.Digest(ctx, registry.ParseRef(repo+":"+op.Tag), op.Tag); err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%s absente du registre : %v", repo, op.Tag, err))
 			}
 			file, err := compose.ImageFile(st.ConfigFiles, op.Service)
 			if err == nil && files[file] == nil {
@@ -521,7 +735,11 @@ func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *p
 			if err == nil {
 				ref, err = currentImage(files[file], op.Service)
 			}
-			if err == nil {
+			if raw, _ := compose.ImageValue(files[file], op.Service); err == nil {
+				if _, variable, ok := compose.ImageVariable(raw); ok {
+					e.event(id, "ferait : %s passe à %s (image de %s, présente au registre)", variable, op.Tag, op.Service)
+					continue
+				}
 				files[file], err = compose.SetImage(files[file], op.Service, ref+":"+op.Tag)
 			}
 			if err != nil {

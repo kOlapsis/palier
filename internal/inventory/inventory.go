@@ -54,6 +54,7 @@ type Service struct {
 	DetectionError string       `json:"detection_error,omitempty"`
 	ImageID        string       `json:"image_id"`
 	Source         string       `json:"source,omitempty"`
+	BackupHook     string       `json:"backup_hook,omitempty"`
 	Notes          []notes.Note `json:"notes,omitempty"`
 	NotesError     string       `json:"notes_error,omitempty"`
 
@@ -62,7 +63,7 @@ type Service struct {
 	labelVersion string
 }
 
-// Mount is a volume or a host directory mounted in a service.
+// Mount is a volume or a host directory a service mounts read-write.
 type Mount struct {
 	Type        string `json:"type"`
 	Source      string `json:"source"`
@@ -114,6 +115,9 @@ func Scan(ctx context.Context, dc *docker.Client) ([]*Stack, error) {
 		}
 		svc, err := inspect(ctx, dc, c)
 		if err != nil {
+			if strings.Contains(err.Error(), "404") {
+				continue
+			}
 			return nil, err
 		}
 		project := c.Labels[labelProject]
@@ -166,9 +170,8 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 		return nil, err
 	}
 	var img docker.Image
-	if err := dc.Get(ctx, "/images/"+c.ImageID+"/json", &img); err != nil {
-		return nil, err
-	}
+	// A container being recreated may point to an image that is already gone; its service keeps no image details.
+	_ = dc.Get(ctx, "/images/"+c.ImageID+"/json", &img)
 	ref := registry.ParseRef(d.Config.Image)
 	svc := &Service{
 		Name:        c.Labels[labelService],
@@ -195,12 +198,14 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 	}
 	svc.labelVersion = img.Config.Labels["org.opencontainers.image.version"]
 	svc.Source = img.Config.Labels["org.opencontainers.image.source"]
+	svc.BackupHook = c.Labels["palier.hook.backup"]
 	svc.ImageID = c.ImageID
 	for _, m := range d.Mounts {
-		switch m.Type {
-		case "volume":
+		switch {
+		case !m.RW:
+		case m.Type == "volume":
 			svc.Mounts = append(svc.Mounts, Mount{Type: m.Type, Source: m.Name, Destination: m.Destination})
-		case "bind":
+		case m.Type == "bind":
 			svc.Mounts = append(svc.Mounts, Mount{Type: m.Type, Source: m.Source, Destination: m.Destination})
 		}
 	}

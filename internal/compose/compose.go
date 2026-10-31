@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 
@@ -263,4 +264,200 @@ func ReplaceMount(root *yaml.Node, service, oldTarget, volume, target string) er
 		top.Content = append(top.Content, scalar(volume), &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle})
 	}
 	return nil
+}
+
+var imageVar = regexp.MustCompile(`^([^$]+):\$\{(\w+)(?::?-[^}]*)?\}$`)
+
+// ImageVariable returns the repository and the variable that holds the tag of an image written repo:${VAR}.
+func ImageVariable(image string) (repo, variable string, ok bool) {
+	m := imageVar.FindStringSubmatch(image)
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
+
+// ImageValue returns the image of service as written in the file.
+func ImageValue(data []byte, service string) (string, error) {
+	n, err := imageNode(data, service)
+	if err != nil {
+		return "", err
+	}
+	return n.Value, nil
+}
+
+// SetEnvVar sets NAME=value in the content of an env file, replacing its line or appending one.
+func SetEnvVar(data []byte, name, value string) []byte {
+	lines := strings.Split(string(data), "\n")
+	for i, l := range lines {
+		if k, _, ok := strings.Cut(strings.TrimSpace(l), "="); ok && strings.TrimSpace(k) == name {
+			lines[i] = name + "=" + value
+			return []byte(strings.Join(lines, "\n"))
+		}
+	}
+	out := strings.TrimRight(string(data), "\n")
+	if out != "" {
+		out += "\n"
+	}
+	return []byte(out + name + "=" + value + "\n")
+}
+
+// EnvVar returns the value of NAME in the content of an env file.
+func EnvVar(data []byte, name string) (string, bool) {
+	for _, l := range strings.Split(string(data), "\n") {
+		if k, v, ok := strings.Cut(strings.TrimSpace(l), "="); ok && strings.TrimSpace(k) == name {
+			return strings.TrimSpace(v), true
+		}
+	}
+	return "", false
+}
+
+// Services returns the names of the services a Compose file declares.
+func Services(data []byte) ([]string, error) {
+	var doc struct{ Services map[string]yaml.Node }
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	var out []string
+	for name := range doc.Services {
+		out = append(out, name)
+	}
+	return out, nil
+}
+
+// ApplyEdit applies one structured edit to service and says what it did.
+func ApplyEdit(root *yaml.Node, service, action, name, value, newName string) (string, error) {
+	services := child(root, "services")
+	svc := child(services, service)
+	if svc == nil {
+		return "", fmt.Errorf("pas de service %s dans le fichier", service)
+	}
+	switch action {
+	case "remove_service":
+		removeKey(services, service)
+		for i := 1; i < len(services.Content); i += 2 {
+			deps := child(services.Content[i], "depends_on")
+			removeKey(deps, service)
+			if deps != nil && deps.Kind == yaml.SequenceNode {
+				deps.Content = slicesDeleteScalar(deps.Content, service)
+			}
+		}
+		return "service " + service + " retiré", nil
+	case "set_env", "unset_env", "rename_env":
+		env := child(svc, "environment")
+		if env == nil {
+			if action != "set_env" {
+				return name + " absent de l'environnement de " + service + ", rien à faire", nil
+			}
+			env = &yaml.Node{Kind: yaml.MappingNode}
+			svc.Content = append(svc.Content, scalar("environment"), env)
+		}
+		return editEnv(env, service, action, name, value, newName)
+	case "set_command", "set_healthcheck":
+		var n yaml.Node
+		if err := yaml.Unmarshal([]byte(value), &n); err != nil || len(n.Content) == 0 {
+			return "", fmt.Errorf("valeur illisible pour %s : %q", action, value)
+		}
+		key, node := "command", n.Content[0]
+		if action == "set_healthcheck" {
+			key, node = "healthcheck", &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{scalar("test"), n.Content[0]}}
+		}
+		removeKey(svc, key)
+		svc.Content = append(svc.Content, scalar(key), node)
+		return key + " de " + service + " fixé à " + value, nil
+	case "unset_command", "unset_healthcheck":
+		key := strings.TrimPrefix(action, "unset_")
+		if !removeKey(svc, key) {
+			return key + " absent de " + service + ", rien à faire", nil
+		}
+		return key + " retiré de " + service, nil
+	case "add_volume", "remove_volume":
+		vols := child(svc, "volumes")
+		if action == "add_volume" {
+			if vols == nil {
+				vols = &yaml.Node{Kind: yaml.SequenceNode}
+				svc.Content = append(svc.Content, scalar("volumes"), vols)
+			}
+			vols.Content = append(vols.Content, scalar(value))
+			return "volume " + value + " ajouté à " + service, nil
+		}
+		if vols != nil {
+			for i, item := range vols.Content {
+				parts := strings.Split(item.Value, ":")
+				if item.Value == value || len(parts) >= 2 && parts[1] == value || child(item, "target") != nil && child(item, "target").Value == value {
+					vols.Content = append(vols.Content[:i], vols.Content[i+1:]...)
+					return "volume " + value + " retiré de " + service, nil
+				}
+			}
+		}
+		return "volume " + value + " absent de " + service + ", rien à faire", nil
+	}
+	return "", fmt.Errorf("modification %q inconnue", action)
+}
+
+func editEnv(env *yaml.Node, service, action, name, value, newName string) (string, error) {
+	if env.Kind == yaml.SequenceNode {
+		for i, item := range env.Content {
+			k, v, _ := strings.Cut(item.Value, "=")
+			if k != name {
+				continue
+			}
+			switch action {
+			case "set_env":
+				item.Value = name + "=" + value
+			case "unset_env":
+				env.Content = append(env.Content[:i], env.Content[i+1:]...)
+			case "rename_env":
+				item.Value = newName + "=" + v
+			}
+			return action + " " + name + " sur " + service, nil
+		}
+		if action == "set_env" {
+			env.Content = append(env.Content, scalar(name+"="+value))
+			return name + " ajouté à " + service, nil
+		}
+		return name + " absent de l'environnement de " + service + ", rien à faire", nil
+	}
+	for i := 0; i+1 < len(env.Content); i += 2 {
+		if env.Content[i].Value != name {
+			continue
+		}
+		switch action {
+		case "set_env":
+			env.Content[i+1] = scalar(value)
+		case "unset_env":
+			env.Content = append(env.Content[:i], env.Content[i+2:]...)
+		case "rename_env":
+			env.Content[i].Value = newName
+		}
+		return action + " " + name + " sur " + service, nil
+	}
+	if action == "set_env" {
+		env.Content = append(env.Content, scalar(name), scalar(value))
+		return name + " ajouté à " + service, nil
+	}
+	return name + " absent de l'environnement de " + service + ", rien à faire", nil
+}
+
+func removeKey(m *yaml.Node, key string) bool {
+	if m == nil || m.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			m.Content = append(m.Content[:i], m.Content[i+2:]...)
+			return true
+		}
+	}
+	return false
+}
+
+func slicesDeleteScalar(nodes []*yaml.Node, v string) []*yaml.Node {
+	out := nodes[:0]
+	for _, n := range nodes {
+		if n.Value != v {
+			out = append(out, n)
+		}
+	}
+	return out
 }

@@ -40,7 +40,8 @@
 {{with .StopDuring}}<li>Arrêtés pendant l'étape : {{join .}}</li>{{end}}
 </ul>
 <p>Opérations :</p>
-<ol>{{range .Operations}}<li>{{.Op}}{{with .Service}} {{.}}{{end}}{{with .Services}} {{join .}}{{end}}{{with .Image}} {{.}}{{end}}{{with .Tag}}:{{.}}{{end}}{{with .Seconds}} {{.}} s{{end}}</li>{{end}}</ol>
+<ol>{{range .Operations}}<li>{{.Op}}{{with .Service}} {{.}}{{end}}{{with .Services}} {{join .}}{{end}}{{with .Image}} {{.}}{{end}}{{with .Tag}}:{{.}}{{end}}{{with .ToImage}} vers {{.}}{{end}}{{with .ToTag}}:{{.}}{{end}}{{with .CheckRef}} {{.}}{{end}}{{with .Seconds}} {{.}} s{{end}}{{range .Edits}} · {{.Action}}{{with .Name}} {{.}}{{end}}{{with .Value}} = {{.}}{{end}}{{with .NewName}} → {{.}}{{end}}{{end}}</li>{{end}}</ol>
+{{with .Gate}}{{if eq .Op "exec_check"}}<p>Condition de passage : {{.CheckRef}} sur {{.Service}}.</p>{{end}}{{end}}
 {{with .Facts}}<p>Faits cités :</p>
 {{range .}}<p><strong>{{.Category}}</strong> · {{.Service}} {{.Version}}{{with .Dependency}} · {{.}}{{end}}{{with .MinVersion}} min {{.}}{{end}}{{with .MaxVersion}} max {{.}}{{end}} · <a href="{{.SourceURL}}" rel="noreferrer noopener">source</a></p>
 <blockquote>{{.Quote}}</blockquote>{{end}}{{end}}

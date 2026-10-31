@@ -5,6 +5,8 @@ services:
   vaultwarden:
     image: {{ vaultwarden.image }}:{{ vaultwarden.tag }}
     restart: always
+    labels:
+      palier.hook.backup: cp /data/db.sqlite3 /data/db.palier-backup.sqlite3
     environment:
       DOMAIN: http://{{ lab_apps_address }}:{{ topology.ports.vaultwarden }}
     ports:

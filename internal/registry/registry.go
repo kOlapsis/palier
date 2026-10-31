@@ -118,6 +118,7 @@ func (c *Client) get(ctx context.Context, r Ref, url, accept string) (*http.Resp
 }
 
 func (c *Client) do(ctx context.Context, method string, r Ref, url, accept string) (*http.Response, error) {
+	throttled := 0
 	for attempt := 0; ; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, method, url, nil)
 		if err != nil {
@@ -146,6 +147,17 @@ func (c *Client) do(ctx context.Context, method string, r Ref, url, accept strin
 			c.mu.Lock()
 			c.authz[r.Name()] = authz
 			c.mu.Unlock()
+			continue
+		}
+		if resp.StatusCode == http.StatusTooManyRequests && throttled < 4 {
+			resp.Body.Close()
+			throttled++
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(throttled) * time.Second):
+			}
+			attempt--
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {

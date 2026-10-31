@@ -1,0 +1,41 @@
+{
+  "id": "gitlab",
+  "images": [
+    "docker.io/gitlab/gitlab-ce",
+    "docker.io/gitlab/gitlab-ee"
+  ],
+  "excerpts": [
+    {
+      "url": "https://docs.gitlab.com/update/upgrade_paths/",
+      "text": "Upgrade paths include required upgrade stops, which are versions of GitLab that you must upgrade to before upgrading to later versions. When moving through an upgrade path:\n\n1. Upgrade to the required upgrade stop after your current version.\n2. Allow the background migrations for the upgrade to finish.\n3. Upgrade to the next required upgrade stop.\n\nEven when not explicitly specified, upgrade GitLab to the latest available patch release of the `major`.`minor` release rather than the first patch release. For example, `16.8.7` instead of `16.8.0`.\n\nRequired upgrade stops occur at versions:\n- `19.2`\n- `19.5`\n- `19.8`\n- `19.11`\n\nYou must upgrade to those versions of GitLab 19 before upgrading to later versions.\n\nRequired upgrade stops occur at versions `18.2`, `18.5`, `18.8`, and `18.11`.\n\nYou must upgrade to those versions of GitLab 18 before upgrading to later versions.\n\n| 17.11.7 | Upgrade to the latest GitLab 17.11 patch release. |\n| 17.8.7 | Upgrade to the latest GitLab 17.8 patch release. |\n| 17.5.5 | Upgrade to the latest GitLab 17.5 patch release. |\n| 17.3.7 | Upgrade to the latest GitLab 17.3 release. |\n\nYou must upgrade to these versions of GitLab 17 before upgrading to later versions.\n\n| 16.11.10 | See upgrade notes for GitLab 16.11.0. |\n| 16.7.10 | See upgrade notes for GitLab 16.8.0 and later GitLab 16.7 versions. |\n| 16.3.9 | See upgrade notes for GitLab 16.3.0 and later GitLab 16.3 versions. |\n\nYou must upgrade to these versions of GitLab 16 before upgrading to later versions."
+    },
+    {
+      "url": "https://docs.gitlab.com/update/background_migrations/",
+      "text": "Before you upgrade GitLab, all migrations must have a `Finished` status.\n\n`gitlab-psql -c \"SELECT job_class_name, table_name, column_name, job_arguments FROM batched_background_migrations WHERE status NOT IN(3, 6);\"`\n\nIf the query returns zero rows, all batched background migrations are complete."
+    }
+  ],
+  "stops": [
+    "16.3",
+    "16.7",
+    "16.11",
+    "17.3",
+    "17.5",
+    "17.8",
+    "17.11",
+    "18.2",
+    "18.5",
+    "18.8",
+    "18.11",
+    "19.2",
+    "19.5",
+    "19.8",
+    "19.11"
+  ],
+  "checks": {
+    "background_migrations": [
+      "sh",
+      "-c",
+      "test \"$(gitlab-psql -At -c 'SELECT count(*) FROM batched_background_migrations WHERE status NOT IN (3, 6)')\" = 0"
+    ]
+  }
+}

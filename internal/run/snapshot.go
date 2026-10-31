@@ -56,10 +56,10 @@ func (e *Engine) snapshot(ctx context.Context, id int64, st *inventory.Stack, cp
 			if err := e.Docker.Post(ctx, "/volumes/create", map[string]any{"Name": snap.Volume, "Labels": map[string]string{"palier.run": fmt.Sprint(id)}}, nil); err != nil {
 				return err
 			}
+			cp.Snapshots = append(cp.Snapshots, snap)
 			if err := e.copy(ctx, m.Type, m.Source, "volume", snap.Volume, false); err != nil {
 				return fmt.Errorf("copie de %s (%s) : %w", s.Name, m.Destination, err)
 			}
-			cp.Snapshots = append(cp.Snapshots, snap)
 			e.event(id, "%s : %s copié dans le volume %s", s.Name, m.Destination, snap.Volume)
 		}
 	}

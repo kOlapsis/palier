@@ -22,3 +22,33 @@ old_volume_counts() {
 	docker rm -f pgold >/dev/null
 }
 mounts_of() { docker inspect "$1" --format '{{range .Mounts}}{{.Name}}:{{.Destination}} {{end}}'; }
+gitlab_state() {
+	echo "  gitlab : $(docker inspect gitlab-gitlab-1 --format '{{.Config.Image}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}')"
+	echo "  semis : $(docker exec gitlab-gitlab-1 gitlab-psql -At -c "SELECT 'projet ' || string_agg(p.path, ',') || ', tickets ' || (SELECT count(*) FROM issues) || ', compte ' || (SELECT username FROM users WHERE username = 'root') FROM projects p" 2>/dev/null)"
+	echo "  version en base : $(docker exec gitlab-gitlab-1 cat /opt/gitlab/version-manifest.txt 2>/dev/null | head -1)"
+}
+apply_and_report() {
+	if [ -n "${PALIER_NEXT:-}" ]; then
+		bash /tmp/next-bg.sh palier-next apply "$1" >/dev/null
+		docker wait palier-next >/dev/null
+		docker logs palier-next 2>/dev/null | python3 -c 'import json,sys; t=sys.stdin.read(); v=json.loads(t[t.index("{\n"):]); print("exécution", v["id"], v["status"], (v.get("error") or "")[:400]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:200]) for e in v["events"]]' || docker logs --tail 5 palier-next
+		return
+	fi
+	$PALIER exec -T palier /palier apply "$1" </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("exécution", v["id"], v["status"], (v.get("error") or "")[:400]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:200]) for e in v["events"]]' || true
+}
+fake_step_image() {
+	step=$(sql "SELECT json_extract(body, '$.steps[$2].changes[0].service') || ' ' || json_extract(body, '$.steps[$2].changes[0].to') FROM plans WHERE stack = '$1'")
+	set -- $1 $step
+	[ -n "${3:-}" ] || { echo "pas d'étape demandée dans le plan de $1"; exit 1; }
+	repo=$(docker inspect "$(docker ps -aq --filter label=com.docker.compose.project=$1 --filter label=com.docker.compose.service=$2 | head -1)" --format '{{.Config.Image}}'); repo=${repo%:*}
+	printf 'FROM busybox:1.37.0\nCMD ["sh", "-c", "echo %s cassé; exit 1"]\n' "$2" | docker build -q -t "$repo:$3" - >/dev/null
+	FAKE="$repo:$3"
+	echo "image locale $FAKE qui quitte à l'instant"
+}
+immich_state() {
+	for c in immich_server immich_microservices immich_machine_learning immich_postgres immich_redis; do
+		echo "  $c : $(docker inspect "$c" --format '{{.Config.Image}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || echo absent)"
+	done
+	echo "  version en base : $(docker exec immich_postgres psql -U postgres -d immich -At -c "SELECT count(*) || ' assets' FROM assets" 2>/dev/null)"
+	python3 /tmp/immich-check.py
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -151,8 +152,14 @@ func setup() (*app, error) {
 			slog.Info("identifiants de registre chargés", "registry", domain, "docker_config", cfg.DockerConfig)
 		}
 	}
+	a := &app{}
 	eng := &run.Engine{DB: db, Docker: dc, DockerHost: cfg.DockerHost, Registry: reg, Stable: time.Duration(cfg.StableSeconds) * time.Second, DataDir: cfg.DataDir}
-	return &app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken), eng: eng}, nil
+	eng.Finished = func(stack string, id int64, status, cause string) {
+		events := map[string]string{run.Done: "run_done", run.RolledBack: "run_rolled_back", run.Failed: "run_failed", run.Abandoned: "run_abandoned"}
+		a.notify(map[string]any{"event": events[status], "stack": stack, "run": id, "status": status, "error": cause})
+	}
+	*a = app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken), eng: eng}
+	return a, nil
 }
 
 func withApp(f func(context.Context, *app) error) error {
@@ -302,6 +309,15 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 	_, err = a.db.ExecContext(ctx, `INSERT INTO plans (stack, input_hash, source, body, created) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (stack) DO UPDATE SET input_hash = excluded.input_hash, source = excluded.source, body = excluded.body, created = excluded.created`,
 		st.Name, hash, rec.Source, string(body), rec.Created.Format(time.RFC3339))
+	if err == nil && len(rec.Plan.Steps) > 0 && len(rec.Plan.Incomplete) == 0 {
+		var changes []string
+		for _, s := range rec.Plan.Steps {
+			for _, c := range s.Changes {
+				changes = append(changes, c.Service+" "+c.From+" → "+c.To)
+			}
+		}
+		a.notify(map[string]any{"event": "plan_ready", "stack": st.Name, "steps": len(rec.Plan.Steps), "changes": changes})
+	}
 	return rec, err
 }
 
@@ -362,6 +378,30 @@ func (a *app) waitForScan(ctx context.Context, rescan <-chan struct{}, last time
 			}
 		}
 	}
+}
+
+// notify posts an event to PALIER_WEBHOOK_URL when it is set.
+func (a *app) notify(event map[string]any) {
+	if a.cfg.WebhookURL == "" {
+		return
+	}
+	event["at"] = time.Now().UTC().Format(time.RFC3339)
+	body, _ := json.Marshal(event)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.cfg.WebhookURL, bytes.NewReader(body))
+	if err != nil {
+		slog.Error("webhook", "err", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Error("webhook", "event", event["event"], "err", err)
+		return
+	}
+	resp.Body.Close()
+	slog.Info("webhook envoyé", "event", event["event"], "stack", event["stack"], "status", resp.StatusCode)
 }
 
 func serve() error {

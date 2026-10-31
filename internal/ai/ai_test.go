@@ -1,6 +1,9 @@
 package ai
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSchemaIsStrict(t *testing.T) {
 	var walk func(path string, v any)
@@ -23,4 +26,16 @@ func TestSchemaIsStrict(t *testing.T) {
 		walk(path+"[]", m["items"])
 	}
 	walk("plan", schema())
+}
+
+func TestReadStream(t *testing.T) {
+	stream := "event: message_start\ndata: {\"type\":\"message_start\"}\n\n" +
+		"data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"x\"}}\n" +
+		"data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"steps\\\":\"}}\n" +
+		"data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"[]}\"}}\n" +
+		"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n"
+	text, stop, err := readStream(strings.NewReader(stream))
+	if err != nil || text != `{"steps":[]}` || stop != "end_turn" {
+		t.Fatalf("%q %q %v", text, stop, err)
+	}
 }
