@@ -43,15 +43,35 @@ func (c *Client) Get(ctx context.Context, path string, out any) error {
 	return c.do(ctx, http.MethodGet, path, out)
 }
 
-// Post sends POST path without a body and decodes the answer into out when out is not nil.
-func (c *Client) Post(ctx context.Context, path string, out any) error {
-	return c.do(ctx, http.MethodPost, path, out)
+// Post sends POST path with body as JSON when it is not nil, and decodes the answer into out when out is not nil.
+func (c *Client) Post(ctx context.Context, path string, body, out any) error {
+	return c.send(ctx, http.MethodPost, path, body, out)
+}
+
+// Delete sends DELETE path.
+func (c *Client) Delete(ctx context.Context, path string) error {
+	return c.send(ctx, http.MethodDelete, path, nil, nil)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
+	return c.send(ctx, method, path, nil, out)
+}
+
+func (c *Client) send(ctx context.Context, method, path string, body, out any) error {
+	var reader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, reader)
 	if err != nil {
 		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -63,7 +83,8 @@ func (c *Client) do(ctx context.Context, method, path string, out any) error {
 		return fmt.Errorf("docker %s %s: %s: %s", method, path, resp.Status, bytes.TrimSpace(b))
 	}
 	if out == nil {
-		return nil
+		_, err = io.Copy(io.Discard, resp.Body)
+		return err
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }

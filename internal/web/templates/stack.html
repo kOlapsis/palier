@@ -29,6 +29,8 @@
 <h2>Plan</h2>
 <p class="muted">Calculé {{since $.Record.Created}} ({{label $.Record.Source}}).
 {{if $.Auto}}L'application automatique le prendra.{{else if $.AutoWhy}}Pas d'application automatique : {{$.AutoWhy}}.{{end}}</p>
+{{if not .Steps}}<p>Rien à appliquer.</p>{{end}}
+{{with .Withheld}}<p>Versions écartées :</p><ul>{{range .}}<li>{{.}}</li>{{end}}</ul>{{end}}
 {{if .Incomplete}}<p class="error">Plan incomplet, il ne s'applique pas :</p><ul>{{range .Incomplete}}<li class="error">{{.}}</li>{{end}}</ul>{{end}}
 {{range $i, $s := .Steps}}<div class="step">
 <h3>Étape {{inc $i}} · risque {{label .Risk}} · réversible : {{label .Reversible}}</h3>

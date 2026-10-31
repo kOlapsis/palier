@@ -69,7 +69,7 @@ func (s *server) state(st *inventory.Stack) string {
 	}
 	rec, _ := s.deps.Plan(st.Name)
 	switch {
-	case rec != nil && len(rec.Plan.Steps) > 0 && len(rec.Plan.Incomplete) > 0:
+	case rec != nil && len(rec.Plan.Incomplete) > 0:
 		return "plan incomplet"
 	case rec != nil && len(rec.Plan.Steps) > 0:
 		if ok, _ := plan.Automatic(rec.Plan, s.deps.Config.Auto); ok {

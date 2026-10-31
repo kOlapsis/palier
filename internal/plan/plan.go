@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/kolapsis/palier/internal/inventory"
+	"github.com/kolapsis/palier/internal/notes"
 	"github.com/kolapsis/palier/internal/registry"
 	"github.com/kolapsis/palier/internal/version"
 )
@@ -17,6 +18,7 @@ import (
 type Plan struct {
 	Steps      []Step   `json:"steps"`
 	Incomplete []string `json:"incomplete"`
+	Withheld   []string `json:"withheld,omitempty"`
 }
 
 // Step changes some services and passes when its gate and verification pass.
@@ -119,9 +121,6 @@ func Validate(p *Plan, st *inventory.Stack) {
 		services[s.Name] = s
 		current[s.Name] = s.Version
 	}
-	if len(p.Steps) == 0 {
-		p.incomplete("le plan n'a aucune étape")
-	}
 	for i := range p.Steps {
 		s := &p.Steps[i]
 		n := i + 1
@@ -160,11 +159,141 @@ func Validate(p *Plan, st *inventory.Stack) {
 				p.incomplete("étape %d : %s %s n'est pas une version disponible au registre", n, c.Service, c.To)
 			}
 			checkChangeOps(p, n, s, c, svc)
-			checkMajor(p, n, c, svc, p.Steps[:n])
+			checkDatabase(p, n, c, svc, s)
 			current[c.Service] = c.To
 		}
 		s.Facts = checkFacts(p, n, s.Facts, st)
 	}
+	current = map[string]string{}
+	for _, s := range st.Services {
+		current[s.Name] = s.Version
+	}
+	for i, s := range p.Steps {
+		for _, c := range s.Changes {
+			current[c.Service] = c.To
+		}
+		checkIntervals(p, i+1, s.Changes, current, services)
+	}
+	p.Withheld = withheld(p, st, current)
+}
+
+// withheld says, for each dependency, which newer majors the plan leaves out and why.
+func withheld(p *Plan, st *inventory.Stack, final map[string]string) []string {
+	var out []string
+	for _, s := range st.Services {
+		if s.Role != inventory.RoleDependency {
+			continue
+		}
+		reached, ok := version.Parse(final[s.Name])
+		if !ok {
+			continue
+		}
+		highest := map[int]string{}
+		var majors []int
+		for _, r := range s.Available {
+			if v, ok := version.Parse(r.Tag); ok && v.Nums[0] > reached.Nums[0] {
+				if _, seen := highest[v.Nums[0]]; !seen {
+					majors = append(majors, v.Nums[0])
+				}
+				highest[v.Nums[0]] = r.Tag
+			}
+		}
+		if len(majors) == 0 {
+			continue
+		}
+		var tags []string
+		for _, m := range majors {
+			tags = append(tags, highest[m])
+		}
+		why := fmt.Sprintf("aucune note de %s ne cite de version de %s", clients(st, s.Name), s.Name)
+		for _, step := range p.Steps {
+			for _, f := range step.Facts {
+				if f.Category == "supported_dependency" && f.Dependency == s.Name && f.MaxVersion != "" {
+					why = fmt.Sprintf("%s %s supporte %s jusqu'à %s", f.Service, f.Version, s.Name, f.MaxVersion)
+				}
+			}
+		}
+		verb := "existe mais n'est pas proposé"
+		if len(tags) > 1 {
+			verb = "existent mais ne sont pas proposés"
+		}
+		out = append(out, fmt.Sprintf("%s %s %s : %s ; %s reste en %d.", s.Name, strings.Join(tags, ", "), verb, why, s.Name, reached.Nums[0]))
+	}
+	return out
+}
+
+func clients(st *inventory.Stack, dependency string) string {
+	var names []string
+	for _, s := range st.Services {
+		if slices.Contains(s.DependsOn, dependency) {
+			names = append(names, s.Name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// compareTo compares v with bound on the components bound gives: "17.2" is within a bound "17".
+func compareTo(v, bound string) (int, bool) {
+	a, ok1 := version.Parse(v)
+	b, ok2 := version.Parse(bound)
+	if !ok1 || !ok2 {
+		return 0, false
+	}
+	for i, n := range b.Nums {
+		if i >= len(a.Nums) {
+			return -1, true
+		}
+		if a.Nums[i] != n {
+			return a.Nums[i] - n, true
+		}
+	}
+	return 0, true
+}
+
+// checkIntervals checks that after step n each dependency stays in the range its client supports at the client's version of that step.
+func checkIntervals(p *Plan, n int, changes []Change, current map[string]string, services map[string]*inventory.Service) {
+	latest := map[[3]string]Fact{}
+	for _, s := range p.Steps {
+		for _, f := range s.Facts {
+			if f.Category != "supported_dependency" && f.Category != "min_dependency" || services[f.Dependency] == nil {
+				continue
+			}
+			if c, ok := compareTo(current[f.Service], f.Version); f.Version != "" && (!ok || c < 0) {
+				continue
+			}
+			key := [3]string{f.Service, f.Dependency, f.Category}
+			if prev, seen := latest[key]; !seen || prev.Version == "" || notes.Less(mustParse(prev.Version), mustParse(f.Version)) {
+				latest[key] = f
+			}
+		}
+	}
+	for _, c := range changes {
+		svc := services[c.Service]
+		if svc == nil || svc.Role != inventory.RoleDependency || Level(c.From, c.To) != "major" {
+			continue
+		}
+		cited := false
+		for k := range latest {
+			cited = cited || k[1] == c.Service
+		}
+		if !cited {
+			p.incomplete("étape %d : %s est une dépendance ; sa majeure ne change pas sans un fait cité de l'application qui la supporte à sa version de cette étape", n, c.Service)
+		}
+	}
+	for _, f := range latest {
+		dep := current[f.Dependency]
+		if c, ok := compareTo(dep, f.MinVersion); f.MinVersion != "" && ok && c < 0 {
+			p.incomplete("étape %d : %s %s exige %s %s au moins, le plan le laisse en %s", n, f.Service, current[f.Service], f.Dependency, f.MinVersion, dep)
+		}
+		if c, ok := compareTo(dep, f.MaxVersion); f.MaxVersion != "" && ok && c > 0 {
+			p.incomplete("étape %d : %s %s supporte %s jusqu'à %s, le plan le passe en %s", n, f.Service, current[f.Service], f.Dependency, f.MaxVersion, dep)
+		}
+	}
+}
+
+func mustParse(v string) version.V {
+	parsed, _ := version.Parse(v)
+	return parsed
 }
 
 func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Service) {
@@ -222,26 +351,13 @@ func engine(image string) string {
 	return ""
 }
 
-func checkMajor(p *Plan, n int, c Change, svc *inventory.Service, upto []Step) {
-	from, ok1 := version.Parse(c.From)
-	to, ok2 := version.Parse(c.To)
-	if !ok1 || !ok2 || from.Nums[0] == to.Nums[0] {
+func checkDatabase(p *Plan, n int, c Change, svc *inventory.Service, s *Step) {
+	if Level(c.From, c.To) != "major" {
 		return
 	}
-	if db := engine(svc.Image); db != "" && !slices.ContainsFunc(upto[n-1].Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service }) {
+	if db := engine(svc.Image); db != "" && !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service }) {
 		p.incomplete("étape %d : %s change de majeure (%s vers %s) sans db_dump_restore, obligatoire pour %s", n, c.Service, c.From, c.To, db)
 	}
-	if svc.Role != inventory.RoleDependency {
-		return
-	}
-	for _, s := range upto {
-		for _, f := range s.Facts {
-			if (f.Category == "supported_dependency" || f.Category == "min_dependency") && f.Dependency == c.Service {
-				return
-			}
-		}
-	}
-	p.incomplete("étape %d : %s est une dépendance ; sa majeure ne change pas sans un fait cité de l'application qui la supporte", n, c.Service)
 }
 
 func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
@@ -252,11 +368,11 @@ func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
 			p.incomplete("étape %d : fait %s retiré (catégorie inconnue ou citation hors de 20 à 1000 caractères)", n, f.Category)
 			continue
 		}
-		url := ""
+		url, tag := "", ""
 		for _, s := range st.Services {
 			for _, note := range s.Notes {
 				if url == "" && strings.Contains(note.Body, f.Quote) {
-					url = note.URL
+					url, tag = note.URL, note.Tag
 				}
 			}
 		}
@@ -265,6 +381,9 @@ func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
 			continue
 		}
 		f.SourceURL = url
+		if f.Version == "" {
+			f.Version = tag
+		}
 		kept = append(kept, f)
 	}
 	return kept

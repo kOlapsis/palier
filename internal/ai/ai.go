@@ -27,6 +27,8 @@ Rules:
 - The stack follows its application. A service that another service depends on is a dependency; the client without a client is the application. A dependency goes to the highest version the application states it supports, never to the newest that exists; without a quoted statement of the application it stays on its running major and only takes patches and minors.
 - Order the steps so that at every step each dependency stays inside the range the application, at its version of that step, supports.
 - One version per service per step. Each "to" is a version from the available list of that service.
+- The application moves one minor version per step, to the highest patch of that minor, unless the notes state that a direct upgrade is supported.
+- In dependency facts, "service" is the client service and "dependency" the dependency service, both named as in the stack.
 - Use only the operations of the schema. Each change needs a set_image of that service to that tag with the same image, followed by a recreate of the service. Add a wait_stable when the service needs time to settle. Never write a command.
 - A major upgrade of PostgreSQL, MySQL or MariaDB needs db_dump_restore.
 - Stop a client during a step (stop_during) when a quoted fact says it cannot run while its dependency changes.

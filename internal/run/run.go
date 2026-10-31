@@ -44,19 +44,21 @@ type Engine struct {
 
 // Checkpoint is the state of a stack before its first modification.
 type Checkpoint struct {
-	Project  compose.Project     `json:"project"`
-	Files    []compose.FileState `json:"files"`
-	Services []Saved             `json:"services"`
+	Project       compose.Project     `json:"project"`
+	Files         []compose.FileState `json:"files"`
+	Services      []Saved             `json:"services"`
+	Snapshots     []Snapshot          `json:"snapshots"`
+	SnapshotsDone bool                `json:"snapshots_done"`
 }
 
 // Saved is a service as it ran before the run.
 type Saved struct {
-	Name    string   `json:"name"`
-	Image   string   `json:"image"`
-	Tag     string   `json:"tag"`
-	ImageID string   `json:"image_id"`
-	Digest  string   `json:"digest"`
-	Volumes []string `json:"volumes"`
+	Name    string            `json:"name"`
+	Image   string            `json:"image"`
+	Tag     string            `json:"tag"`
+	ImageID string            `json:"image_id"`
+	Digest  string            `json:"digest"`
+	Mounts  []inventory.Mount `json:"mounts"`
 }
 
 // ErrBusy means a run is already in progress on the stack.
@@ -128,7 +130,16 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		e.finish(id, Abandoned, fmt.Errorf("point de reprise impossible : %w", err))
 		return
 	}
-	e.event(id, "point de reprise : fichiers Compose %d, services %d", len(cp.Files), len(cp.Services))
+	if err := e.modified(id); err != nil {
+		e.finish(id, Abandoned, err)
+		return
+	}
+	if err := e.snapshot(ctx, id, st, cp, changedServices(p)); err != nil {
+		e.event(id, "copie des volumes impossible : %v", err)
+		e.rollback(context.WithoutCancel(ctx), id, cp, err)
+		return
+	}
+	e.event(id, "point de reprise : fichiers Compose %d, services %d, copies de volumes %d", len(cp.Files), len(cp.Services), len(cp.Snapshots))
 	for i, step := range p.Steps {
 		e.event(id, "étape %d sur %d : %s", i+1, len(p.Steps), describe(step))
 		if err := e.step(ctx, id, st, cp, step); err != nil {
@@ -138,7 +149,20 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		}
 		e.event(id, "étape %d vérifiée", i+1)
 	}
+	e.dropSnapshots(ctx, id, cp)
 	e.finish(id, Done, nil)
+}
+
+func changedServices(p *plan.Plan) []string {
+	var out []string
+	for _, s := range p.Steps {
+		for _, c := range s.Changes {
+			if !slices.Contains(out, c.Service) {
+				out = append(out, c.Service)
+			}
+		}
+	}
+	return out
 }
 
 func firstChanges(p *plan.Plan, service string) []plan.Change {
@@ -174,7 +198,7 @@ func checkpoint(st *inventory.Stack) (*Checkpoint, error) {
 		cp.Files = append(cp.Files, fs)
 	}
 	for _, s := range st.Services {
-		cp.Services = append(cp.Services, Saved{Name: s.Name, Image: s.Image, Tag: s.Tag, ImageID: s.ImageID, Digest: s.Digest, Volumes: s.Volumes})
+		cp.Services = append(cp.Services, Saved{Name: s.Name, Image: s.Image, Tag: s.Tag, ImageID: s.ImageID, Digest: s.Digest, Mounts: s.Mounts})
 	}
 	return cp, nil
 }
@@ -194,9 +218,6 @@ func (e *Engine) modified(id int64) error {
 }
 
 func (e *Engine) step(ctx context.Context, id int64, st *inventory.Stack, cp *Checkpoint, step plan.Step) error {
-	if err := e.modified(id); err != nil {
-		return err
-	}
 	stopped := dependencyOrder(st, step.StopDuring)
 	slices.Reverse(stopped)
 	for _, name := range stopped {
@@ -385,6 +406,7 @@ func (e *Engine) rollback(ctx context.Context, id int64, cp *Checkpoint, cause e
 		e.finish(id, Failed, fmt.Errorf("%v ; retour arrière : %w", cause, err))
 		return
 	}
+	e.dropSnapshots(ctx, id, cp)
 	e.finish(id, RolledBack, cause)
 }
 
@@ -395,9 +417,14 @@ func (e *Engine) restore(ctx context.Context, id int64, cp *Checkpoint) error {
 		}
 		e.event(id, "%s restauré", f.Path)
 	}
+	if cp.SnapshotsDone {
+		if err := e.restoreSnapshots(ctx, id, cp); err != nil {
+			return err
+		}
+	}
 	for _, s := range cp.Services {
 		q := url.Values{"repo": {s.Image}, "tag": {s.Tag}}
-		if err := e.Docker.Post(ctx, "/images/"+s.ImageID+"/tag?"+q.Encode(), nil); err != nil {
+		if err := e.Docker.Post(ctx, "/images/"+s.ImageID+"/tag?"+q.Encode(), nil, nil); err != nil {
 			return err
 		}
 	}

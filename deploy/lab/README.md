@@ -35,7 +35,7 @@ All commands are `deploy/lab/lab <command>`.
 | `up` | Creates what is missing (base image in cache, storage pools, system disk on top of the base image, cloud-init seed with your key and the static address, NAT network, machine), then provisions it with the `docker`, `palier_stack` and `lab_apps` roles. A second `up` changes nothing. |
 | `status` | Prints the state of the machine, Palier, webhook-tester and each stack of `topology.yml`, checked over HTTP from the host. Exits 0 only if all of them are in service, 1 otherwise. |
 | `ssh [cmd]` | Opens a shell on the machine as `debian`, or runs `cmd` there. |
-| `scenario <name>` | Copies `scenarios/common.sh` and `scenarios/<name>.sh` to the machine and runs them as root: the replayable scenarios of `EVIDENCE.md` (`whoami-apply`, `whoami-missing-tag`, `whoami-exits`, `whoami-kill`, and `whoami-reset` to put whoami back to v1.10.1 between them). |
+| `scenario <name>` | Copies `scenarios/common.sh` and `scenarios/<name>.sh` to the machine and runs them as root: the replayable scenarios of `EVIDENCE.md` (`whoami-apply`, `whoami-missing-tag`, `whoami-exits`, `whoami-kill`, `whoami-reset` to put whoami back to v1.10.1 between them, `outline-apply` and `outline-fail-step3`; `reset-apps` puts Outline back to its start with its three seeded documents). |
 | `reset-apps` | Stops the stacks of `topology.yml`, deletes their data and their compose files, then starts them again at the versions of `versions.yml` with fresh data (and, for GitLab and Immich, the seed: a project, an account). Use it to replay an upgrade scenario. |
 | `down` | Deletes the machine, its disks, its seed, its storage pool and its network. Only the base image stays, in `~/.cache/palier-lab` and in the `palier-lab-base` pool, so the next `up` downloads nothing. |
 
@@ -99,7 +99,7 @@ The stacks are Compose projects named after their folder and started from `/apps
 
 ### nginx 1.27.0, whoami v1.10.1 and Outline 1.10.1 (small set)
 
-nginx and whoami are single containers without data. Outline migrates its database when it starts, so its update changes data; it depends on PostgreSQL 16.4, behind on its own 16.x line, and on Redis 7.2.4.
+nginx and whoami are single containers without data. Outline migrates its database when it starts, so its update changes data; it depends on PostgreSQL 16.4, behind on its own 16.x line, and on Redis 7.2.4. The `lab_apps` role writes three documents into its database (`files/seed-outline.sql`), which the scenarios count after each upgrade.
 
 ### lab-observed and lab-republished
 

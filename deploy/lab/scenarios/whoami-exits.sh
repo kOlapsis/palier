@@ -5,7 +5,7 @@ printf 'FROM busybox:1.37.0\nCMD ["sh", "-c", "echo whoami cassé; exit 1"]\n' |
 echo "image locale docker.io/traefik/whoami:$target : quitte à l'instant"
 echo "avant : $(whoami_image)"
 start=$(date +%s)
-$PALIER exec -T palier /palier apply whoami || true
+$PALIER exec -T palier /palier apply whoami </dev/null || true
 echo "durée : $(( $(date +%s) - start )) s"
 echo "après : $(whoami_image)"
 grep image: /apps/whoami/compose.yaml

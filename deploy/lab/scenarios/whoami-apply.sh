@@ -2,7 +2,7 @@
 echo "avant : $(whoami_image)"
 stat -c 'compose.yaml %U:%G %a' /apps/whoami/compose.yaml
 start=$(date +%s)
-$PALIER exec -T palier /palier apply whoami || true
+$PALIER exec -T palier /palier apply whoami </dev/null || true
 echo "durée : $(( $(date +%s) - start )) s"
 echo "après : $(whoami_image)"
 stat -c 'compose.yaml %U:%G %a' /apps/whoami/compose.yaml

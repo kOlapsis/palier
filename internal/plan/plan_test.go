@@ -107,3 +107,52 @@ func TestAutomatic(t *testing.T) {
 		}
 	}
 }
+
+func TestIntervalsAtEachStep(t *testing.T) {
+	support := Fact{Category: "supported_dependency", Service: "outline", Version: "1.12.0", Dependency: "postgres", MinVersion: "14", MaxVersion: "17", Quote: "supports PostgreSQL 14 to 17"}
+	pg := step(Change{"postgres", "16.4", "17.6"})
+	pg.Operations = []Operation{{Op: "db_dump_restore", Service: "postgres", Engine: "postgres", ToImage: "postgres", ToTag: "17.6"}}
+	// postgres 17 before Outline reaches 1.12, the first version that supports it: refused.
+	early := &Plan{Steps: []Step{pg, step(Change{"outline", "1.10.1", "1.12.0"})}}
+	early.Steps[1].Facts = []Fact{support}
+	Validate(early, outline())
+	if !strings.Contains(reasons(early), "à sa version de cette étape") {
+		t.Fatalf("early major accepted:\n%s", reasons(early))
+	}
+	// postgres 18 after Outline 1.12, beyond what it supports: refused.
+	pg18 := step(Change{"postgres", "16.4", "18.1"})
+	beyond := &Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.12.0"}), pg18}}
+	beyond.Steps[0].Facts = []Fact{support}
+	Validate(beyond, outline())
+	if !strings.Contains(reasons(beyond), "supporte postgres jusqu'à 17") {
+		t.Fatalf("postgres 18 accepted:\n%s", reasons(beyond))
+	}
+	// a minimum the dependency does not reach yet: refused.
+	minimum := &Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.11.0"})}}
+	minimum.Steps[0].Facts = []Fact{{Category: "min_dependency", Service: "outline", Version: "1.11.0", Dependency: "redis", MinVersion: "7.4", Quote: "supports PostgreSQL 14 to 17"}}
+	Validate(minimum, outline())
+	if !strings.Contains(reasons(minimum), "exige redis 7.4 au moins") {
+		t.Fatalf("minimum not checked:\n%s", reasons(minimum))
+	}
+}
+
+func TestMajorAfterSupport(t *testing.T) {
+	support := Fact{Category: "supported_dependency", Service: "outline", Version: "1.12.0", Dependency: "redis", MinVersion: "7", MaxVersion: "8", Quote: "supports PostgreSQL 14 to 17"}
+	ok := &Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.12.0"}), step(Change{"redis", "7.2.4", "8.2.1"})}}
+	ok.Steps[0].Facts = []Fact{support}
+	Validate(ok, outline())
+	if len(ok.Incomplete) > 0 {
+		t.Fatal(reasons(ok))
+	}
+}
+
+func TestWithheldSaysWhy(t *testing.T) {
+	st := outline()
+	st.Services[0].DependsOn = []string{"postgres", "redis"}
+	p := &Plan{Steps: []Step{step(Change{"postgres", "16.4", "16.10"})}}
+	Validate(p, st)
+	got := strings.Join(p.Withheld, "\n")
+	if !strings.Contains(got, "postgres 17.6, 18.1 existent mais ne sont pas proposés : aucune note de outline ne cite de version de postgres ; postgres reste en 16.") || !strings.Contains(got, "redis 8.2.1 existe") {
+		t.Fatalf("withheld:\n%s", got)
+	}
+}

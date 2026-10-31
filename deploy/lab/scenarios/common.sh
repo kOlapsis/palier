@@ -6,3 +6,7 @@ DB=/var/lib/docker/volumes/palier_palier-data/_data/palier.db
 sql() { [ -e "$DB-wal" ] || { echo "Palier doit tourner"; exit 1; }; sqlite3 "$DB" "$@"; }
 whoami_image() { docker inspect whoami-whoami-1 --format '{{.Config.Image}} {{.State.Status}} restarts={{.RestartCount}}'; }
 last_run() { sql "SELECT id, status, error FROM runs ORDER BY id DESC LIMIT 1"; }
+outline_state() {
+	for s in outline postgres redis; do echo "  $s : $(docker inspect outline-$s-1 --format '{{.Config.Image}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}')"; done
+	echo "  documents : $(docker exec outline-postgres-1 psql -U outline -At -c "SELECT count(*) || ' : ' || string_agg(title, ', ' ORDER BY title) FROM documents")"
+}

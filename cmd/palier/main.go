@@ -208,6 +208,20 @@ func (a *app) stack(ctx context.Context, name string) (*inventory.Stack, error) 
 	return nil, fmt.Errorf("pas de stack Compose %q", name)
 }
 
+// build identifies this binary, so that a new version of the rules recomputes the stored plans.
+var build = func() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:8])
+}()
+
 func inputHash(st *inventory.Stack, cfg config.Config) string {
 	type svc struct {
 		Name, Version string
@@ -217,10 +231,11 @@ func inputHash(st *inventory.Stack, cfg config.Config) string {
 	in := struct {
 		Model    string
 		Prompt   string
+		Build    string
 		AI       bool
 		Files    map[string]string
 		Services []svc
-	}{Model: cfg.AIModel, Prompt: ai.Fingerprint, AI: cfg.AIKey != "", Files: map[string]string{}}
+	}{Model: cfg.AIModel, Prompt: ai.Fingerprint, Build: build, AI: cfg.AIKey != "", Files: map[string]string{}}
 	for _, f := range st.ConfigFiles {
 		data, _ := os.ReadFile(f)
 		in.Files[f] = string(data)
@@ -326,6 +341,29 @@ func (a *app) begin(ctx context.Context, st *inventory.Stack, author string, dry
 	return id, rec.Plan, err
 }
 
+// waitForScan returns at the next scan interval, on a rescan request, or as soon as a run started by another process has finished.
+func (a *app) waitForScan(ctx context.Context, rescan <-chan struct{}, last time.Time) {
+	deadline := time.After(a.cfg.ScanInterval)
+	tick := time.NewTicker(5 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-rescan:
+			return
+		case <-deadline:
+			return
+		case <-tick.C:
+			var finished sql.NullString
+			a.db.QueryRowContext(ctx, `SELECT max(finished) FROM runs`).Scan(&finished)
+			if t, err := time.Parse(time.RFC3339, finished.String); err == nil && t.After(last) {
+				return
+			}
+		}
+	}
+}
+
 func serve() error {
 	a, err := setup()
 	if err != nil {
@@ -407,11 +445,9 @@ func serve() error {
 					slog.Info("application automatique", "stack", st.Name, "run", id)
 				}
 			}
-			select {
-			case <-ctx.Done():
+			a.waitForScan(ctx, rescan, next.At)
+			if ctx.Err() != nil {
 				return
-			case <-rescan:
-			case <-time.After(a.cfg.ScanInterval):
 			}
 		}
 	}()

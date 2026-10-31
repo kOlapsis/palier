@@ -62,7 +62,9 @@ func TestPagesRender(t *testing.T) {
 		Runs:      func(string) ([]run.View, error) { return []run.View{{ID: 1, Status: "rolled_back"}}, nil },
 		Plan:      func(string) (*plan.Record, error) { return &plan.Record{Stack: "whoami", Source: "ai", Plan: p}, nil },
 		Postponed: func(string) time.Time { return time.Time{} },
-		Run:       func(int64) (*run.View, error) { return &run.View{ID: 1, Stack: "whoami", Status: "running", Events: []run.Event{{Message: "étape 1"}}}, nil },
+		Run: func(int64) (*run.View, error) {
+			return &run.View{ID: 1, Stack: "whoami", Status: "running", Events: []run.Event{{Message: "étape 1"}}}, nil
+		},
 	})
 	for path, want := range map[string]string{"/": "revenue en arrière", "/stacks/whoami": "Étape 1", "/runs/1": "étape 1", "/settings": "PALIER_AUTO"} {
 		r := httptest.NewRequest("GET", path, nil)

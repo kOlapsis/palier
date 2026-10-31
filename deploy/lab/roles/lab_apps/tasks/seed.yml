@@ -1,4 +1,23 @@
 ---
+- name: Seed Outline
+  when: "'outline' in topology.apps"
+  block:
+    - name: Wait for Outline to finish its migrations
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ topology.ports.outline }}/_health"
+      register: outline_health
+      until: outline_health.status == 200
+      retries: 60
+      delay: 5
+
+    - name: Write three documents into the Outline database
+      ansible.builtin.command: docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U outline -d outline
+      args:
+        chdir: /apps/outline
+        stdin: "{{ lookup('ansible.builtin.file', 'seed-outline.sql') }}"
+      register: outline_seed
+      changed_when: "'INSERT 0 1' in outline_seed.stdout or 'INSERT 0 3' in outline_seed.stdout"
+
 - name: Seed Immich
   when: "'immich' in topology.apps"
   block:

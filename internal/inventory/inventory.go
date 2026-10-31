@@ -45,7 +45,7 @@ type Service struct {
 	Healthcheck    bool         `json:"healthcheck"`
 	Health         string       `json:"health,omitempty"`
 	Restarts       int          `json:"restarts"`
-	Volumes        []string     `json:"volumes,omitempty"`
+	Mounts         []Mount      `json:"mounts,omitempty"`
 	DependsOn      []string     `json:"depends_on,omitempty"`
 	Role           string       `json:"role"`
 	Available      []Release    `json:"available,omitempty"`
@@ -59,6 +59,13 @@ type Service struct {
 	current      version.V
 	digests      []string
 	labelVersion string
+}
+
+// Mount is a volume or a host directory mounted in a service.
+type Mount struct {
+	Type        string `json:"type"`
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
 }
 
 // Release is a newer tag with its date: the publication of its release note, else the first push Palier saw.
@@ -189,10 +196,11 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 	svc.Source = img.Config.Labels["org.opencontainers.image.source"]
 	svc.ImageID = c.ImageID
 	for _, m := range d.Mounts {
-		if m.Type == "volume" {
-			svc.Volumes = append(svc.Volumes, m.Name+":"+m.Destination)
-		} else {
-			svc.Volumes = append(svc.Volumes, m.Source+":"+m.Destination)
+		switch m.Type {
+		case "volume":
+			svc.Mounts = append(svc.Mounts, Mount{Type: m.Type, Source: m.Name, Destination: m.Destination})
+		case "bind":
+			svc.Mounts = append(svc.Mounts, Mount{Type: m.Type, Source: m.Source, Destination: m.Destination})
 		}
 	}
 	return svc, nil
