@@ -1,0 +1,11 @@
+# Started by the Palier bench; version pinned in deploy/lab/versions.yml.
+name: uptimekuma
+
+services:
+  uptimekuma:
+    image: {{ uptimekuma.image }}:{{ uptimekuma.tag }}
+    restart: always
+    ports:
+      - "{{ topology.ports.uptimekuma }}:3001"
+    volumes:
+      - ./data:/app/data

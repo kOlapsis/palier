@@ -1,0 +1,18 @@
+# Started by the Palier bench; version pinned in deploy/lab/versions.yml.
+name: mysql
+
+services:
+  mysql:
+    image: {{ mysql.image }}:{{ mysql.tag }}
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: palier-lab-password
+      MYSQL_DATABASE: shop
+      MYSQL_USER: app
+      MYSQL_PASSWORD: palier-lab-password
+    volumes:
+      - data:/var/lib/mysql
+      - ./seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+
+volumes:
+  data: {}

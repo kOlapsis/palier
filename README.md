@@ -48,10 +48,10 @@ Un label `palier.hook.backup` sur un service donne une commande de sauvegarde, l
 - Il trouve les versions plus récentes au registre (Docker Hub, GHCR, registres OCI) et lit les notes de version GitHub, ainsi que les extraits de documentation de son catalogue.
 - L'IA propose un plan dans un vocabulaire fermé d'opérations : `set_image`, `compose_edit`, `recreate`, `stop`, `start`, `wait_stable`, `exec_check`, `db_dump_restore`. Le code vérifie le plan avant toute exécution : versions existantes, paliers obligatoires, une dépendance dans l'intervalle que son application cite à chaque étape, citations mot pour mot.
 - Il applique avec un point de reprise de toute la stack : fichiers Compose, images, copie des volumes. Il vérifie chaque étape (en service, stable, sans boucle de redémarrage, `healthy` si l'image a un HEALTHCHECK) et revient au point de reprise à tout échec, y compris après un redémarrage de Palier au milieu d'une exécution.
-- Il passe une base PostgreSQL d'une majeure à l'autre par export et réimport sur un volume neuf, sans jamais toucher à l'ancien.
+- Il passe une base PostgreSQL, MySQL ou MariaDB d'une majeure à l'autre par export et réimport sur un volume neuf, sans jamais toucher à l'ancien, et compare rôles, bases, tables, lignes, index et contraintes. Après un correctif de PostgreSQL qui change la bibliothèque C de l'image, il reconstruit les index des bases et met à jour leur version de collation.
 
 ## Ce qu'il ne fait pas
 
-Pas de comptes ni de rôles, pas d'agent ni de machine distante, pas de licence, pas d'autre alerte que le webhook, pas de nettoyage des images, pas de mise à jour de lui-même. MySQL et MariaDB n'ont pas encore de méthode d'export et de réimport : leurs majeures restent bloquées. Les identifiants de registre rangés dans un `credsStore` ou des `credHelpers` ne sont pas lus.
+Pas de comptes ni de rôles, pas d'agent ni de machine distante, pas de licence, pas d'autre alerte que le webhook, pas de nettoyage des images, pas de mise à jour de lui-même. Les autres moteurs de base n'ont pas de méthode d'export et de réimport : leurs majeures restent bloquées. Les identifiants de registre rangés dans un `credsStore` ou des `credHelpers` ne sont pas lus.
 
 Les preuves de chaque phase, jouées sur un banc avec un vrai Docker, sont dans `EVIDENCE.md`.

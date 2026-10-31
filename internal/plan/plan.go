@@ -416,12 +416,12 @@ func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Ser
 	}
 	if op.Op == "db_dump_restore" {
 		switch {
-		case op.Engine != "postgres":
+		case !slices.Contains(databases, op.Engine):
 			p.incomplete("étape %d : pas de méthode d'export et de réimport pour le moteur %q", n, op.Engine)
 		case op.ToTag == "":
 			p.incomplete("étape %d : db_dump_restore sans version cible", n)
-		case services[op.Service] != nil && engine(services[op.Service].Image) != "postgres":
-			p.incomplete("étape %d : db_dump_restore sur %s, qui n'est pas une base PostgreSQL", n, op.Service)
+		case services[op.Service] != nil && engine(services[op.Service].Image) != op.Engine:
+			p.incomplete("étape %d : db_dump_restore %s sur %s, dont l'image n'est pas une base %s", n, op.Engine, op.Service, op.Engine)
 		}
 	}
 	if svc := services[op.Service]; op.Op == "exec_check" && (svc == nil || catalog.For(svc.Image) == nil || catalog.For(svc.Image).Checks[op.CheckRef] == nil) {
@@ -583,13 +583,19 @@ func Fallback(st *inventory.Stack, why string) *Plan {
 			continue
 		}
 		step.Changes = append(step.Changes, Change{Service: s.Name, From: s.Version, To: target})
+		if db := engine(s.Image); db != "" && Level(s.Version, target) == "major" {
+			step.Operations = append(step.Operations, Operation{Op: "db_dump_restore", Service: s.Name, Engine: db, ToImage: s.Image, ToTag: target})
+			continue
+		}
 		step.Operations = append(step.Operations, Operation{Op: "set_image", Service: s.Name, Image: s.Image, Tag: target})
 		changed = append(changed, s.Name)
 	}
-	if len(changed) == 0 {
+	if len(step.Changes) == 0 {
 		return &Plan{}
 	}
-	step.Operations = append(step.Operations, Operation{Op: "recreate", Services: changed})
+	if len(changed) > 0 {
+		step.Operations = append(step.Operations, Operation{Op: "recreate", Services: changed})
+	}
 	return &Plan{Steps: []Step{step}}
 }
 

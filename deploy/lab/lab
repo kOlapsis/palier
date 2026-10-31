@@ -158,6 +158,7 @@ cmd_status() {
 		gitlab) path=/-/readiness ;;
 		vaultwarden) path=/alive ;;
 		outline) path=/_health ;;
+		pgcoll | mariadb | mysql) continue ;;
 		*) path=/ ;;
 		esac
 		check "$app" "$base:$(topo ports "$app")$path"

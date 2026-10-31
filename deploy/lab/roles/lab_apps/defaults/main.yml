@@ -14,3 +14,7 @@ lab_apps_files:
   - {name: nginx, files: [{src: nginx-compose.yaml.j2, dest: compose.yaml}]}
   - {name: whoami, files: [{src: whoami-compose.yaml.j2, dest: compose.yaml}]}
   - {name: outline, files: [{src: outline-compose.yaml.j2, dest: compose.yaml}]}
+  - {name: uptimekuma, files: [{src: uptimekuma-compose.yaml.j2, dest: compose.yaml}]}
+  - {name: pgcoll, files: [{src: pgcoll-compose.yaml.j2, dest: compose.yaml}, {src: pgcoll-seed.sql.j2, dest: seed.sql}]}
+  - {name: mariadb, files: [{src: mariadb-compose.yaml.j2, dest: compose.yaml}, {src: shop-seed.sql.j2, dest: seed.sql}]}
+  - {name: mysql, files: [{src: mysql-compose.yaml.j2, dest: compose.yaml}, {src: shop-seed.sql.j2, dest: seed.sql}]}

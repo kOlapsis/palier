@@ -1,0 +1,23 @@
+# Started by the Palier bench; versions pinned in deploy/lab/versions.yml.
+name: pgcoll
+
+services:
+  client:
+    image: {{ pgcoll.client_image }}
+    command: ["sleep", "infinity"]
+    restart: always
+    depends_on: [postgres]
+
+  postgres:
+    image: {{ pgcoll.image }}:{{ pgcoll.tag }}
+    restart: always
+    environment:
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: palier-lab-password
+      POSTGRES_DB: lab
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+
+volumes:
+  pg-data: {}

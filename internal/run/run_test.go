@@ -2,6 +2,7 @@ package run
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kolapsis/palier/internal/inventory"
@@ -42,5 +43,27 @@ func TestCompareSummaries(t *testing.T) {
 	}
 	if got := summaryLine(before); got != "rôles 1, bases 1, tables 1, lignes 3, index 1, contraintes 1" {
 		t.Fatal(got)
+	}
+}
+
+func TestSummarizeCountsRows(t *testing.T) {
+	query := func(db, sql string) ([]string, error) {
+		switch {
+		case strings.HasPrefix(sql, "roles"):
+			return []string{"app@%"}, nil
+		case strings.HasPrefix(sql, "dbs"):
+			return []string{"shop"}, nil
+		case strings.HasPrefix(sql, "idx"):
+			return []string{"orders.PRIMARY"}, nil
+		}
+		return nil, nil
+	}
+	counted := func(db string) ([]string, error) { return []string{"orders=3"}, nil }
+	lines, err := summarize(query, "roles", "dbs", "", func(string) []string { return []string{"", "idx", "cons"} }, counted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := summaryLine(lines); got != "rôles 1, bases 1, tables 1, lignes 3, index 1, contraintes 0" {
+		t.Fatal(got, lines)
 	}
 }

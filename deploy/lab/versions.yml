@@ -84,3 +84,36 @@ republished:
     registry serves another content for 2.3.0, as after a republished tag.
     Palier must keep 2.3.0 as the version in service and not propose 2.3.0
     again.
+
+uptimekuma:
+  image: docker.io/louislam/uptime-kuma
+  tag: 2.5.5
+  why: >-
+    One container on SQLite with a HEALTHCHECK and the source label, and only
+    patch releases ahead (2.5.6, 2.5.7, 2.5.8) whose notes list bug and
+    security fixes: the stack PALIER_AUTO=patch should apply without a click.
+
+pgcoll:
+  image: docker.io/library/postgres
+  tag: 16.4
+  client_image: docker.io/library/busybox:1.36.1
+  why: >-
+    PostgreSQL 16.4 is built on Debian bookworm (glibc 2.36), 16.14 on trixie
+    (glibc 2.41): the patch upgrade changes the collation version of the
+    database, which has an index on text. As a dependency of its client
+    without any quoted fact, it stays on 16; Palier must reindex and refresh
+    the collation version itself.
+
+mariadb:
+  image: docker.io/library/mariadb
+  tag: 10.11.9
+  why: >-
+    A MariaDB alone, the application of its stack, with a seeded database
+    (two tables, a unique key, a foreign key): its plan goes to the next
+    major through db_dump_restore.
+
+mysql:
+  image: docker.io/library/mysql
+  tag: 8.4.2
+  why: >-
+    The same for MySQL, from 8.4 to the next major.

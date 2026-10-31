@@ -31,9 +31,6 @@ const pgTables = `SELECT table_schema || '.' || table_name || '=' || (xpath('/ro
 // new major started on it, import, comparison of roles, databases, tables, row counts, indexes and constraints.
 // The old volume is left as it was.
 func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack, cp *Checkpoint, op plan.Operation) error {
-	if op.Engine != "postgres" {
-		return fmt.Errorf("pas de méthode d'export et de réimport pour le moteur %q", op.Engine)
-	}
 	svc := service(st, op.Service)
 	if svc == nil {
 		return fmt.Errorf("service %s introuvable", op.Service)
@@ -57,11 +54,9 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	if err := e.Docker.Get(ctx, "/containers/"+svc.Container+"/json", &detail); err != nil {
 		return err
 	}
-	user := "postgres"
-	for _, env := range detail.Config.Env {
-		if v, ok := strings.CutPrefix(env, "POSTGRES_USER="); ok && v != "" {
-			user = v
-		}
+	m, err := e.method(ctx, cp.Project, svc.Name, op.Engine, detail.Config.Env)
+	if err != nil {
+		return err
 	}
 
 	clients := dependencyOrder(st, clientsOf(st, svc.Name))
@@ -72,7 +67,10 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 			return err
 		}
 	}
-	before, err := e.pgSummary(ctx, cp.Project, svc.Name, user)
+	if err := e.waitReady(ctx, cp.Project, m); err != nil {
+		return err
+	}
+	before, err := m.summary(ctx)
 	if err != nil {
 		return fmt.Errorf("lecture de la base avant l'export : %w", err)
 	}
@@ -84,7 +82,10 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	if err != nil {
 		return err
 	}
-	err = compose.RunIO(ctx, e.DockerHost, cp.Project, nil, f, "exec", "-T", svc.Name, "pg_dumpall", "-U", user)
+	dump, err := m.dump(ctx)
+	if err == nil {
+		err = compose.RunIO(ctx, e.DockerHost, cp.Project, nil, f, m.exec(dump)...)
+	}
 	f.Close()
 	if err != nil {
 		return fmt.Errorf("export de %s : %w", svc.Name, err)
@@ -137,7 +138,7 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "up", "-d", "--no-deps", svc.Name); err != nil {
 		return err
 	}
-	if err := e.verify(ctx, id, cp.Project.Name, []string{svc.Name}, 5*time.Second); err != nil {
+	if err := e.waitReady(ctx, cp.Project, m); err != nil {
 		return err
 	}
 	in, err := os.Open(dumpPath)
@@ -145,12 +146,12 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 		return err
 	}
 	var out bytes.Buffer
-	err = compose.RunIO(ctx, e.DockerHost, cp.Project, in, &out, "exec", "-T", svc.Name, "psql", "-q", "-v", "ON_ERROR_STOP=0", "-U", user, "-d", "postgres")
+	err = compose.RunIO(ctx, e.DockerHost, cp.Project, in, &out, m.exec(m.restore)...)
 	in.Close()
 	if err != nil {
 		return fmt.Errorf("réimport dans %s : %w", svc.Name, err)
 	}
-	after, err := e.pgSummary(ctx, cp.Project, svc.Name, user)
+	after, err := m.summary(ctx)
 	if err != nil {
 		return fmt.Errorf("lecture de la base après le réimport : %w", err)
 	}
@@ -218,47 +219,169 @@ func (e *Engine) dataPath(ctx context.Context, image string) (string, error) {
 	return "", nil
 }
 
-// pgSummary lists roles, databases, and the tables of each database with their row counts.
-func (e *Engine) pgSummary(ctx context.Context, p compose.Project, svc, user string) ([]string, error) {
-	query := func(db, sql string) ([]string, error) {
+// dbMethod holds the commands of one database engine, run in its container through docker compose exec.
+type dbMethod struct {
+	service string
+	env     []string
+	restore []string
+	ready   []string
+	dump    func(ctx context.Context) ([]string, error)
+	summary func(ctx context.Context) ([]string, error)
+}
+
+func (m *dbMethod) exec(cmd []string) []string {
+	args := []string{"exec", "-T"}
+	for _, e := range m.env {
+		args = append(args, "-e", e)
+	}
+	return append(append(args, m.service), cmd...)
+}
+
+func envValue(env []string, names ...string) string {
+	for _, name := range names {
+		for _, e := range env {
+			if v, ok := strings.CutPrefix(e, name+"="); ok && v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
+const mysqlSystem = "('mysql', 'information_schema', 'performance_schema', 'sys')"
+
+// method returns the export, import, readiness and comparison commands of engine for the service in its container.
+func (e *Engine) method(ctx context.Context, p compose.Project, service, engine string, env []string) (*dbMethod, error) {
+	m := &dbMethod{service: service}
+	run := func(cmd ...string) ([]string, error) {
 		var out bytes.Buffer
-		if err := compose.RunIO(ctx, e.DockerHost, p, nil, &out, "exec", "-T", svc, "psql", "-U", user, "-d", db, "-At", "-c", sql); err != nil {
+		if err := compose.RunIO(ctx, e.DockerHost, p, nil, &out, m.exec(cmd)...); err != nil {
 			return nil, err
 		}
 		return strings.Fields(out.String()), nil
 	}
-	roles, err := query("postgres", `SELECT rolname FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY 1`)
-	if err != nil {
-		return nil, err
+	switch engine {
+	case "postgres":
+		user := envValue(env, "POSTGRES_USER")
+		if user == "" {
+			user = "postgres"
+		}
+		m.restore = []string{"psql", "-q", "-v", "ON_ERROR_STOP=0", "-U", user, "-d", "postgres"}
+		m.ready = []string{"pg_isready", "-U", user, "-h", "127.0.0.1"}
+		m.dump = func(context.Context) ([]string, error) { return []string{"pg_dumpall", "-U", user}, nil }
+		m.summary = func(context.Context) ([]string, error) {
+			return summarize(func(db, sql string) ([]string, error) { return run("psql", "-U", user, "-d", db, "-At", "-c", sql) },
+				`SELECT rolname FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY 1`,
+				`SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY 1`, "postgres",
+				func(db string) []string { return []string{pgTables, pgIndexes, pgConstraints} })
+		}
+	case "mysql", "mariadb":
+		password := envValue(env, "MARIADB_ROOT_PASSWORD", "MYSQL_ROOT_PASSWORD")
+		if password == "" {
+			return nil, fmt.Errorf("%s n'a pas de mot de passe root dans son environnement : Palier ne peut pas l'exporter", service)
+		}
+		client, dumper := "mysql", "mysqldump"
+		if engine == "mariadb" {
+			client, dumper = "mariadb", "mariadb-dump"
+		}
+		m.env = []string{"MYSQL_PWD=" + password}
+		m.restore = []string{client, "-uroot"}
+		m.ready = []string{client, "-uroot", "-h", "127.0.0.1", "--protocol=TCP", "-e", "SELECT 1"}
+		sqlQuery := func(_, sql string) ([]string, error) { return run(client, "-uroot", "-N", "-B", "-e", sql) }
+		databases := "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN " + mysqlSystem + " ORDER BY 1"
+		m.dump = func(context.Context) ([]string, error) {
+			dbs, err := sqlQuery("", databases)
+			if err != nil || len(dbs) == 0 {
+				return nil, fmt.Errorf("liste des bases de %s : %v", service, err)
+			}
+			return append([]string{dumper, "-uroot", "--single-transaction", "--routines", "--events", "--triggers", "--databases"}, dbs...), nil
+		}
+		m.summary = func(context.Context) ([]string, error) {
+			return summarize(sqlQuery,
+				"SELECT CONCAT(user, '@', host) FROM mysql.user WHERE user NOT IN ('root', 'mysql.sys', 'mysql.session', 'mysql.infoschema', 'mariadb.sys', 'healthcheck') ORDER BY 1",
+				databases, "",
+				func(db string) []string {
+					return []string{
+						"",
+						"SELECT DISTINCT CONCAT(table_name, '.', index_name) FROM information_schema.statistics WHERE table_schema = '" + db + "' ORDER BY 1",
+						"SELECT CONCAT(table_name, '.', constraint_name, '.', constraint_type) FROM information_schema.table_constraints WHERE table_schema = '" + db + "' ORDER BY 1",
+					}
+				}, func(db string) ([]string, error) {
+					tables, err := sqlQuery("", "SELECT table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema = '"+db+"' ORDER BY 1")
+					if err != nil {
+						return nil, err
+					}
+					var out []string
+					for _, t := range tables {
+						n, err := sqlQuery("", "SELECT COUNT(*) FROM `"+db+"`.`"+t+"`")
+						if err != nil || len(n) == 0 {
+							return nil, fmt.Errorf("comptage de %s.%s : %v", db, t, err)
+						}
+						out = append(out, t+"="+n[0])
+					}
+					return out, nil
+				})
+		}
+	default:
+		return nil, fmt.Errorf("pas de méthode d'export et de réimport pour le moteur %q", engine)
 	}
-	dbs, err := query("postgres", `SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY 1`)
+	return m, nil
+}
+
+// summarize lists roles, databases and, for each database, the result of each query of perDB; counted, when given,
+// returns the tables of a database with their exact row counts instead of the first query.
+func summarize(query func(db, sql string) ([]string, error), roles, databases, adminDB string, perDB func(db string) []string, counted ...func(db string) ([]string, error)) ([]string, error) {
+	names, err := query(adminDB, roles)
 	if err != nil {
 		return nil, err
 	}
 	var lines []string
-	for _, r := range roles {
+	for _, r := range names {
 		lines = append(lines, "role "+r)
+	}
+	dbs, err := query(adminDB, databases)
+	if err != nil {
+		return nil, err
 	}
 	for _, db := range dbs {
 		lines = append(lines, "database "+db)
-		tables, err := query(db, pgTables)
-		if err != nil {
-			return nil, err
-		}
-		for _, t := range tables {
-			lines = append(lines, "table "+db+"."+t)
-		}
-		for kind, sql := range map[string]string{"index": pgIndexes, "constraint": pgConstraints} {
-			names, err := query(db, sql)
+		for i, sql := range perDB(db) {
+			var rows []string
+			if i == 0 && len(counted) > 0 {
+				rows, err = counted[0](db)
+			} else {
+				rows, err = query(db, sql)
+			}
 			if err != nil {
 				return nil, err
 			}
-			for _, n := range names {
-				lines = append(lines, kind+" "+db+"."+n)
+			kind := []string{"table", "index", "constraint"}[i]
+			for _, r := range rows {
+				lines = append(lines, kind+" "+db+"."+r)
 			}
 		}
 	}
 	return lines, nil
+}
+
+// waitReady waits until the database of the new container accepts connections over TCP, which its first-start
+// initialisation server does not.
+func (e *Engine) waitReady(ctx context.Context, p compose.Project, m *dbMethod) error {
+	deadline := time.Now().Add(5 * time.Minute)
+	for {
+		err := compose.RunIO(ctx, e.DockerHost, p, nil, &bytes.Buffer{}, m.exec(m.ready)...)
+		if err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%s n'accepte pas de connexion après 5 min : %w", m.service, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+	}
 }
 
 func summaryLine(lines []string) string {
@@ -299,4 +422,35 @@ func compareSummaries(before, after []string) string {
 		diffs = append(diffs[:5], fmt.Sprintf("et %d autres différences", len(diffs)-5))
 	}
 	return strings.Join(diffs, ", ")
+}
+
+const pgStaleCollations = `SELECT datname FROM pg_database WHERE datallowconn AND datcollversion IS NOT NULL AND datcollversion <> pg_database_collation_actual_version(oid) ORDER BY 1`
+
+// refreshCollations rebuilds the indexes of every database whose collation version no longer matches the C library of
+// the image, then records the new version, as PostgreSQL asks after such a change.
+func (e *Engine) refreshCollations(ctx context.Context, id int64, cp *Checkpoint, svc *inventory.Service) error {
+	var detail docker.ContainerDetail
+	if err := e.Docker.Get(ctx, "/containers/"+svc.Container+"/json", &detail); err != nil {
+		return nil
+	}
+	user := "postgres"
+	for _, env := range detail.Config.Env {
+		if v, ok := strings.CutPrefix(env, "POSTGRES_USER="); ok && v != "" {
+			user = v
+		}
+	}
+	var out bytes.Buffer
+	if err := compose.RunIO(ctx, e.DockerHost, cp.Project, nil, &out, "exec", "-T", svc.Name, "psql", "-U", user, "-d", "postgres", "-At", "-c", pgStaleCollations); err != nil {
+		return nil
+	}
+	for _, db := range strings.Fields(out.String()) {
+		e.event(id, "%s : la base %s a une version de collation périmée, REINDEX puis REFRESH COLLATION VERSION", svc.Name, db)
+		quoted := `"` + strings.ReplaceAll(db, `"`, `""`) + `"`
+		for _, sql := range []string{"REINDEX DATABASE " + quoted, "ALTER DATABASE " + quoted + " REFRESH COLLATION VERSION"} {
+			if err := compose.RunIO(ctx, e.DockerHost, cp.Project, nil, &bytes.Buffer{}, "exec", "-T", svc.Name, "psql", "-v", "ON_ERROR_STOP=1", "-U", user, "-d", db, "-c", sql); err != nil {
+				return fmt.Errorf("%s sur %s : %w", sql, db, err)
+			}
+		}
+	}
+	return nil
 }

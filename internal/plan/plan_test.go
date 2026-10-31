@@ -169,7 +169,7 @@ func TestDumpRestoreChecked(t *testing.T) {
 	}
 	mysql := &Plan{Steps: []Step{{Risk: "attention", Reversible: "yes", Facts: []Fact{support},
 		Changes:    []Change{{"postgres", "16.4", "18.1"}},
-		Operations: []Operation{{Op: "db_dump_restore", Service: "postgres", Engine: "mysql", ToTag: "18.1"}}}}}
+		Operations: []Operation{{Op: "db_dump_restore", Service: "postgres", Engine: "oracle", ToTag: "18.1"}}}}}
 	Validate(mysql, outline())
 	if !strings.Contains(reasons(mysql), "pas de méthode") {
 		t.Fatal(reasons(mysql))
@@ -213,5 +213,14 @@ func TestNormalize(t *testing.T) {
 	Validate(p, outline())
 	if len(p.Incomplete) > 0 || p.Steps[0].Changes[0].From != "7.2.4" {
 		t.Fatalf("%v %+v", p.Incomplete, p.Steps[0].Changes[0])
+	}
+}
+
+func TestFallbackDatabaseMajor(t *testing.T) {
+	st := &inventory.Stack{Services: []*inventory.Service{{Name: "db", Role: inventory.RoleApplication, Image: "docker.io/library/mariadb", Version: "10.11.9", Available: rel("10.11.14", "11.8.3")}}}
+	p := Fallback(st, "x")
+	Validate(p, st)
+	if len(p.Incomplete) > 0 || p.Steps[0].Operations[0].Op != "db_dump_restore" || p.Steps[0].Operations[0].Engine != "mariadb" {
+		t.Fatalf("%v %+v", p.Incomplete, p.Steps[0].Operations)
 	}
 }

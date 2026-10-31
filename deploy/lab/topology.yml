@@ -12,7 +12,7 @@ vm:
 # The stacks started under /apps: the small set (nginx, whoami, outline)
 # and the large set (gitlab, immich, vaultwarden). GitLab keeps every image
 # of its upgrade path, about 3 GB each, hence the disk.
-apps: [nginx, whoami, outline, gitlab, immich, vaultwarden]
+apps: [nginx, whoami, outline, gitlab, immich, vaultwarden, uptimekuma, pgcoll, mariadb, mysql]
 
 network:
   name: palier-lab
@@ -35,3 +35,4 @@ ports:
   nginx: 8088
   whoami: 8089
   outline: 3000
+  uptimekuma: 3002

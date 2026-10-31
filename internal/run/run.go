@@ -283,6 +283,13 @@ func (e *Engine) step(ctx context.Context, id int64, st *inventory.Stack, cp *Ch
 	if err := e.verify(ctx, id, cp.Project.Name, present(cp), e.Stable); err != nil {
 		return err
 	}
+	for _, c := range step.Changes {
+		if svc := service(st, c.Service); svc != nil && plan.Level(c.From, c.To) != "major" && strings.HasPrefix(svc.Image[strings.LastIndex(svc.Image, "/")+1:], "postgres") {
+			if err := e.refreshCollations(ctx, id, cp, svc); err != nil {
+				return err
+			}
+		}
+	}
 	if g := step.Gate; g != nil && g.Op == "exec_check" {
 		return e.gate(ctx, id, st, cp, *g)
 	}
