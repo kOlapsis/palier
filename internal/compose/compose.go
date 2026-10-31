@@ -176,7 +176,11 @@ func Write(fs FileState) error {
 		os.Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, fs.Path)
+	if err := os.Rename(tmp, fs.Path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // Edit applies fn to the root mapping of a Compose file and writes the document again, keeping its comments.

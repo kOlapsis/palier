@@ -207,3 +207,11 @@ func TestStopsAndGates(t *testing.T) {
 		t.Fatal(reasons(ungated))
 	}
 }
+
+func TestNormalize(t *testing.T) {
+	p := &Plan{Steps: []Step{step(Change{"redis", "", "7.2.16"})}}
+	Validate(p, outline())
+	if len(p.Incomplete) > 0 || p.Steps[0].Changes[0].From != "7.2.4" {
+		t.Fatalf("%v %+v", p.Incomplete, p.Steps[0].Changes[0])
+	}
+}

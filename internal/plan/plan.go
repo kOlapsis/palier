@@ -3,6 +3,7 @@ package plan
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -123,6 +124,7 @@ func Validate(p *Plan, st *inventory.Stack) {
 		services[s.Name] = s
 		current[s.Name] = running(s)
 	}
+	normalize(p, current)
 	for i := range p.Steps {
 		s := &p.Steps[i]
 		n := i + 1
@@ -427,6 +429,26 @@ func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Ser
 	}
 	if op.Op == "wait_stable" && op.Seconds <= 0 {
 		p.incomplete("étape %d : wait_stable sans durée", n)
+	}
+}
+
+// normalize fills what the model leaves out but the plan already says: an empty "from" is the version the service
+// has at that step, and a db_dump_restore without to_tag takes its tag.
+func normalize(p *Plan, start map[string]string) {
+	current := maps.Clone(start)
+	for i := range p.Steps {
+		s := &p.Steps[i]
+		for j := range s.Changes {
+			if s.Changes[j].From == "" {
+				s.Changes[j].From = current[s.Changes[j].Service]
+			}
+			current[s.Changes[j].Service] = s.Changes[j].To
+		}
+		for j := range s.Operations {
+			if op := &s.Operations[j]; op.Op == "db_dump_restore" && op.ToTag == "" {
+				op.ToTag = op.Tag
+			}
+		}
 	}
 }
 
