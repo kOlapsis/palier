@@ -42,6 +42,7 @@ type Deps struct {
 	Apply     func(stack string, dryRun bool) (int64, error)
 	Decide    func(stack, kind, service, version, until string) error
 	Postponed func(stack string) time.Time
+	Automatic func(stack string, p *plan.Plan) (bool, string)
 	Run       func(id int64) (*run.View, error)
 	Runs      func(stack string) ([]run.View, error)
 	Config    config.Config
@@ -58,6 +59,7 @@ var stateNames = map[string]string{
 	run.Running:    "en cours",
 	run.Failed:     "échec",
 	run.RolledBack: "revenue en arrière",
+	run.Abandoned:  "abandonnée",
 }
 
 // plan returns the stored plan of a stack, or nil when a run finished after it was computed and it no longer describes the stack.
@@ -74,6 +76,13 @@ func (s *server) plan(stack string) (*plan.Record, error) {
 	return rec, nil
 }
 
+func (s *server) automatic(stack string, p *plan.Plan) (bool, string) {
+	if s.deps.Automatic != nil {
+		return s.deps.Automatic(stack, p)
+	}
+	return plan.Automatic(p, s.deps.Config.Auto)
+}
+
 func (s *server) state(st *inventory.Stack) string {
 	if st.Observed {
 		return "observée seulement"
@@ -88,7 +97,7 @@ func (s *server) state(st *inventory.Stack) string {
 	case rec != nil && len(rec.Plan.Incomplete) > 0:
 		return "plan incomplet"
 	case rec != nil && len(rec.Plan.Steps) > 0:
-		if ok, _ := plan.Automatic(rec.Plan, s.deps.Config.Auto); ok {
+		if ok, _ := s.automatic(st.Name, rec.Plan); ok {
 			return "plan prêt"
 		}
 		return "en attente de décision"
@@ -293,7 +302,7 @@ func (s *server) stack(w http.ResponseWriter, r *http.Request) {
 	} else {
 		data["Record"] = rec
 		if rec != nil {
-			data["Auto"], data["AutoWhy"] = plan.Automatic(rec.Plan, s.deps.Config.Auto)
+			data["Auto"], data["AutoWhy"] = s.automatic(st.Name, rec.Plan)
 		}
 	}
 	if until := s.deps.Postponed(st.Name); time.Now().Before(until) {

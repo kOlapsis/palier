@@ -298,13 +298,17 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 	}
 	hash := inputHash(st, a.cfg)
 	if rec, err := a.storedPlan(ctx, st.Name); err != nil || rec != nil && rec.InputHash == hash {
+		if rec != nil {
+			rec.Created = time.Now().UTC()
+			_, err = a.db.ExecContext(ctx, `UPDATE plans SET created = ? WHERE stack = ?`, rec.Created.Format(time.RFC3339), st.Name)
+		}
 		return rec, err
 	}
 	rec := &plan.Record{Stack: st.Name, Source: "versions", Created: time.Now().UTC(), InputHash: hash}
 	var cachedSource, cachedBody, cachedAt string
 	if a.db.QueryRowContext(ctx, `SELECT source, body, created FROM plan_cache WHERE input_hash = ?`, hash).Scan(&cachedSource, &cachedBody, &cachedAt) == nil {
 		rec.Source = cachedSource
-		rec.Created, _ = time.Parse(time.RFC3339, cachedAt)
+		cachedAt = rec.Created.Format(time.RFC3339)
 		if err := json.Unmarshal([]byte(cachedBody), &rec.Plan); err != nil {
 			return nil, err
 		}
@@ -583,6 +587,13 @@ func serve() error {
 			return nil
 		},
 		Postponed: func(stack string) time.Time { return a.postponed(ctx, stack) },
+		Automatic: func(stack string, p *plan.Plan) (bool, string) {
+			ok, why := plan.Automatic(p, a.cfg.Auto)
+			if ok {
+				ok, why = a.notRetried(ctx, stack, p)
+			}
+			return ok, why
+		},
 		Run:       func(id int64) (*run.View, error) { return run.Load(ctx, a.db, id) },
 		Runs:      func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 10) },
 		Config:    a.cfg,

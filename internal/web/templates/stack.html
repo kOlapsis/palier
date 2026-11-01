@@ -45,7 +45,7 @@
 <div class="planhead">
 <div>
 <h2>Plan</h2>
-<p>Calculé {{since $.Record.Created}} ({{label $.Record.Source}}). {{if $.Auto}}L'application automatique le prendra.{{else if $.AutoWhy}}Pas d'application automatique : {{$.AutoWhy}}.{{end}}</p>
+<p>Plan {{if eq $.Record.Source "ai"}}de l'IA{{else}}calculé sur les versions seules{{end}}, confirmé {{since $.Record.Created}}. {{if $.Auto}}L'application automatique le prendra.{{else if $.AutoWhy}}Pas d'application automatique : {{$.AutoWhy}}.{{end}}</p>
 </div>
 {{if .Steps}}<div class="actions">
 <form method="post" action="/stacks/{{$.Stack.Name}}/dry-run"><button>Essai à blanc</button></form>
