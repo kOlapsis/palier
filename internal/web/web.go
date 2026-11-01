@@ -108,7 +108,7 @@ func (s *server) state(st *inventory.Stack) string {
 		}
 	}
 	for _, svc := range st.Services {
-		if len(svc.Available) > 0 {
+		if len(svc.Available) > 0 && rec == nil {
 			return "plan en calcul"
 		}
 	}
