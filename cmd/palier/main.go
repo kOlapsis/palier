@@ -519,6 +519,11 @@ func serve() error {
 				}
 				slog.Info("application automatique", "stack", st.Name, "run", id)
 				a.eng.Execute(ctx, id, st, p, false)
+				if fresh, err := a.scan(ctx); err == nil {
+					mu.Lock()
+					snap = web.Snapshot{Stacks: fresh, At: time.Now()}
+					mu.Unlock()
+				}
 			}
 			a.waitForScan(ctx, rescan, next.At)
 			if ctx.Err() != nil {
