@@ -31,11 +31,14 @@ func TestCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := New(nil, auths)
+	c := New(nil, auths, "mirror.gcr.io/")
+	if c.mirror != "https://mirror.gcr.io" || c.UsesCredentials("mirror.gcr.io") {
+		t.Fatalf("mirror %q must not carry the Docker Hub credentials", c.mirror)
+	}
 	if c.credentials("docker.io") != "aHViOnB3" || c.credentials("ghcr.io") != "Z2g6cHc=" || c.UsesCredentials("empty.io") || c.UsesCredentials("quay.io") {
 		t.Fatalf("credentials: %v", auths)
 	}
-	if a, err := c.authorize(t.Context(), Ref{Domain: "ghcr.io"}, `Basic realm="x"`); err != nil || a != "Basic Z2g6cHc=" {
+	if a, err := c.authorize(t.Context(), "ghcr.io", `Basic realm="x"`); err != nil || a != "Basic Z2g6cHc=" {
 		t.Fatalf("basic: %q %v", a, err)
 	}
 	if auths, err := LoadAuths(t.TempDir()); err != nil || auths != nil {

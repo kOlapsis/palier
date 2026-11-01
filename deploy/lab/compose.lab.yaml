@@ -9,6 +9,8 @@ services:
       PALIER_TOKEN: ${PALIER_TOKEN:?}
       DOCKER_CONFIG: /etc/palier/docker
       PALIER_AI_KEY: ${PALIER_AI_KEY:-}
+      PALIER_GITLAB_TOKEN: ${PALIER_GITLAB_TOKEN:-}
+      PALIER_REGISTRY_MIRROR: mirror.gcr.io
       PALIER_AUTO: patch
       PALIER_WEBHOOK_URL: http://webhook-tester:8080/00000000-0000-4000-8000-000000000001
     ports: !override

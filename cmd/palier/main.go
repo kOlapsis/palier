@@ -146,7 +146,7 @@ func setup() (*app, error) {
 		db.Close()
 		return nil, err
 	}
-	reg := registry.New(db, auths)
+	reg := registry.New(db, auths, cfg.RegistryMirror)
 	for _, domain := range []string{"docker.io", "ghcr.io"} {
 		if reg.UsesCredentials(domain) {
 			slog.Info("identifiants de registre chargés", "registry", domain, "docker_config", cfg.DockerConfig)
@@ -158,7 +158,7 @@ func setup() (*app, error) {
 		events := map[string]string{run.Done: "run_done", run.RolledBack: "run_rolled_back", run.Failed: "run_failed", run.Abandoned: "run_abandoned"}
 		a.notify(map[string]any{"event": events[status], "stack": stack, "run": id, "status": status, "error": cause})
 	}
-	*a = app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken), eng: eng}
+	*a = app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken, cfg.GitLabToken), eng: eng}
 	return a, nil
 }
 

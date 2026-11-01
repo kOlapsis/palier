@@ -52,16 +52,21 @@ func (r Ref) Name() string { return r.Domain + "/" + r.Repo }
 
 // Client queries registries with the credentials of the Docker configuration and keeps push dates in the database.
 type Client struct {
-	http  *http.Client
-	db    *sql.DB
-	auths map[string]string
-	mu    sync.Mutex
-	authz map[string]string
+	http   *http.Client
+	db     *sql.DB
+	auths  map[string]string
+	mirror string
+	mu     sync.Mutex
+	authz  map[string]string
 }
 
-// New returns a registry client whose date cache lives in db; auths maps a registry address to its base64 "user:password", as in config.json.
-func New(db *sql.DB, auths map[string]string) *Client {
-	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, authz: map[string]string{}}
+// New returns a registry client whose date cache lives in db; auths maps a registry address to its base64 "user:password", as in config.json, and mirror, when set, serves the Docker Hub reads by digest.
+func New(db *sql.DB, auths map[string]string, mirror string) *Client {
+	mirror = strings.TrimSuffix(mirror, "/")
+	if mirror != "" && !strings.Contains(mirror, "://") {
+		mirror = "https://" + mirror
+	}
+	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}}
 }
 
 // LoadAuths reads the "auths" section of config.json in the Docker configuration directory dir.
@@ -127,8 +132,9 @@ func (c *Client) do(ctx context.Context, method string, r Ref, url, accept strin
 		if accept != "" {
 			req.Header.Set("Accept", accept)
 		}
+		key := req.URL.Host + "/" + r.Repo
 		c.mu.Lock()
-		authz := c.authz[r.Name()]
+		authz := c.authz[key]
 		c.mu.Unlock()
 		if authz != "" {
 			req.Header.Set("Authorization", authz)
@@ -140,12 +146,16 @@ func (c *Client) do(ctx context.Context, method string, r Ref, url, accept strin
 		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
 			challenge := resp.Header.Get("WWW-Authenticate")
 			resp.Body.Close()
-			authz, err := c.authorize(ctx, r, challenge)
+			domain := r.Domain
+			if req.URL.Host != apiHost(r.Domain) {
+				domain = req.URL.Host
+			}
+			authz, err := c.authorize(ctx, domain, challenge)
 			if err != nil {
 				return nil, err
 			}
 			c.mu.Lock()
-			c.authz[r.Name()] = authz
+			c.authz[key] = authz
 			c.mu.Unlock()
 			continue
 		}
@@ -169,11 +179,11 @@ func (c *Client) do(ctx context.Context, method string, r Ref, url, accept strin
 	}
 }
 
-func (c *Client) authorize(ctx context.Context, r Ref, challenge string) (string, error) {
-	creds := c.credentials(r.Domain)
+func (c *Client) authorize(ctx context.Context, domain, challenge string) (string, error) {
+	creds := c.credentials(domain)
 	if strings.HasPrefix(challenge, "Basic ") {
 		if creds == "" {
-			return "", fmt.Errorf("le registre %s demande des identifiants", r.Domain)
+			return "", fmt.Errorf("le registre %s demande des identifiants", domain)
 		}
 		return "Basic " + creds, nil
 	}
@@ -319,14 +329,23 @@ func (c *Client) Digest(ctx context.Context, r Ref, tag string) (string, error) 
 // PlatformDigests returns the digests of the per-platform images listed by the index digest.
 func (c *Client) PlatformDigests(ctx context.Context, r Ref, digest string) ([]string, error) {
 	var m struct{ Manifests []struct{ Digest string } }
-	if err := c.getJSON(ctx, r, "https://"+apiHost(r.Domain)+"/v2/"+r.Repo+"/manifests/"+digest, manifestTypes, &m); err != nil {
+	path := "/v2/" + r.Repo + "/manifests/" + digest
+	// A mirror's tag lists are partial and its tags can be stale, so only content addressed by digest is read from it.
+	if r.Domain == "docker.io" && c.mirror != "" && c.getJSON(ctx, r, c.mirror+path, manifestTypes, &m) == nil {
+		return digestsOf(m.Manifests), nil
+	}
+	if err := c.getJSON(ctx, r, "https://"+apiHost(r.Domain)+path, manifestTypes, &m); err != nil {
 		return nil, err
 	}
+	return digestsOf(m.Manifests), nil
+}
+
+func digestsOf(manifests []struct{ Digest string }) []string {
 	var out []string
-	for _, d := range m.Manifests {
+	for _, d := range manifests {
 		out = append(out, d.Digest)
 	}
-	return out, nil
+	return out
 }
 
 func (c *Client) configCreated(ctx context.Context, r Ref, tag string) (time.Time, error) {

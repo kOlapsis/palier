@@ -12,7 +12,11 @@ func TestRepoAndSame(t *testing.T) {
 		"https://github.com/outline/outline.git":  "outline/outline",
 		"git@github.com:immich-app/immich.git":    "immich-app/immich",
 		"https://github.com/a/b/tree/main/docker": "a/b",
-		"https://gitlab.com/gitlab-org/gitlab":    "",
+		"https://gitlab.com/gitlab-org/gitlab":    "gitlab.com/gitlab-org/gitlab",
+		"https://gitlab.com/a/sub/p/-/tree/main":  "gitlab.com/a/sub/p",
+		"git@gitlab.com:a/p.git":                  "gitlab.com/a/p",
+		"https://gitlab.com/a":                    "",
+		"https://gitlab.example.org/a/b":          "",
 	} {
 		if got := Repo(in); got != want {
 			t.Errorf("Repo(%q) = %q, want %q", in, got, want)
