@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -113,7 +114,7 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 		if err != nil {
 			return err
 		}
-		newVolume = fmt.Sprintf("%s-%s", old, strings.SplitN(op.ToTag, ".", 2)[0])
+		newVolume = newVolumeName(old, svc.Name, op.ToTag)
 		return compose.ReplaceMount(root, svc.Name, oldPath, newVolume, newPath)
 	})
 	if err == nil {
@@ -168,6 +169,17 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 		}
 	}
 	return nil
+}
+
+var volumeName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+
+// newVolumeName names the volume of a new major: the old named volume with the major, or one named after the service when the data sat in a host directory.
+func newVolumeName(old, service, tag string) string {
+	major := strings.SplitN(tag, ".", 2)[0]
+	if volumeName.MatchString(old) {
+		return old + "-" + major
+	}
+	return service + "-data-" + major
 }
 
 func service(st *inventory.Stack, name string) *inventory.Service {

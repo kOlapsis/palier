@@ -67,3 +67,15 @@ func TestSummarizeCountsRows(t *testing.T) {
 		t.Fatal(got, lines)
 	}
 }
+
+func TestNewVolumeName(t *testing.T) {
+	for _, c := range [][4]string{
+		{"postgres-data", "postgres", "17.6", "postgres-data-17"},
+		{"${DB_DATA_LOCATION}", "database", "16-vectorchord0.3.0-pgvectors0.2.0", "database-data-16-vectorchord0"},
+		{"./postgres", "database", "16.2", "database-data-16"},
+	} {
+		if got := newVolumeName(c[0], c[1], c[2]); got != c[3] {
+			t.Errorf("newVolumeName(%q) = %q, want %q", c[0], got, c[3])
+		}
+	}
+}

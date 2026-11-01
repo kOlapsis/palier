@@ -49,6 +49,8 @@ usage: lab <command>
                libvirt group (then log in again)
   up           create the machine if needed and provision it; run it again
                after a code change to redeploy Palier from the working copy
+  deploy       redeploy Palier from the working copy, without touching the
+               stacks under /apps
   status       state of the machine and of every service; exits 0 only if
                all of them are in service
   ssh [cmd]    open a shell on the machine, or run cmd there
@@ -117,6 +119,13 @@ cmd_up() {
 	ansible-playbook "$LAB_DIR/site.yml"
 }
 
+cmd_deploy() {
+	need ansible-playbook
+	need rsync
+	need_key
+	ansible-playbook "$LAB_DIR/site.yml" --tags palier
+}
+
 cmd_reset_apps() {
 	need ansible-playbook
 	need_key
@@ -169,6 +178,7 @@ cmd_status() {
 case "${1:-}" in
 host-setup) cmd_host_setup ;;
 up) cmd_up ;;
+deploy) cmd_deploy ;;
 down) cmd_down ;;
 status) cmd_status ;;
 ssh)

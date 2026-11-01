@@ -390,6 +390,25 @@ func (a *app) begin(ctx context.Context, st *inventory.Stack, author string, dry
 	return id, rec.Plan, err
 }
 
+const retryAfter = 24 * time.Hour
+
+var startedAt = time.Now()
+
+// notRetried keeps the automatic loop from applying again, within a day and the same Palier process, the plan whose last run did not finish done.
+func (a *app) notRetried(ctx context.Context, stack string, p *plan.Plan) (bool, string) {
+	var id int64
+	var body, status, finished string
+	if a.db.QueryRowContext(ctx, `SELECT id, plan, status, finished FROM runs WHERE stack = ? AND dry_run = 0 ORDER BY id DESC LIMIT 1`, stack).Scan(&id, &body, &status, &finished) != nil {
+		return true, ""
+	}
+	current, _ := json.Marshal(p)
+	at, _ := time.Parse(time.RFC3339, finished)
+	if status == run.Done || status == run.Running || body != string(current) || time.Since(at) > retryAfter || at.Before(startedAt) {
+		return true, ""
+	}
+	return false, fmt.Sprintf("le même plan a fini « %s » à l'exécution %d ; nouvel essai le %s, ou plus tôt si le plan change", status, id, at.Add(retryAfter).Format("02/01 15:04"))
+}
+
 // waitForScan returns at the next scan interval, on a rescan request, or as soon as a run started by another process has finished.
 func (a *app) waitForScan(ctx context.Context, rescan <-chan struct{}, last time.Time) {
 	deadline := time.After(a.cfg.ScanInterval)
@@ -507,6 +526,9 @@ func serve() error {
 				ok, why := plan.Automatic(rec.Plan, a.cfg.Auto)
 				if until := a.postponed(ctx, st.Name); ok && time.Now().Before(until) {
 					ok, why = false, "reporté jusqu'au "+until.Format("2006-01-02")
+				}
+				if ok {
+					ok, why = a.notRetried(ctx, st.Name, rec.Plan)
 				}
 				if !ok {
 					slog.Info("application automatique écartée", "stack", st.Name, "auto", a.cfg.Auto, "reason", why)

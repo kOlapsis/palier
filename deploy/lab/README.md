@@ -33,6 +33,7 @@ All commands are `deploy/lab/lab <command>`.
 | Command | What it does |
 |---|---|
 | `up` | Creates what is missing (base image in cache, storage pools, system disk on top of the base image, cloud-init seed with your key and the static address, NAT network, machine), then provisions it with the `docker`, `palier_stack` and `lab_apps` roles. A second `up` changes nothing. |
+| `deploy` | Redeploys Palier from the working copy, and only Palier: the stacks under `/apps` are not restarted, unlike `up`. Check first that no run is in progress, since restarting Palier rolls it back to its last verified step. |
 | `status` | Prints the state of the machine, Palier, webhook-tester and each stack of `topology.yml`, checked over HTTP from the host. Exits 0 only if all of them are in service, 1 otherwise. |
 | `ssh [cmd]` | Opens a shell on the machine as `debian`, or runs `cmd` there. |
 | `scenario <name>` | Copies `scenarios/common.sh` and `scenarios/<name>.sh` to the machine and runs them as root: the replayable scenarios of `EVIDENCE.md` (`whoami-apply`, `whoami-missing-tag`, `whoami-exits`, `whoami-kill`, `whoami-reset` to put whoami back to v1.10.1 between them, `outline-apply`, `outline-fail-step3`, `outline-major`, `outline-major-fail`, `outline-pg16` to put postgres back on 16.14 and its old volume, `gitlab-fail-step2`, `gitlab-apply`, `immich-fail-step2`, `immich-apply`, `whoami-failed`, and `webhooks` to list what webhook-tester received; `reset-apps` puts Outline back to its start with its three seeded documents). |
