@@ -1,4 +1,4 @@
-{{define "head"}}<meta http-equiv="refresh" content="60">{{end}}
+{{define "head"}}<meta http-equiv="refresh" content="{{$busy := false}}{{with .Runs}}{{with index . 0}}{{if eq .Status "running"}}{{$busy = true}}{{end}}{{end}}{{end}}{{if $busy}}5{{else}}60{{end}}">{{end}}
 {{define "content"}}
 {{$state := state .Stack}}
 <div class="head">
@@ -34,6 +34,11 @@
 </table>
 </div>
 {{if hasStop .Stack .Record}}<p class="legend"><i></i>palier obligatoire de la fiche du catalogue ; la dernière version du fil est la cible.</p>{{end}}
+
+{{with .Runs}}{{with index . 0}}{{if and (eq .Status "running") (not .DryRun)}}
+<h2>Exécution <a href="/runs/{{.ID}}">{{.ID}}</a> en cours</h2>
+{{template "progress" .}}
+{{end}}{{end}}{{end}}
 
 {{with .Record}}{{with .Plan}}
 <div class="planhead">

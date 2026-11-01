@@ -40,14 +40,14 @@ Chaque décision est enregistrée avec son auteur (`interface`, `cli` ou `auto`)
 
 ## Suivre une exécution
 
-La page `/runs/{id}` se rafraîchit seule. Elle montre le résultat en tête, puis chaque phase de l'exécution. En cas d'échec, elle donne la cause, le détail du retour arrière et un extrait des journaux du service qui a échoué.
+La page `/runs/{id}` se rafraîchit seule. Elle montre le résultat en tête, les étapes du plan (vérifiée, en cours, en échec ou à venir), puis chaque phase de l'exécution. Pendant une exécution, la page de la stack montre aussi ces étapes. En cas d'échec, elle donne la cause, le détail du retour arrière et un extrait des journaux du service qui a échoué.
 
 Une exécution finit dans l'un de ces états :
 
 | Résultat | Ce qu'il veut dire |
 |---|---|
 | terminée | Toutes les étapes sont passées. |
-| revenue en arrière | Une étape a échoué, et toute la stack est revenue à son point de reprise. |
+| revenue en arrière | Une étape a échoué, et toute la stack est revenue au dernier palier vérifié. Les étapes vérifiées avant l'échec restent appliquées. |
 | abandonnée | Rien n'a été modifié : la stack avait changé depuis le calcul du plan, un hook de sauvegarde a échoué, ou le point de reprise était impossible. |
 | échec | Même le retour arrière a échoué. Le détail dit ce qui reste à l'état modifié. |
 

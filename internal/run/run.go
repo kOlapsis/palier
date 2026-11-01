@@ -47,8 +47,9 @@ type Engine struct {
 	Finished   func(stack string, id int64, status, cause string)
 }
 
-// Checkpoint is the state of a stack before its first modification.
+// Checkpoint is the state of a stack before its first modification, then after each verified step.
 type Checkpoint struct {
+	Step           int                 `json:"step"`
 	Project        compose.Project     `json:"project"`
 	Files          []compose.FileState `json:"files"`
 	Services       []Saved             `json:"services"`
@@ -173,9 +174,47 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 			return
 		}
 		e.event(id, "étape %d vérifiée", i+1)
+		if i+1 < len(p.Steps) {
+			next, err := e.advance(ctx, id, cp, &plan.Plan{Steps: p.Steps[i+1:]}, i+1)
+			if err != nil {
+				e.event(id, "point de reprise impossible après l'étape %d : %v", i+1, err)
+				e.rollback(context.WithoutCancel(ctx), id, cp, err)
+				return
+			}
+			cp = next
+		}
 	}
 	e.dropSnapshots(ctx, id, cp)
 	e.finish(id, Done, nil)
+}
+
+// advance replaces prev by a checkpoint of the stack as the first done steps left it, with fresh copies of the volumes rest changes.
+func (e *Engine) advance(ctx context.Context, id int64, prev *Checkpoint, rest *plan.Plan, done int) (*Checkpoint, error) {
+	stacks, err := inventory.Scan(ctx, e.Docker)
+	if err != nil {
+		return nil, err
+	}
+	i := slices.IndexFunc(stacks, func(st *inventory.Stack) bool { return st.Name == prev.Project.Name && !st.Observed })
+	if i < 0 {
+		return nil, fmt.Errorf("stack %s introuvable", prev.Project.Name)
+	}
+	now := stacks[i]
+	cp, err := checkpoint(now)
+	if err != nil {
+		return nil, err
+	}
+	cp.Step = done
+	if err := e.snapshot(ctx, id, now, cp, changedServices(now, rest)); err != nil {
+		e.dropSnapshots(context.WithoutCancel(ctx), id, cp)
+		return nil, err
+	}
+	if err := e.save(id, cp); err != nil {
+		e.dropSnapshots(context.WithoutCancel(ctx), id, cp)
+		return nil, err
+	}
+	e.dropSnapshots(ctx, id, prev)
+	e.event(id, "point de reprise après l'étape %d : fichiers Compose %d, services %d, copies de volumes %d", done, len(cp.Files), len(cp.Services), len(cp.Snapshots))
+	return cp, nil
 }
 
 // changedServices returns the services the plan changes and, since an application migrates the data of its
@@ -629,7 +668,12 @@ func (e *Engine) check(ctx context.Context, project string, services []string, r
 }
 
 func (e *Engine) rollback(ctx context.Context, id int64, cp *Checkpoint, cause error) {
-	e.event(id, "retour arrière de toute la stack au point de reprise")
+	if cp.Step > 0 {
+		e.event(id, "retour arrière de toute la stack au dernier palier vérifié, après l'étape %d", cp.Step)
+		cause = fmt.Errorf("%v ; la stack reste au dernier palier vérifié, après l'étape %d", cause, cp.Step)
+	} else {
+		e.event(id, "retour arrière de toute la stack au point de reprise")
+	}
 	err := e.restore(ctx, id, cp)
 	if err == nil {
 		err = e.verify(ctx, id, cp.Project.Name, names(cp), e.Stable)
@@ -765,15 +809,38 @@ func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *p
 
 // View is a run as the interface and the command line show it.
 type View struct {
-	ID       int64   `json:"id"`
-	Stack    string  `json:"stack"`
-	Status   string  `json:"status"`
-	DryRun   bool    `json:"dry_run"`
-	Author   string  `json:"author"`
-	Error    string  `json:"error,omitempty"`
-	Started  string  `json:"started"`
-	Finished string  `json:"finished,omitempty"`
-	Events   []Event `json:"events,omitempty"`
+	ID        int64    `json:"id"`
+	Stack     string   `json:"stack"`
+	Status    string   `json:"status"`
+	DryRun    bool     `json:"dry_run"`
+	Author    string   `json:"author"`
+	Error     string   `json:"error,omitempty"`
+	Started   string   `json:"started"`
+	Finished  string   `json:"finished,omitempty"`
+	Steps     []string `json:"steps,omitempty"`
+	StepsDone int      `json:"steps_done"`
+	Events    []Event  `json:"events,omitempty"`
+}
+
+const viewColumns = `id, stack, status, dry_run, author, error, started, finished, plan,
+	CASE WHEN json_valid(checkpoint) THEN coalesce(json_extract(checkpoint, '$.step'), 0) ELSE 0 END`
+
+func scanView(row interface{ Scan(...any) error }) (View, error) {
+	var v View
+	var body string
+	if err := row.Scan(&v.ID, &v.Stack, &v.Status, &v.DryRun, &v.Author, &v.Error, &v.Started, &v.Finished, &body, &v.StepsDone); err != nil {
+		return v, err
+	}
+	var p plan.Plan
+	if json.Unmarshal([]byte(body), &p) == nil {
+		for _, s := range p.Steps {
+			v.Steps = append(v.Steps, describe(s))
+		}
+	}
+	if v.Status == Done {
+		v.StepsDone = len(v.Steps)
+	}
+	return v, nil
 }
 
 // Event is one line of the journal of a run.
@@ -784,12 +851,11 @@ type Event struct {
 
 // Load returns run id with its journal.
 func Load(ctx context.Context, db *sql.DB, id int64) (*View, error) {
-	v := &View{}
-	err := db.QueryRowContext(ctx, `SELECT id, stack, status, dry_run, author, error, started, finished FROM runs WHERE id = ?`, id).
-		Scan(&v.ID, &v.Stack, &v.Status, &v.DryRun, &v.Author, &v.Error, &v.Started, &v.Finished)
+	view, err := scanView(db.QueryRowContext(ctx, `SELECT `+viewColumns+` FROM runs WHERE id = ?`, id))
 	if err != nil {
 		return nil, err
 	}
+	v := &view
 	rows, err := db.QueryContext(ctx, `SELECT at, message FROM run_events WHERE run_id = ? ORDER BY rowid`, id)
 	if err != nil {
 		return nil, err
@@ -807,7 +873,7 @@ func Load(ctx context.Context, db *sql.DB, id int64) (*View, error) {
 
 // List returns the latest runs, of one stack when stack is not empty, newest first.
 func List(ctx context.Context, db *sql.DB, stack string, limit int) ([]View, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, stack, status, dry_run, author, error, started, finished FROM runs
+	rows, err := db.QueryContext(ctx, `SELECT `+viewColumns+` FROM runs
 		WHERE ? = '' OR stack = ? ORDER BY id DESC LIMIT ?`, stack, stack, limit)
 	if err != nil {
 		return nil, err
@@ -815,8 +881,8 @@ func List(ctx context.Context, db *sql.DB, stack string, limit int) ([]View, err
 	defer rows.Close()
 	var out []View
 	for rows.Next() {
-		var v View
-		if err := rows.Scan(&v.ID, &v.Stack, &v.Status, &v.DryRun, &v.Author, &v.Error, &v.Started, &v.Finished); err != nil {
+		v, err := scanView(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, v)

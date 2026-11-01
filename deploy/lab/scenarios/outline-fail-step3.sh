@@ -1,4 +1,4 @@
-# The image of the third step of the Outline plan exits at once: the whole stack must come back to its start.
+# The image of the third step of the Outline plan exits at once: the stack must stay at the verified second step.
 step=$(sql "SELECT json_extract(body, '$.steps[2].changes[0].service') || ' ' || json_extract(body, '$.steps[2].changes[0].to') FROM plans WHERE stack = 'outline'")
 set -- $step
 [ -n "${2:-}" ] || { echo "pas de troisième étape dans le plan d'outline"; exit 1; }

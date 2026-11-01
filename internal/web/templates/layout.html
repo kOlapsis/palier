@@ -1,3 +1,4 @@
+{{define "progress"}}{{$v := .}}<ol class="progress" aria-label="Étapes de l'exécution {{.ID}}">{{range $i, $s := .Steps}}<li class="{{if lt $i $v.StepsDone}}done{{else if eq $i $v.StepsDone}}{{if eq $v.Status "running"}}current{{else if or (eq $v.Status "rolled_back") (eq $v.Status "failed")}}failed{{end}}{{end}}">Étape {{inc $i}} : {{$s}}</li>{{end}}</ol>{{end}}
 {{define "layout"}}<!doctype html>
 <html lang="fr">
 <head>
@@ -140,6 +141,15 @@ dl.settings > :nth-last-child(-n+2) { border-bottom: 0; }
 .gate p { margin: 0; }
 .empty { padding: 2.5rem 1.5rem; text-align: center; color: var(--muted); }
 
+ol.progress { list-style: none; margin: 0 0 1.25rem; padding: .9rem 1.1rem; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; display: grid; gap: .45rem; }
+ol.progress li { display: flex; gap: .65rem; align-items: baseline; color: var(--muted); }
+ol.progress li::before { content: ""; flex: none; width: .8rem; height: .8rem; border-radius: 50%; border: 1.5px solid var(--line); transform: translateY(.1rem); }
+ol.progress li.done { color: var(--ink); }
+ol.progress li.done::before { content: "\2713"; display: grid; place-items: center; font-size: .6rem; font-weight: 700; color: var(--surface); background: var(--ok); border-color: var(--ok); }
+ol.progress li.current { color: var(--ink); font-weight: 600; }
+ol.progress li.current::before { background: var(--accent); border-color: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+ol.progress li.failed { color: var(--bad); font-weight: 600; }
+ol.progress li.failed::before { content: "\2715"; display: grid; place-items: center; font-size: .6rem; font-weight: 700; color: var(--surface); background: var(--bad); border-color: var(--bad); }
 @media (max-width: 52rem) {
   body { grid-template-columns: 1fr; background: none; }
   .rail { position: static; height: auto; flex-direction: row; align-items: center; justify-content: space-between; padding: .8rem 1rem; gap: 1rem; }
@@ -149,7 +159,7 @@ dl.settings > :nth-last-child(-n+2) { border-bottom: 0; }
   dl.settings { grid-template-columns: 1fr; }
   dl.settings dt { border-bottom: 0; padding-bottom: 0; }
 }
-@media (prefers-reduced-motion: reduce) { .pill.run::before { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .pill.run::before, ol.progress li.current::before { animation: none; } }
 </style>
 </head>
 <body class="on-{{block "section" .}}stacks{{end}}">

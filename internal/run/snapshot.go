@@ -52,7 +52,7 @@ func (e *Engine) snapshot(ctx context.Context, id int64, st *inventory.Stack, cp
 	}
 	for _, s := range targets {
 		for i, m := range s.Mounts {
-			snap := Snapshot{Service: s.Name, Mount: m, Volume: fmt.Sprintf("palier-run%d-%s-%d", id, s.Name, i)}
+			snap := Snapshot{Service: s.Name, Mount: m, Volume: fmt.Sprintf("palier-run%d-step%d-%s-%d", id, cp.Step, s.Name, i)}
 			if err := e.Docker.Post(ctx, "/volumes/create", map[string]any{"Name": snap.Volume, "Labels": map[string]string{"palier.run": fmt.Sprint(id)}}, nil); err != nil {
 				return err
 			}

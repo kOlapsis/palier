@@ -6,6 +6,7 @@
 <p class="meta">Stack <a href="/stacks/{{.Stack}}">{{.Stack}}</a>, lancée par {{.Author}} le {{when .Started}}{{with .Finished}}, finie le {{when .}}{{end}}.</p>
 </div>
 {{with .Error}}<pre class="error">{{.}}</pre>{{end}}
+{{if and .Steps (not .DryRun)}}{{template "progress" .}}{{end}}
 <div class="panel">
 <table class="log"><thead><tr><th>Heure</th><th>Phase</th></tr></thead><tbody>
 {{range .Events}}<tr><td>{{when .At}}</td><td><pre>{{.Message}}</pre></td></tr>{{end}}

@@ -56,7 +56,7 @@ Cette règle vaut à chaque étape, et c'est elle qui fixe l'ordre : si une vers
 1. Les hooks de sauvegarde (`palier.hook.backup`) tournent. Si l'un échoue, rien n'est modifié.
 2. Palier prend un point de reprise : copie des fichiers Compose et de leur fichier `.env`, image et digest de chaque service, copie des volumes des services qui changent.
 3. Chaque étape applique ses opérations dans l'ordre. Les clients sont arrêtés dans l'ordre inverse des dépendances et redémarrés dans l'ordre.
-4. Après chaque étape vient la vérification, puis l'étape suivante.
+4. Après chaque étape vient la vérification. Une fois l'étape vérifiée, Palier prend un nouveau point de reprise de la stack telle qu'elle est, puis supprime le précédent, et passe à l'étape suivante.
 
 Les fichiers Compose modifiés gardent leur propriétaire, leur groupe et leur mode. Une image donnée par une variable (`image: postgres:${PG_TAG}`) est changée dans le fichier `.env`.
 
@@ -73,7 +73,7 @@ Aucune sonde HTTP ni aucun test applicatif n'est ajouté.
 
 ## 7. Retour arrière
 
-Si une étape échoue, toute la stack revient au point de reprise : fichiers restaurés, anciennes images, anciens volumes, puis une nouvelle vérification. Il n'y a jamais de retour partiel.
+Si une étape échoue, toute la stack revient au dernier point de reprise : celui du dernier palier vérifié, ou celui du départ si la première étape échoue. Fichiers, images et volumes sont restaurés, puis vérifiés à nouveau. Si GitLab échoue à son sixième palier, il reste au cinquième, déjà vérifié en service, et la prochaine exécution repart de là. Une étape ne reste jamais à moitié appliquée.
 
 Si Palier est arrêté au milieu d'une exécution, il la reprend à son redémarrage et la défait.
 
@@ -88,7 +88,7 @@ Un changement de majeure de PostgreSQL, MySQL ou MariaDB passe toujours par `db_
 5. il compare avant et après : rôles, bases, tables, nombres de lignes, index et contraintes ;
 6. les clients redémarrent.
 
-L'ancien volume n'est jamais modifié. Si le réimport ou la comparaison échoue, la stack repart sur l'ancienne majeure et l'ancien volume.
+L'ancien volume n'est jamais modifié. Si le réimport ou la comparaison échoue, la stack revient au palier précédent, sur l'ancienne majeure et l'ancien volume.
 
 Après un correctif de PostgreSQL qui change la bibliothèque C de l'image, Palier reconstruit les index des bases concernées et met à jour leur version de collation, comme PostgreSQL le demande.
 
