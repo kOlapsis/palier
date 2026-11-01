@@ -2,8 +2,10 @@
 package registry
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +65,8 @@ type Client struct {
 	mirror string
 	mu     sync.Mutex
 	authz  map[string]string
+	hub    string
+	dated  map[string]time.Time
 }
 
 // New returns a registry client whose date cache lives in db; auths maps a registry address to its base64 "user:password", as in config.json, and mirror, when set, serves the Docker Hub reads by digest.
@@ -70,7 +75,7 @@ func New(db *sql.DB, auths map[string]string, mirror string) *Client {
 	if mirror != "" && !strings.Contains(mirror, "://") {
 		mirror = "https://" + mirror
 	}
-	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}}
+	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, dated: map[string]time.Time{}}
 }
 
 // LoadAuths reads the "auths" section of config.json in the Docker configuration directory dir.
@@ -265,20 +270,19 @@ func (c *Client) Tags(ctx context.Context, r Ref) ([]string, error) {
 
 // Pushed returns when tag was pushed, as first seen by Palier; a tag rebuilt later keeps its first date.
 func (c *Client) Pushed(ctx context.Context, r Ref, tag string) (time.Time, error) {
-	var stored string
-	err := c.db.QueryRowContext(ctx, `SELECT pushed FROM tag_dates WHERE image = ? AND tag = ?`, r.Name(), tag).Scan(&stored)
-	if err == nil {
-		return time.Parse(time.RFC3339, stored)
+	if t, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
+		return t, err
 	}
-	if err != sql.ErrNoRows {
-		return time.Time{}, err
-	}
-	var pushed time.Time
 	if r.Domain == "docker.io" {
-		pushed, err = c.hubPushed(ctx, r, tag)
-	} else {
-		pushed, err = c.configCreated(ctx, r, tag)
+		if err := c.hubDates(ctx, r); err != nil {
+			return time.Time{}, err
+		}
+		if t, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
+			return t, err
+		}
+		return time.Time{}, fmt.Errorf("%s:%s absent de la liste des tags de Docker Hub", r.Name(), tag)
 	}
+	pushed, err := c.configCreated(ctx, r, tag)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -286,32 +290,143 @@ func (c *Client) Pushed(ctx context.Context, r Ref, tag string) (time.Time, erro
 	return pushed, err
 }
 
-func (c *Client) hubPushed(ctx context.Context, r Ref, tag string) (time.Time, error) {
-	ns, name, _ := strings.Cut(r.Repo, "/")
-	url := "https://hub.docker.com/v2/namespaces/" + ns + "/repositories/" + name + "/tags/" + tag
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return time.Time{}, err
+func (c *Client) storedDate(ctx context.Context, r Ref, tag string) (time.Time, bool, error) {
+	var stored string
+	err := c.db.QueryRowContext(ctx, `SELECT pushed FROM tag_dates WHERE image = ? AND tag = ?`, r.Name(), tag).Scan(&stored)
+	if err == sql.ErrNoRows {
+		return time.Time{}, false, nil
 	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	t, err := time.Parse(time.RFC3339, stored)
+	return t, true, err
+}
+
+const hubRefill = 10 * time.Minute
+
+// hubDates stores the push date of every tag of a Docker Hub repository, read a hundred at a time.
+func (c *Client) hubDates(ctx context.Context, r Ref) error {
+	c.mu.Lock()
+	recent := time.Since(c.dated[r.Name()]) < hubRefill
+	c.mu.Unlock()
+	if recent {
+		return nil
+	}
+	ns, name, _ := strings.Cut(r.Repo, "/")
+	url := "https://hub.docker.com/v2/namespaces/" + ns + "/repositories/" + name + "/tags?page_size=100"
+	for url != "" {
+		var page struct {
+			Next    string
+			Results []struct {
+				Name          string
+				TagLastPushed time.Time `json:"tag_last_pushed"`
+				LastUpdated   time.Time `json:"last_updated"`
+			}
+		}
+		if err := c.hubGet(ctx, url, &page); err != nil {
+			return err
+		}
+		for _, t := range page.Results {
+			pushed := t.TagLastPushed
+			if pushed.IsZero() {
+				pushed = t.LastUpdated
+			}
+			if pushed.IsZero() {
+				continue
+			}
+			if _, err := c.db.ExecContext(ctx, `INSERT OR IGNORE INTO tag_dates (image, tag, pushed) VALUES (?, ?, ?)`, r.Name(), t.Name, pushed.UTC().Format(time.RFC3339)); err != nil {
+				return err
+			}
+		}
+		url = page.Next
+	}
+	c.mu.Lock()
+	c.dated[r.Name()] = time.Now()
+	c.mu.Unlock()
+	return nil
+}
+
+// hubGet reads the Docker Hub API with the Docker Hub credentials of the Docker configuration, waiting when it is throttled.
+func (c *Client) hubGet(ctx context.Context, url string, out any) error {
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		c.mu.Lock()
+		token := c.hub
+		c.mu.Unlock()
+		if token == "" && c.credentials("docker.io") != "" {
+			if token, err = c.hubLogin(ctx); err != nil {
+				return err
+			}
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return err
+		}
+		switch {
+		case resp.StatusCode == http.StatusUnauthorized && token != "" && attempt == 0:
+			resp.Body.Close()
+			c.mu.Lock()
+			c.hub = ""
+			c.mu.Unlock()
+			continue
+		case resp.StatusCode == http.StatusTooManyRequests && attempt < 4:
+			resp.Body.Close()
+			wait := time.Duration(attempt+1) * 5 * time.Second
+			if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && s > 0 {
+				wait = time.Duration(min(s, 120)) * time.Second
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(wait):
+			}
+			continue
+		case resp.StatusCode != http.StatusOK:
+			resp.Body.Close()
+			return fmt.Errorf("GET %s: %s", url, resp.Status)
+		}
+		defer resp.Body.Close()
+		return json.NewDecoder(resp.Body).Decode(out)
+	}
+}
+
+func (c *Client) hubLogin(ctx context.Context) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(c.credentials("docker.io"))
+	if err != nil {
+		return "", fmt.Errorf("identifiants Docker Hub illisibles : %w", err)
+	}
+	user, secret, _ := strings.Cut(string(raw), ":")
+	body, _ := json.Marshal(map[string]string{"identifier": user, "secret": secret})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://hub.docker.com/v2/auth/token", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return time.Time{}, err
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return time.Time{}, fmt.Errorf("GET %s: %s", url, resp.Status)
+		return "", fmt.Errorf("connexion à l'API Docker Hub : %s", resp.Status)
 	}
 	var t struct {
-		TagLastPushed time.Time `json:"tag_last_pushed"`
-		LastUpdated   time.Time `json:"last_updated"`
+		AccessToken string `json:"access_token"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		return time.Time{}, err
+		return "", err
 	}
-	if t.TagLastPushed.IsZero() {
-		return t.LastUpdated, nil
-	}
-	return t.TagLastPushed, nil
+	c.mu.Lock()
+	c.hub = t.AccessToken
+	c.mu.Unlock()
+	return t.AccessToken, nil
 }
 
 const manifestTypes = "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"

@@ -31,6 +31,8 @@ Palier lit la section `auths` du `config.json` de Docker, au format habituel. Mo
 -e DOCKER_CONFIG=/etc/palier-docker
 ```
 
+Les identifiants de Docker Hub servent aussi à l'API de Docker Hub, qui donne la date de publication des tags, cent à la fois : avec eux, la limite de requêtes est plus haute qu'en accès anonyme.
+
 Les identifiants rangés dans un `credsStore` ou des `credHelpers` (ECR, GAR, ACR) ne sont pas lus.
 
 ## Miroir de Docker Hub
