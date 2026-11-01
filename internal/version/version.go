@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// V is a tag read as an optional "v", dotted numbers and a variant suffix such as "-alpine" or "-ce.0".
+// V is a tag read as a prefix such as "v" or "pg14-v", dotted numbers and a variant suffix such as "-alpine" or "-ce.0".
 type V struct {
 	Tag    string
 	Prefix string
@@ -16,7 +16,7 @@ type V struct {
 	Suffix string
 }
 
-var pattern = regexp.MustCompile(`^(v?)(\d+(?:\.\d+)*)(.*)$`)
+var pattern = regexp.MustCompile(`^(?:(v?)(\d+(?:\.\d+)*)|([A-Za-z][\w.-]*?[-_]v?)(\d+(?:\.\d+)+))(.*)$`)
 
 // Parse reads tag as a version; ok is false when it does not start with one.
 func Parse(tag string) (v V, ok bool) {
@@ -24,8 +24,12 @@ func Parse(tag string) (v V, ok bool) {
 	if m == nil {
 		return V{}, false
 	}
-	v = V{Tag: tag, Prefix: m[1], Suffix: m[3]}
-	for _, n := range strings.Split(m[2], ".") {
+	prefix, nums := m[1], m[2]
+	if m[3] != "" {
+		prefix, nums = m[3], m[4]
+	}
+	v = V{Tag: tag, Prefix: prefix, Suffix: m[5]}
+	for _, n := range strings.Split(nums, ".") {
 		i, err := strconv.Atoi(n)
 		if err != nil {
 			return V{}, false

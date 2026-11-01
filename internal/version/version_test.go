@@ -23,6 +23,7 @@ func TestNewer(t *testing.T) {
 		{"v1.10.1", []string{"v1.10.0", "v1.11.0", "1.12.0", "v1.12.0"}, []string{"v1.11.0", "v1.12.0"}},
 		{"16.4", []string{"16.10", "16.4-bookworm", "17.0", "18.1", "16", "17rc1"}, []string{"16.10", "17.0", "18.1"}},
 		{"16.1.6-ce.0", []string{"16.3.9-ce.0", "16.3.9-ee.0", "17.0.0-ce.0"}, []string{"16.3.9-ce.0", "17.0.0-ce.0"}},
+		{"pg14-v0.2.0", []string{"pg14-v0.2.1", "pg16-v0.3.0", "pg14-v0.3.0", "0.4.0", "pg14-v0.1.11", "latest"}, []string{"pg14-v0.2.1", "pg14-v0.3.0"}},
 	}
 	for _, c := range cases {
 		cur, ok := Parse(c.current)
@@ -31,6 +32,19 @@ func TestNewer(t *testing.T) {
 		}
 		if got := tags(Newer(cur, c.tags)); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("Newer(%s) = %v, want %v", c.current, got, c.want)
+		}
+	}
+}
+
+func TestParseNamedPrefix(t *testing.T) {
+	for tag, want := range map[string]string{"pg14-v0.2.0": "pg14-v", "stable-1.2.3": "stable-", "v1.2.3": "v", "1.2": ""} {
+		if v, ok := Parse(tag); !ok || v.Prefix != want {
+			t.Errorf("Parse(%q) = %+v, %v; want prefix %q", tag, v, ok, want)
+		}
+	}
+	for _, tag := range []string{"alpine3.20", "pg14", "bookworm", "sha-1a2b3c", "latest"} {
+		if _, ok := Parse(tag); ok {
+			t.Errorf("Parse(%q) should not read a version", tag)
 		}
 	}
 }

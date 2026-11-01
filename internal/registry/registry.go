@@ -25,7 +25,7 @@ type Ref struct {
 	Tag    string
 }
 
-// ParseRef reads an image reference as Docker does, defaulting to docker.io and the library namespace.
+// ParseRef reads an image reference as Docker does, defaulting to docker.io and the library namespace, and names Docker Hub docker.io whatever alias the reference uses.
 func ParseRef(s string) Ref {
 	s, _, _ = strings.Cut(s, "@")
 	var r Ref
@@ -40,6 +40,10 @@ func ParseRef(s string) Ref {
 		r.Domain, r.Repo = first, rest
 	} else {
 		r.Domain, r.Repo = "docker.io", s
+	}
+	switch r.Domain {
+	case "index.docker.io", "registry-1.docker.io", "registry.hub.docker.com":
+		r.Domain = "docker.io"
 	}
 	if r.Domain == "docker.io" && !strings.Contains(r.Repo, "/") {
 		r.Repo = "library/" + r.Repo
@@ -326,26 +330,58 @@ func (c *Client) Digest(ctx context.Context, r Ref, tag string) (string, error) 
 	return d, nil
 }
 
-// PlatformDigests returns the digests of the per-platform images listed by the index digest.
-func (c *Client) PlatformDigests(ctx context.Context, r Ref, digest string) ([]string, error) {
-	var m struct{ Manifests []struct{ Digest string } }
+type index struct {
+	Manifests []struct {
+		Digest      string
+		Platform    struct{ OS, Architecture string }
+		Annotations map[string]string
+	}
+	Annotations map[string]string
+}
+
+func (c *Client) index(ctx context.Context, r Ref, digest string) (*index, error) {
+	var m index
 	path := "/v2/" + r.Repo + "/manifests/" + digest
 	// A mirror's tag lists are partial and its tags can be stale, so only content addressed by digest is read from it.
 	if r.Domain == "docker.io" && c.mirror != "" && c.getJSON(ctx, r, c.mirror+path, manifestTypes, &m) == nil {
-		return digestsOf(m.Manifests), nil
+		return &m, nil
 	}
 	if err := c.getJSON(ctx, r, "https://"+apiHost(r.Domain)+path, manifestTypes, &m); err != nil {
 		return nil, err
 	}
-	return digestsOf(m.Manifests), nil
+	return &m, nil
 }
 
-func digestsOf(manifests []struct{ Digest string }) []string {
+// PlatformDigests returns the digests of the per-platform images listed by the index digest.
+func (c *Client) PlatformDigests(ctx context.Context, r Ref, digest string) ([]string, error) {
+	m, err := c.index(ctx, r, digest)
+	if err != nil {
+		return nil, err
+	}
 	var out []string
-	for _, d := range manifests {
+	for _, d := range m.Manifests {
 		out = append(out, d.Digest)
 	}
-	return out
+	return out, nil
+}
+
+const versionAnnotation = "org.opencontainers.image.version"
+
+// AnnotatedVersion returns the org.opencontainers.image.version annotation the registry gives the image digest names, for this machine's platform.
+func (c *Client) AnnotatedVersion(ctx context.Context, r Ref, digest string) (string, error) {
+	m, err := c.index(ctx, r, digest)
+	if err != nil {
+		return "", err
+	}
+	if v := m.Annotations[versionAnnotation]; v != "" {
+		return v, nil
+	}
+	for _, d := range m.Manifests {
+		if d.Platform.OS == "linux" && d.Platform.Architecture == runtime.GOARCH {
+			return d.Annotations[versionAnnotation], nil
+		}
+	}
+	return "", nil
 }
 
 func (c *Client) configCreated(ctx context.Context, r Ref, tag string) (time.Time, error) {

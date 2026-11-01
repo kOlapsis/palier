@@ -332,11 +332,19 @@ func resolve(ctx context.Context, s *Service, ref registry.Ref, tags []string, r
 			return nil
 		}
 	}
+	for _, d := range s.digests {
+		if a, err := reg.AnnotatedVersion(ctx, ref, d); err == nil {
+			if v, ok := version.Parse(a); ok {
+				s.current, s.VersionSource, s.Version = v, "annotation", v.Tag
+				return nil
+			}
+		}
+	}
 	if v, ok := version.Parse(s.labelVersion); ok {
 		s.current, s.VersionSource, s.Version = v, "label", v.Tag
 		return nil
 	}
-	return fmt.Errorf("version en service inconnue : le tag %q n'est pas une version précise, aucun tag précis du registre n'a son digest, et l'image n'a pas de label org.opencontainers.image.version", s.Tag)
+	return fmt.Errorf("version en service inconnue : le tag %q n'est pas une version précise, aucun tag précis du registre n'a son digest, et ni le registre ni l'image ne donnent org.opencontainers.image.version", s.Tag)
 }
 
 // Detect fills the newer versions of every service, holding back those pushed less than maturation ago.

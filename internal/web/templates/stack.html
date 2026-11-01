@@ -18,7 +18,7 @@
 <td class="name">{{.Name}}<span class="sub">{{label .Role}}</span></td>
 <td><span class="mono">{{.Tag}}</span>
 <span class="sub mono">{{.Image}}</span>
-{{if and .Version (ne .Version .Tag)}}<span class="sub">version {{.Version}}, d'après {{if eq .VersionSource "digest"}}le digest{{else}}le label OCI{{end}}</span>{{end}}
+{{if and .Version (ne .Version .Tag)}}<span class="sub">version {{.Version}}, d'après {{if eq .VersionSource "digest"}}le digest{{else if eq .VersionSource "annotation"}}l'annotation OCI du registre{{else}}le label OCI{{end}}</span>{{end}}
 {{if .Republished}}<span class="flag muted">Tag republié au registre avec un autre contenu : ce n'est pas une nouvelle version.</span>{{end}}</td>
 <td>{{.State}}{{with .Health}}<span class="sub">{{.}}</span>{{end}}{{if .Restarts}}<span class="sub">{{.Restarts}} redémarrages</span>{{end}}</td>
 <td>{{with .DependsOn}}{{join .}}{{else}}<span class="muted">aucun</span>{{end}}</td>
