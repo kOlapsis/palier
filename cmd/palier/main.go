@@ -284,6 +284,18 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 		return rec, err
 	}
 	rec := &plan.Record{Stack: st.Name, Source: "versions", Created: time.Now().UTC(), InputHash: hash}
+	var cachedSource, cachedBody, cachedAt string
+	if a.db.QueryRowContext(ctx, `SELECT source, body, created FROM plan_cache WHERE input_hash = ?`, hash).Scan(&cachedSource, &cachedBody, &cachedAt) == nil {
+		rec.Source = cachedSource
+		rec.Created, _ = time.Parse(time.RFC3339, cachedAt)
+		if err := json.Unmarshal([]byte(cachedBody), &rec.Plan); err != nil {
+			return nil, err
+		}
+		_, err := a.db.ExecContext(ctx, `INSERT INTO plans (stack, input_hash, source, body, created) VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (stack) DO UPDATE SET input_hash = excluded.input_hash, source = excluded.source, body = excluded.body, created = excluded.created`,
+			st.Name, hash, rec.Source, cachedBody, cachedAt)
+		return rec, err
+	}
 	hasNotes := slices.ContainsFunc(st.Services, func(s *inventory.Service) bool { return len(s.Notes) > 0 })
 	switch {
 	case a.cfg.AIKey == "":
@@ -309,6 +321,10 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 	_, err = a.db.ExecContext(ctx, `INSERT INTO plans (stack, input_hash, source, body, created) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (stack) DO UPDATE SET input_hash = excluded.input_hash, source = excluded.source, body = excluded.body, created = excluded.created`,
 		st.Name, hash, rec.Source, string(body), rec.Created.Format(time.RFC3339))
+	if err == nil {
+		_, err = a.db.ExecContext(ctx, `INSERT OR IGNORE INTO plan_cache (input_hash, source, body, created) VALUES (?, ?, ?, ?)`,
+			hash, rec.Source, string(body), rec.Created.Format(time.RFC3339))
+	}
 	if err == nil && len(rec.Plan.Steps) > 0 && len(rec.Plan.Incomplete) == 0 {
 		var changes []string
 		for _, s := range rec.Plan.Steps {
