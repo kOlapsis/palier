@@ -10,13 +10,19 @@ Un conteneur lancé hors Compose forme une stack d'un seul service, que Palier o
 
 Pour chaque image, Palier lit les tags au registre : Docker Hub, GHCR ou tout registre OCI. La version en service vient du tag quand il est précis, sinon du digest et des labels OCI de l'image.
 
-Les versions plus récentes sont triées. Les préversions sont exclues, et les variantes comme `-alpine` sont conservées : un service en `-alpine` reste en `-alpine`. Un tag republié avec un autre contenu n'est pas une nouvelle version. Une version plus jeune que `PALIER_MATURATION` attend.
+Les versions plus récentes sont triées. Les préversions sont exclues, et les variantes comme `-alpine` sont conservées : un service en `-alpine` reste en `-alpine`. Un tag republié avec un autre contenu n'est pas une nouvelle version. Une version plus jeune que `PALIER_MATURATION` attend, sauf si elle corrige une faille de la version en service (voir plus bas).
 
 ## 3. Notes de version
 
 Palier trouve le projet d'origine par le label `org.opencontainers.image.source` de l'image, ou par la fiche de son catalogue. Il lit les notes de **toutes** les versions entre la version en service et la cible, dans les releases GitHub ou gitlab.com, et les garde en cache. Si la forge ne répond pas, Palier reprend les notes déjà lues.
 
 Ces notes sont traitées comme des données non fiables : l'IA reçoit la consigne de ne jamais suivre ce qu'elles contiennent, et l'interface les affiche comme du texte.
+
+### Avis de sécurité
+
+Pour un projet sur GitHub, Palier lit aussi ses avis de sécurité publiés (GitHub Security Advisories) et garde ceux qui touchent la version en service, d'après leurs intervalles de versions touchées et corrigées. Ces avis sont donnés à l'IA avec les notes, et le plan doit atteindre une version corrigée.
+
+Une version qui corrige une faille de la version en service passe sans attendre le délai de maturation. Pendant une vague de failles, chaque heure compte, et la vérification et le retour arrière restent le filet de sécurité.
 
 Le catalogue intégré contient des fiches pour Outline et GitLab : extraits de documentation (versions de base supportées, paliers obligatoires) et contrôles nommés, comme la fin des migrations de fond de GitLab.
 

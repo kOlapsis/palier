@@ -16,7 +16,7 @@ La page d'accueil montre chaque stack avec son état et l'âge de la dernière i
 
 ## La page d'une stack
 
-Elle montre chaque service avec son rôle (application ou dépendance), sa version en service, ses dépendances et les versions disponibles. Une version trop récente apparaît « en maturation » tant qu'elle n'a pas l'âge de `PALIER_MATURATION` (72 heures par défaut).
+Elle montre chaque service avec son rôle (application ou dépendance), sa version en service, ses dépendances et les versions disponibles. Une version trop récente apparaît « en maturation » tant qu'elle n'a pas l'âge de `PALIER_MATURATION` (72 heures par défaut), sauf si elle corrige une faille de la version en service. Chaque faille connue de la version en service est signalée sous le service, avec sa gravité et un lien vers l'avis.
 
 Sous les services vient le plan, étape par étape. Chaque étape indique :
 

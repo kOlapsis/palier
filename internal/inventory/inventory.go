@@ -34,29 +34,30 @@ type Stack struct {
 
 // Service is one service of a stack, as it runs.
 type Service struct {
-	Name           string       `json:"name"`
-	Container      string       `json:"container"`
-	Image          string       `json:"image"`
-	Tag            string       `json:"tag"`
-	Digest         string       `json:"digest,omitempty"`
-	Version        string       `json:"version,omitempty"`
-	VersionSource  string       `json:"version_source,omitempty"`
-	Republished    bool         `json:"republished,omitempty"`
-	State          string       `json:"state"`
-	Healthcheck    bool         `json:"healthcheck"`
-	Health         string       `json:"health,omitempty"`
-	Restarts       int          `json:"restarts"`
-	Mounts         []Mount      `json:"mounts,omitempty"`
-	DependsOn      []string     `json:"depends_on,omitempty"`
-	Role           string       `json:"role"`
-	Available      []Release    `json:"available,omitempty"`
-	Maturing       []Release    `json:"maturing,omitempty"`
-	DetectionError string       `json:"detection_error,omitempty"`
-	ImageID        string       `json:"image_id"`
-	Source         string       `json:"source,omitempty"`
-	BackupHook     string       `json:"backup_hook,omitempty"`
-	Notes          []notes.Note `json:"notes,omitempty"`
-	NotesError     string       `json:"notes_error,omitempty"`
+	Name           string           `json:"name"`
+	Container      string           `json:"container"`
+	Image          string           `json:"image"`
+	Tag            string           `json:"tag"`
+	Digest         string           `json:"digest,omitempty"`
+	Version        string           `json:"version,omitempty"`
+	VersionSource  string           `json:"version_source,omitempty"`
+	Republished    bool             `json:"republished,omitempty"`
+	State          string           `json:"state"`
+	Healthcheck    bool             `json:"healthcheck"`
+	Health         string           `json:"health,omitempty"`
+	Restarts       int              `json:"restarts"`
+	Mounts         []Mount          `json:"mounts,omitempty"`
+	DependsOn      []string         `json:"depends_on,omitempty"`
+	Role           string           `json:"role"`
+	Available      []Release        `json:"available,omitempty"`
+	Maturing       []Release        `json:"maturing,omitempty"`
+	DetectionError string           `json:"detection_error,omitempty"`
+	ImageID        string           `json:"image_id"`
+	Source         string           `json:"source,omitempty"`
+	BackupHook     string           `json:"backup_hook,omitempty"`
+	Notes          []notes.Note     `json:"notes,omitempty"`
+	Advisories     []notes.Advisory `json:"advisories,omitempty"`
+	NotesError     string           `json:"notes_error,omitempty"`
 
 	current      version.V
 	digests      []string
@@ -370,10 +371,24 @@ func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Cli
 		return
 	}
 	newer := version.Newer(s.current, tags)
-	if repo := notes.Repo(s.Source); repo != "" && len(newer) > 0 {
-		releases, err := nc.Releases(ctx, repo, s.current)
+	repo := notes.Repo(s.Source)
+	if repo != "" {
+		list, err := nc.Advisories(ctx, repo)
 		if err != nil {
 			s.NotesError = err.Error()
+		}
+		for _, a := range list {
+			if a.Affects(s.current) {
+				s.Advisories = append(s.Advisories, a)
+				s.Notes = append(s.Notes, notes.Note{URL: a.URL, Published: a.Published, Body: a.Body})
+			}
+		}
+	}
+	fixed, urgent := notes.FixedFrom(s.Advisories, s.current)
+	if repo != "" && len(newer) > 0 {
+		releases, err := nc.Releases(ctx, repo, s.current)
+		if err != nil {
+			s.NotesError = strings.TrimPrefix(s.NotesError+" ; "+err.Error(), " ; ")
 		}
 		last := newer[len(newer)-1]
 		for _, n := range releases {
@@ -398,7 +413,7 @@ func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Cli
 			}
 		}
 		r := Release{Tag: v.Tag, Pushed: pushed}
-		if !pushed.IsZero() && time.Since(pushed) < maturation {
+		if !pushed.IsZero() && time.Since(pushed) < maturation && !(urgent && !notes.Less(v, fixed)) {
 			s.Maturing = append(s.Maturing, r)
 		} else {
 			s.Available = append(s.Available, r)

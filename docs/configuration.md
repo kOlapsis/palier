@@ -13,11 +13,11 @@ Toute la configuration passe par des variables d'environnement. La page `/settin
 | `PALIER_AI_KEY` | vide | Clé de l'API Anthropic. Sans clé, les plans sont calculés sur les versions seules. |
 | `PALIER_AI_MODEL` | `claude-sonnet-5-5` | Modèle utilisé pour les plans. |
 | `PALIER_SCAN_INTERVAL` | `1h` | Intervalle entre deux inspections (durée Go : `30m`, `2h`…). |
-| `PALIER_MATURATION` | `72h` | Âge minimal d'une version avant qu'elle soit proposée. |
+| `PALIER_MATURATION` | `72h` | Âge minimal d'une version avant qu'elle soit proposée. Une version qui corrige une faille de la version en service n'attend pas. |
 | `PALIER_STABLE_SECONDS` | `60` | Durée pendant laquelle un service doit rester stable à chaque vérification. |
 | `PALIER_AUTO` | `all` | `all`, `minor`, `patch` ou `off`. Voir [l'application automatique](utilisation.md#lapplication-automatique). |
 | `PALIER_WEBHOOK_URL` | vide | Adresse qui reçoit les événements en JSON. |
-| `PALIER_GITHUB_TOKEN` | vide | Lit les notes de version GitHub sans la limite anonyme. |
+| `PALIER_GITHUB_TOKEN` | vide | Lit les notes de version et les avis de sécurité GitHub sans la limite anonyme. |
 | `PALIER_GITLAB_TOKEN` | vide | Lit les notes de version GitLab (gitlab.com) sans la limite anonyme, et celles des projets privés. |
 | `PALIER_REGISTRY_MIRROR` | vide | Miroir de Docker Hub (`mirror.gcr.io`, par exemple), utilisé pour les lectures par digest. |
 | `DOCKER_CONFIG` | `$HOME/.docker` | Dossier du `config.json` qui contient les identifiants des registres privés. |

@@ -19,7 +19,8 @@
 <td><span class="mono">{{.Tag}}</span>
 <span class="sub mono">{{.Image}}</span>
 {{if and .Version (ne .Version .Tag)}}<span class="sub">version {{.Version}}, d'après {{if eq .VersionSource "digest"}}le digest{{else if eq .VersionSource "annotation"}}l'annotation OCI du registre{{else}}le label OCI{{end}}</span>{{end}}
-{{if .Republished}}<span class="flag muted">Tag republié au registre avec un autre contenu : ce n'est pas une nouvelle version.</span>{{end}}</td>
+{{if .Republished}}<span class="flag muted">Tag republié au registre avec un autre contenu : ce n'est pas une nouvelle version.</span>{{end}}
+{{range .Advisories}}<span class="flag bad">Faille {{label .Severity}} : <a href="{{.URL}}" rel="noreferrer noopener">{{with .CVE}}{{.}}{{else}}{{.ID}}{{end}}</a>, {{.Summary}}</span>{{end}}</td>
 <td>{{.State}}{{with .Health}}<span class="sub">{{.}}</span>{{end}}{{if .Restarts}}<span class="sub">{{.Restarts}} redémarrages</span>{{end}}</td>
 <td>{{with .DependsOn}}{{join .}}{{else}}<span class="muted">aucun</span>{{end}}</td>
 <td>{{$path := crumbs . $.Record}}{{if gt (len $path) 1}}

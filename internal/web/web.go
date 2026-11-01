@@ -112,6 +112,7 @@ var labels = map[string]string{
 	"done": "terminée", "rolled_back": "revenue en arrière", "failed": "échec", "abandoned": "abandonnée", "running": "en cours",
 	"application": "application", "dependency": "dépendance", "observed": "observé",
 	"ai": "IA", "versions": "versions seules",
+	"low": "faible", "medium": "moyenne", "high": "haute", "critical": "critique",
 }
 
 var tones = map[string]string{

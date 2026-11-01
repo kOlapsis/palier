@@ -19,5 +19,6 @@ nav:
   - Configuration: configuration.md
   - Fonctionnement: fonctionnement.md
   - Limites: limites.md
+  - Feuille de route: roadmap.md
 exclude_docs: |
   compose.yaml
