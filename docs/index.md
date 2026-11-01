@@ -1,6 +1,6 @@
 # Palier
 
-Palier met à jour seul les stacks Docker Compose d'une machine, une stack à la fois et par paliers. Il remplace Watchtower, qui met à jour à l'aveugle : Palier lit d'abord ce qui change, avec une IA, puis décide et applique sans attendre personne.
+Palier met à jour seul les stacks Docker Compose d'une machine, une stack à la fois et par paliers. Il ne met pas à jour à l'aveugle : il lit d'abord ce qui change, avec une IA, puis décide et applique sans attendre personne.
 
 Pour chaque stack qui a une version plus récente, il lit les notes de version de toutes les versions sautées et les avis de sécurité qui touchent la version en service, et fait proposer un plan par une IA. Il vérifie ce plan, puis l'applique seul, étape par étape, avec un point de reprise à chaque palier. Il contrôle chaque étape avec ce que Docker rapporte, et si une étape échoue, il remet toute la stack au dernier palier vérifié.
 
