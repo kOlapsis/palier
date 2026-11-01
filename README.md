@@ -55,4 +55,4 @@ Un label `palier.hook.backup` sur un service donne une commande de sauvegarde, l
 
 Pas de comptes ni de rôles, pas d'agent ni de machine distante, pas de licence, pas d'autre alerte que le webhook, pas de nettoyage des images, pas de mise à jour de lui-même. Les autres moteurs de base n'ont pas de méthode d'export et de réimport : leurs majeures restent bloquées. Les identifiants de registre rangés dans un `credsStore` ou des `credHelpers` ne sont pas lus.
 
-La documentation complète est dans `docs/` (MkDocs : `docker compose -f docs/compose.yaml up`, puis http://127.0.0.1:8000). Les preuves de chaque phase, jouées sur un banc avec un vrai Docker, sont dans `EVIDENCE.md`.
+La feuille de route est dans `docs/roadmap.md`. La documentation complète est dans `docs/` (MkDocs : `docker compose -f docs/compose.yaml up`, puis http://127.0.0.1:8000). Les preuves de chaque phase, jouées sur un banc avec un vrai Docker, sont dans `EVIDENCE.md`.
