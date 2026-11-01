@@ -33,7 +33,20 @@ Pour un projet sur GitHub, Palier lit aussi ses avis de sécurité publiés (Git
 
 Une version qui corrige une faille de la version en service passe sans attendre le délai de maturation. Pendant une vague de failles, chaque heure compte, et la vérification et le retour arrière restent le filet de sécurité.
 
-Le catalogue intégré contient des fiches pour Outline et GitLab : extraits de documentation (versions de base supportées, paliers obligatoires) et contrôles nommés, comme la fin des migrations de fond de GitLab.
+Le catalogue intégré complète les notes avec des extraits de la documentation officielle, copiés mot pour mot avec leur adresse, que l'IA cite comme les notes. Il contient des fiches pour :
+
+| Application | Ce que la fiche apporte |
+|---|---|
+| GitLab | Paliers obligatoires, et contrôle de la fin des migrations de fond entre deux paliers |
+| Nextcloud | Une majeure à la fois, par le dernier correctif de chacune ; bases supportées |
+| authentik | Chaque version `année.mois` dans l'ordre, par son dernier correctif |
+| Mastodon | Au moins une version de chaque mineure |
+| Synapse | Lire les notes de chaque version sautée ; PostgreSQL 14 au moins, et la politique de fin de support |
+| Outline | PostgreSQL 14 et plus, Redis 4 et plus |
+| Immich | Postgres de 14 à 19 |
+| Forgejo, Gitea, Keycloak | Versions de PostgreSQL, MySQL et MariaDB supportées |
+
+Les paliers d'une fiche sont vérifiés par le code : un plan qui en saute un est incomplet.
 
 ## 4. Plan
 

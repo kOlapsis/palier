@@ -1,0 +1,21 @@
+{
+  "id": "synapse",
+  "images": [
+    "docker.io/matrixdotorg/synapse",
+    "ghcr.io/element-hq/synapse"
+  ],
+  "excerpts": [
+    {
+      "url": "https://element-hq.github.io/synapse/latest/upgrade.html",
+      "text": "You need to read all of the upgrade notes for each version between your current version and the latest so that you can update your dependencies, environment, config files, etc. if necessary. But you do not need to perform an upgrade to each individual version that was missed.\n\nWe do not have a list of which versions must be installed. Instead, we recommend that you upgrade through each incompatible database schema version, which would give you the ability to roll back the maximum number of versions should anything go wrong. See Rolling back to older versions above."
+    },
+    {
+      "url": "https://element-hq.github.io/synapse/latest/deprecation_policy.html",
+      "text": "Synapse follows the upstream support life cycles for Python and PostgreSQL, i.e. when a version reaches End of Life Synapse will withdraw support for that version in future releases."
+    },
+    {
+      "url": "https://element-hq.github.io/synapse/latest/upgrade.html",
+      "text": "In line with our deprecation policy, we've dropped support for PostgreSQL 13, as it is no longer supported upstream. This release of Synapse requires PostgreSQL 14+."
+    }
+  ]
+}

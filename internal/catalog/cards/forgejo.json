@@ -1,0 +1,17 @@
+{
+  "id": "forgejo",
+  "images": [
+    "codeberg.org/forgejo/forgejo",
+    "data.forgejo.org/forgejo/forgejo"
+  ],
+  "excerpts": [
+    {
+      "url": "https://forgejo.org/docs/latest/admin/installation/database-preparation/",
+      "text": "Forgejo uses a database to store relational data, however not every relational database can be used by Forgejo. Only the following databases are supported:\n* MariaDB (>=10.6), using the InnoDB storage engine\n* MySQL (>=8.4), using the InnoDB storage engine\n* PostgreSQL (>=14)\n* SQLite"
+    },
+    {
+      "url": "https://forgejo.org/docs/latest/admin/upgrade/",
+      "text": "To be safe, make sure to perform a full backup before upgrading. It is a requirement when upgrading to a new stable release (going from v17.0 to v18.0 for instance) but is also a good precaution when installing a minor or patch release (going from v17.0.0 to v17.0.1 for instance)."
+    }
+  ]
+}

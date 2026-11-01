@@ -1,0 +1,17 @@
+{
+  "id": "gitea",
+  "images": [
+    "docker.gitea.com/gitea",
+    "docker.io/gitea/gitea"
+  ],
+  "excerpts": [
+    {
+      "url": "https://docs.gitea.com/installation/database-prep",
+      "text": "You need a database to use Gitea. Gitea supports PostgreSQL (>= 12), MySQL (>= 8.0), MariaDB (>= 10.4), SQLite (builtin), and MSSQL (>= 2012 SP4)."
+    },
+    {
+      "url": "https://docs.gitea.com/installation/upgrade-from-gitea",
+      "text": "Since you can not run an old Gitea with an upgraded database, a backup should always be made before a database upgrade."
+    }
+  ]
+}

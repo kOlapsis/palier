@@ -1,0 +1,43 @@
+{
+  "id": "nextcloud",
+  "images": [
+    "docker.io/library/nextcloud"
+  ],
+  "excerpts": [
+    {
+      "url": "https://docs.nextcloud.com/server/latest/admin_manual/maintenance/upgrade.html",
+      "text": "Nextcloud must be upgraded step by step:\n* Before you can upgrade to the next major release, you need to upgrade to the latest point release of your current major version.\n* Then run the upgrade again to upgrade to the next major release's latest point release.\n* You cannot skip major releases. Please re-run the upgrade until you have reached the highest available (or applicable) release."
+    },
+    {
+      "url": "https://github.com/nextcloud/docker",
+      "text": "It is only possible to upgrade one major version at a time. For example, if you want to upgrade from version 14 to 16, you will have to upgrade from version 14 to 15, then from 15 to 16."
+    },
+    {
+      "url": "https://docs.nextcloud.com/server/latest/admin_manual/installation/system_requirements.html",
+      "text": "Database\n* MySQL 8.4 / 9.7\n* MariaDB 10.11 / 11.4 / 11.8 / 12.3 (recommended)\n* PostgreSQL 14 / 15 / 16 / 17 / 18 (recommended)"
+    }
+  ],
+  "stops": [
+    "20.0",
+    "21.0",
+    "22.0",
+    "23.0",
+    "24.0",
+    "25.0",
+    "26.0",
+    "27.0",
+    "28.0",
+    "29.0",
+    "30.0",
+    "31.0",
+    "32.0",
+    "33.0",
+    "34.0",
+    "35.0",
+    "36.0",
+    "37.0",
+    "38.0",
+    "39.0",
+    "40.0"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "keycloak",
+  "images": [
+    "quay.io/keycloak/keycloak"
+  ],
+  "excerpts": [
+    {
+      "url": "https://www.keycloak.org/server/db",
+      "text": "The server has built-in support for different databases. You can query the available databases by viewing the expected values for the db configuration option. The following table lists the supported databases and their tested versions.\nDatabase | Option value | Tested Version | Supported Versions\nMariaDB Server | mariadb | 11.8 | 11.8 (LTS), 11.4 (LTS), 10.11 (LTS), 10.6 (LTS)\nMySQL | mysql | 8.4 | 8.4 (LTS), 8.0 (LTS)\nPostgreSQL | postgres | 18 | 18.x, 17.x, 16.x, 15.x, 14.x"
+    }
+  ]
+}
