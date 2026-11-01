@@ -25,7 +25,7 @@
 <td>{{with .DependsOn}}{{join .}}{{else}}<span class="muted">aucun</span>{{end}}</td>
 <td>{{$path := crumbs . $.Record}}{{if gt (len $path) 1}}
 <ol class="path" aria-label="Paliers de {{.Name}}">{{range $i, $c := $path}}<li class="{{if eq $i 0}}from{{else if $c.Last}}last{{else if $c.Stop}}stop{{end}}"><span{{if $c.Stop}} title="Palier obligatoire"{{end}}>{{$c.Tag}}</span></li>{{end}}</ol>
-{{else}}<span class="muted">à jour</span>{{end}}
+{{else if and .Available $.Record}}<span class="muted">reste en {{or .Version .Tag}} : le plan ne le change pas</span>{{else}}<span class="muted">à jour</span>{{end}}
 {{with .Available}}<details class="versions"><summary>{{len .}} version{{if gt (len .) 1}}s{{end}} plus récente{{if gt (len .) 1}}s{{end}}</summary><p>{{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</p></details>{{end}}
 {{with .Maturing}}<span class="flag muted">En maturation : {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>{{end}}
 {{with .DetectionError}}<span class="flag bad">{{.}}</span>{{end}}

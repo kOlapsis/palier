@@ -96,3 +96,17 @@ func TestCrumbsShowMandatoryStops(t *testing.T) {
 		t.Fatalf("with plan: %v", got)
 	}
 }
+
+func TestPlanOlderThanLastRunIsHidden(t *testing.T) {
+	created := time.Date(2026, 11, 1, 22, 50, 0, 0, time.UTC)
+	rec := &plan.Record{Stack: "immich", Created: created, Plan: &plan.Plan{Steps: []plan.Step{{Changes: []plan.Change{{Service: "database", From: "14", To: "16"}}}}}}
+	runs := []run.View{{ID: 16, Status: "done", Finished: "2026-11-01T22:56:39Z"}}
+	s := &server{deps: Deps{Plan: func(string) (*plan.Record, error) { return rec, nil }, Runs: func(string) ([]run.View, error) { return runs, nil }}}
+	if got, _ := s.plan("immich"); got != nil {
+		t.Fatal("a plan computed before the last run is still shown")
+	}
+	runs[0].Finished = "2026-11-01T22:40:00Z"
+	if got, _ := s.plan("immich"); got != rec {
+		t.Fatal("a plan computed after the last run is hidden")
+	}
+}

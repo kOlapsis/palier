@@ -545,6 +545,13 @@ func serve() error {
 					mu.Lock()
 					snap = web.Snapshot{Stacks: fresh, At: time.Now()}
 					mu.Unlock()
+					for _, now := range fresh {
+						if now.Name == st.Name && !now.Observed {
+							if _, err := a.planFor(ctx, now); err != nil {
+								slog.Error("plan", "stack", now.Name, "err", err)
+							}
+						}
+					}
 				}
 			}
 			a.waitForScan(ctx, rescan, next.At)

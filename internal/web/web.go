@@ -60,6 +60,20 @@ var stateNames = map[string]string{
 	run.RolledBack: "revenue en arrière",
 }
 
+// plan returns the stored plan of a stack, or nil when a run finished after it was computed and it no longer describes the stack.
+func (s *server) plan(stack string) (*plan.Record, error) {
+	rec, err := s.deps.Plan(stack)
+	if err != nil || rec == nil {
+		return rec, err
+	}
+	if runs, _ := s.deps.Runs(stack); len(runs) > 0 && !runs[0].DryRun {
+		if done, err := time.Parse(time.RFC3339, runs[0].Finished); err == nil && done.After(rec.Created) {
+			return nil, nil
+		}
+	}
+	return rec, nil
+}
+
 func (s *server) state(st *inventory.Stack) string {
 	if st.Observed {
 		return "observée seulement"
@@ -69,7 +83,7 @@ func (s *server) state(st *inventory.Stack) string {
 			return name
 		}
 	}
-	rec, _ := s.deps.Plan(st.Name)
+	rec, _ := s.plan(st.Name)
 	switch {
 	case rec != nil && len(rec.Plan.Incomplete) > 0:
 		return "plan incomplet"
@@ -144,7 +158,7 @@ func crumbs(svc *inventory.Service, rec *plan.Record) []Crumb {
 			}
 		}
 	}
-	if len(path) == 1 && len(svc.Available) > 0 {
+	if len(path) == 1 && len(svc.Available) > 0 && rec == nil {
 		for _, tag := range stopsBetween(svc) {
 			path = append(path, Crumb{Tag: tag, Stop: true})
 		}
@@ -274,7 +288,7 @@ func (s *server) stack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := map[string]any{"Stack": st, "At": at, "Error": r.URL.Query().Get("erreur")}
-	if rec, err := s.deps.Plan(st.Name); err != nil {
+	if rec, err := s.plan(st.Name); err != nil {
 		data["Error"] = err.Error()
 	} else {
 		data["Record"] = rec
