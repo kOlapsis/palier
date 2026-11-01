@@ -1,6 +1,6 @@
 # Palier
 
-Palier met à jour les stacks Docker Compose d'une machine, stack par stack et par paliers. Il lit les notes de version de toutes les versions sautées, fait proposer un plan par une IA, vérifie ce plan, l'applique étape par étape avec un point de reprise, contrôle le résultat avec ce que Docker rapporte, et remet toute la stack au dernier palier vérifié si une étape échoue.
+Palier met à jour seul les stacks Docker Compose d'une machine, stack par stack et par paliers, en remplacement de Watchtower. Il lit les notes de version de toutes les versions sautées, fait proposer un plan par une IA, vérifie ce plan, l'applique étape par étape avec un point de reprise, contrôle le résultat avec ce que Docker rapporte, et remet toute la stack au dernier palier vérifié si une étape échoue.
 
 ## Lancer Palier
 
@@ -47,6 +47,7 @@ Un label `palier.hook.backup` sur un service donne une commande de sauvegarde, l
 - Il inventorie les stacks Compose, leurs services, leurs dépendances (`depends_on`) et leurs volumes. Un conteneur lancé hors Compose est seulement observé.
 - Il trouve les versions plus récentes au registre (Docker Hub, GHCR, registres OCI) et lit les notes de version GitHub et gitlab.com, les avis de sécurité GitHub qui touchent la version en service (une version qui corrige une faille passe sans délai de maturation), ainsi que les extraits de documentation de son catalogue.
 - L'IA propose un plan dans un vocabulaire fermé d'opérations : `set_image`, `compose_edit`, `recreate`, `stop`, `start`, `wait_stable`, `exec_check`, `db_dump_restore`. Le code vérifie le plan avant toute exécution : versions existantes, paliers obligatoires, une dépendance dans l'intervalle que son application cite à chaque étape, citations mot pour mot.
+- Par défaut (`PALIER_AUTO=all`), il applique seul tout plan complet, majeures comprises, une stack après l'autre. Il ne demande une décision que pour une étape bloquante ou irréversible, ou un plan incomplet.
 - Il applique avec un point de reprise de toute la stack : fichiers Compose, images, copie des volumes. Il vérifie chaque étape (en service, stable, sans boucle de redémarrage, `healthy` si l'image a un HEALTHCHECK), reprend un point de reprise après chaque étape vérifiée, et revient au dernier à tout échec, y compris après un redémarrage de Palier au milieu d'une exécution.
 - Il passe une base PostgreSQL, MySQL ou MariaDB d'une majeure à l'autre par export et réimport sur un volume neuf, sans jamais toucher à l'ancien, et compare rôles, bases, tables, lignes, index et contraintes. Après un correctif de PostgreSQL qui change la bibliothèque C de l'image, il reconstruit les index des bases et met à jour leur version de collation.
 
@@ -54,4 +55,4 @@ Un label `palier.hook.backup` sur un service donne une commande de sauvegarde, l
 
 Pas de comptes ni de rôles, pas d'agent ni de machine distante, pas de licence, pas d'autre alerte que le webhook, pas de nettoyage des images, pas de mise à jour de lui-même. Les autres moteurs de base n'ont pas de méthode d'export et de réimport : leurs majeures restent bloquées. Les identifiants de registre rangés dans un `credsStore` ou des `credHelpers` ne sont pas lus.
 
-Les preuves de chaque phase, jouées sur un banc avec un vrai Docker, sont dans `EVIDENCE.md`.
+La documentation complète est dans `docs/` (MkDocs : `docker compose -f docs/compose.yaml up`, puis http://127.0.0.1:8000). Les preuves de chaque phase, jouées sur un banc avec un vrai Docker, sont dans `EVIDENCE.md`.

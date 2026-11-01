@@ -1,11 +1,13 @@
 # Palier
 
-Palier met à jour les stacks Docker Compose d'une machine, une stack à la fois et par paliers.
+Palier met à jour seul les stacks Docker Compose d'une machine, une stack à la fois et par paliers. Il remplace Watchtower, qui met à jour à l'aveugle : Palier lit d'abord ce qui change, avec une IA, puis décide et applique sans attendre personne.
 
-Pour chaque stack qui a une version plus récente, il lit les notes de version de toutes les versions sautées et fait proposer un plan par une IA. Il vérifie ce plan, puis l'applique étape par étape après avoir pris un point de reprise. Il contrôle chaque étape avec ce que Docker rapporte, et si une étape échoue, il remet toute la stack au dernier palier vérifié.
+Pour chaque stack qui a une version plus récente, il lit les notes de version de toutes les versions sautées et les avis de sécurité qui touchent la version en service, et fait proposer un plan par une IA. Il vérifie ce plan, puis l'applique seul, étape par étape, avec un point de reprise à chaque palier. Il contrôle chaque étape avec ce que Docker rapporte, et si une étape échoue, il remet toute la stack au dernier palier vérifié.
 
 ## En quelques mots
 
+- **Autonome par défaut.** Palier applique seul tout plan complet, majeures comprises. Il ne te demande une décision que pour ce qu'il ne peut pas faire lui-même : une étape bloquante, une étape irréversible ou un plan incomplet.
+- **Les failles d'abord.** Palier lit les avis de sécurité des projets. Une version qui corrige une faille de la version en service passe sans délai de maturation.
 - **Un seul conteneur.** Palier parle au Docker de sa machine par le socket. Il n'a pas d'agent, pas de compte et pas de licence.
 - **La stack entière.** Une application et ses dépendances (base, cache) se mettent à jour ensemble, dans le bon ordre. Une base ne monte jamais plus haut que ce que son application déclare supporter.
 - **Un plan vérifié.** L'IA choisit des opérations dans une liste fermée, et chaque affirmation du plan doit citer mot pour mot une note de version. Le code refuse tout plan qui ne passe pas ses contrôles.
@@ -19,3 +21,4 @@ Pour chaque stack qui a une version plus récente, il lit les notes de version d
 3. [Configuration](configuration.md) : variables d'environnement et labels.
 4. [Fonctionnement](fonctionnement.md) : ce que Palier fait à chaque étape.
 5. [Limites](limites.md) : ce que Palier ne fait pas.
+6. [Feuille de route](roadmap.md) : ce qui vient ensuite.

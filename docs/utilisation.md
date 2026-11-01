@@ -1,5 +1,15 @@
 # Utilisation
 
+## Le premier démarrage
+
+Au premier démarrage, Palier travaille seul pendant quelques minutes avant que tout soit visible :
+
+1. **L'inspection.** Il lit tous les conteneurs, les tags de chaque image au registre, les notes de version et les avis de sécurité. Comptez une à deux minutes pour une dizaine de stacks. La page d'accueil affiche « Première inspection en cours ».
+2. **Les plans.** Pour chaque stack qui a une version plus récente, l'IA calcule un plan. Cela prend de quelques secondes à deux minutes par stack. Pendant ce temps, la stack est « plan en calcul ».
+3. **Les mises à jour.** Chaque plan que Palier peut appliquer seul part aussitôt, une stack après l'autre. La stack passe « en cours », et sa page montre les étapes qui se cochent au fur et à mesure.
+
+Une grosse montée de version peut durer longtemps. GitLab, avec 13 paliers obligatoires et leurs migrations de fond, demande environ deux heures. Les journaux (`docker logs -f palier`) disent à chaque instant ce que Palier fait.
+
 ## La liste des stacks
 
 La page d'accueil montre chaque stack avec son état et l'âge de la dernière inspection. Palier inspecte toutes les stacks au démarrage, puis toutes les heures (`PALIER_SCAN_INTERVAL`), et aussi juste après chaque exécution ou décision.
@@ -7,8 +17,9 @@ La page d'accueil montre chaque stack avec son état et l'âge de la dernière i
 | État | Ce qu'il veut dire |
 |---|---|
 | à jour | Aucune version plus récente n'est disponible. |
-| plan prêt | Un plan existe et remplit les conditions de l'application automatique. |
-| en attente de décision | Un plan existe et attend qu'on clique « Appliquer ». |
+| plan en calcul | Des versions plus récentes existent, et l'IA n'a pas encore rendu son plan. |
+| plan prêt | Un plan existe, et Palier l'appliquera seul dès que la stack précédente aura fini. |
+| en attente de décision | Un plan existe, mais Palier ne peut pas l'appliquer seul : une étape est bloquante ou irréversible, la stack est reportée, ou `PALIER_AUTO` l'exclut. La raison est donnée sur la page de la stack. |
 | plan incomplet | Le plan n'a pas passé les contrôles. La raison est affichée, et il ne s'applique pas. |
 | détection incomplète | Les versions d'un service n'ont pas pu être lues au registre. |
 | en cours, terminée, revenue en arrière, échec, abandonnée | Résultat de la dernière exécution. |
@@ -32,7 +43,7 @@ Le plan dit aussi quelles versions il écarte et pourquoi, par exemple une majeu
 | Bouton | Effet |
 |---|---|
 | Essai à blanc | Vérifie que chaque image cible existe au registre et décrit ce que Palier ferait, sans rien modifier. |
-| Appliquer | Lance l'exécution. Le bouton n'apparaît pas si le plan est incomplet. |
+| Appliquer | Lance l'exécution tout de suite, sans attendre l'application automatique. Le bouton n'apparaît pas si le plan est incomplet. |
 | Ignorer *service version* | Retire cette version des versions proposées. Le plan est recalculé sans elle. |
 | Reporter jusqu'au | Empêche l'application automatique de cette stack jusqu'à la date choisie. |
 
@@ -47,13 +58,13 @@ Une exécution finit dans l'un de ces états :
 | Résultat | Ce qu'il veut dire |
 |---|---|
 | terminée | Toutes les étapes sont passées. |
-| revenue en arrière | Une étape a échoué, et toute la stack est revenue au dernier palier vérifié. Les étapes vérifiées avant l'échec restent appliquées. |
+| revenue en arrière | Une étape a échoué, ou Palier a été redémarré pendant l'exécution, et toute la stack est revenue au dernier palier vérifié. Les étapes vérifiées avant restent appliquées, et en mode automatique, une nouvelle exécution repart de là à l'inspection suivante. |
 | abandonnée | Rien n'a été modifié : la stack avait changé depuis le calcul du plan, un hook de sauvegarde a échoué, ou le point de reprise était impossible. |
 | échec | Même le retour arrière a échoué. Le détail dit ce qui reste à l'état modifié. |
 
 ## L'application automatique
 
-Palier est fait pour travailler seul. Par défaut (`PALIER_AUTO=all`), il applique tout plan complet, majeures comprises, quel que soit le niveau de risque jugé par l'IA. Ce qui le protège, c'est le point de reprise à chaque palier, la vérification par Docker et le retour au dernier palier vérifié.
+Palier est fait pour travailler seul. Par défaut (`PALIER_AUTO=all`), il applique tout plan complet, majeures comprises, quel que soit le niveau de risque jugé par l'IA. Ce qui le protège, c'est le point de reprise à chaque palier, la vérification par Docker et le retour au dernier palier vérifié. Les exécutions automatiques passent une stack après l'autre, pour ne pas charger la machine.
 
 Un plan attend ta décision seulement dans ces cas :
 

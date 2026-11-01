@@ -8,7 +8,16 @@ Un conteneur lancé hors Compose forme une stack d'un seul service, que Palier o
 
 ## 2. Détection des versions
 
-Pour chaque image, Palier lit les tags au registre : Docker Hub, GHCR ou tout registre OCI. La version en service vient du tag quand il est précis, sinon du digest et des labels OCI de l'image.
+Pour chaque image, Palier lit les tags au registre : Docker Hub, GHCR ou tout registre OCI. Une image écrite `registry.hub.docker.com/…` ou `index.docker.io/…` est reconnue comme venant de Docker Hub.
+
+La version en service vient, dans cet ordre :
+
+1. du tag, quand il est précis : `1.12.0`, `v2.5.5`, `6.2.14-alpine`, ou `pg14-v0.2.0`, dont le préfixe `pg14-v` définit une lignée à part ;
+2. sinon du digest, comparé à celui des tags précis du registre ;
+3. sinon de l'annotation OCI `org.opencontainers.image.version` que le registre donne pour ce digest ;
+4. sinon du label `org.opencontainers.image.version` de l'image.
+
+La date de publication de chaque version vient de l'API de Docker Hub, lue par pages de cent tags avec les identifiants Docker Hub, ou de la date de création de l'image pour les autres registres. Elle sert au délai de maturation.
 
 Les versions plus récentes sont triées. Les préversions sont exclues, et les variantes comme `-alpine` sont conservées : un service en `-alpine` reste en `-alpine`. Un tag republié avec un autre contenu n'est pas une nouvelle version. Une version plus jeune que `PALIER_MATURATION` attend, sauf si elle corrige une faille de la version en service (voir plus bas).
 
@@ -28,7 +37,14 @@ Le catalogue intégré contient des fiches pour Outline et GitLab : extraits de 
 
 ## 4. Plan
 
-L'IA reçoit le fichier Compose, les services, leurs versions, les dépendances, la fiche du catalogue et les notes. Elle répond par un plan en étapes. Chaque étape choisit ses opérations dans une liste fermée :
+L'IA reçoit le fichier Compose, les services, leurs versions, les dépendances, la fiche du catalogue, les notes et les avis de sécurité. Elle répond par un plan en étapes. Pour chaque étape, elle juge :
+
+- **le risque** : « bloquant » seulement si l'étape demande une action qu'aucune opération ne fait, « attention » si les notes signalent un changement que la stack peut sentir, « sûr » sinon, « inconnu » sans notes ;
+- **la réversibilité** : « non » seulement si même la restauration des fichiers, des images et des volumes copiés avant l'étape ne l'annulerait pas.
+
+Elle juge en sachant que Palier applique seul, avec un point de reprise à chaque palier. Seuls « bloquant », « non réversible » et un plan incomplet arrêtent l'application automatique (voir [Utilisation](utilisation.md#lapplication-automatique)).
+
+Chaque étape choisit ses opérations dans une liste fermée :
 
 | Opération | Ce qu'elle fait |
 |---|---|
@@ -81,7 +97,7 @@ Aucune sonde HTTP ni aucun test applicatif n'est ajouté.
 
 Si une étape échoue, toute la stack revient au dernier point de reprise : celui du dernier palier vérifié, ou celui du départ si la première étape échoue. Fichiers, images et volumes sont restaurés, puis vérifiés à nouveau. Si GitLab échoue à son sixième palier, il reste au cinquième, déjà vérifié en service, et la prochaine exécution repart de là. Une étape ne reste jamais à moitié appliquée.
 
-Si Palier est arrêté au milieu d'une exécution, il la reprend à son redémarrage et la défait.
+Si Palier est arrêté au milieu d'une exécution, il la reprend à son redémarrage : la stack revient au dernier palier vérifié. En mode automatique, une nouvelle exécution repart de là à l'inspection suivante.
 
 ## Les bases de données
 
@@ -98,4 +114,4 @@ L'ancien volume n'est jamais modifié. Si le réimport ou la comparaison échoue
 
 Après un correctif de PostgreSQL qui change la bibliothèque C de l'image, Palier reconstruit les index des bases concernées et met à jour leur version de collation, comme PostgreSQL le demande.
 
-Un autre moteur de base n'a pas de méthode d'export et de réimport : ses majeures restent bloquées : le plan est incomplet et ne s'applique pas.
+Un autre moteur de base n'a pas de méthode d'export et de réimport : ses majeures restent bloquées. Le plan est alors incomplet, et il ne s'applique pas.
