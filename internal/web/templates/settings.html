@@ -1,19 +1,24 @@
+{{define "section"}}settings{{end}}
 {{define "content"}}
+<div class="head">
 <h1>Réglages</h1>
-<p class="muted">Lus dans l'environnement au démarrage, en lecture seule.</p>
-<table><tbody>
-<tr><th>PALIER_DOCKER_HOST</th><td>{{.DockerHost}}</td></tr>
-<tr><th>PALIER_DATA_DIR</th><td>{{.DataDir}}</td></tr>
-<tr><th>PALIER_LISTEN</th><td>{{.Listen}}</td></tr>
-<tr><th>IA</th><td>{{if .AIKey}}clé définie, modèle {{.AIModel}}{{else}}pas de clé : plans sans analyse{{end}}</td></tr>
-<tr><th>PALIER_SCAN_INTERVAL</th><td>{{.ScanInterval}}</td></tr>
-<tr><th>PALIER_MATURATION</th><td>{{.Maturation}}</td></tr>
-<tr><th>PALIER_STABLE_SECONDS</th><td>{{.StableSeconds}}</td></tr>
-<tr><th>PALIER_AUTO</th><td>{{.Auto}}</td></tr>
-<tr><th>PALIER_WEBHOOK_URL</th><td>{{if .WebhookURL}}définie{{else}}absente{{end}}</td></tr>
-<tr><th>PALIER_GITHUB_TOKEN</th><td>{{if .GitHubToken}}défini{{else}}absent{{end}}</td></tr>
-<tr><th>PALIER_GITLAB_TOKEN</th><td>{{if .GitLabToken}}défini{{else}}absent{{end}}</td></tr>
-<tr><th>PALIER_REGISTRY_MIRROR</th><td>{{with .RegistryMirror}}{{.}}{{else}}absent{{end}}</td></tr>
-<tr><th>DOCKER_CONFIG</th><td>{{.DockerConfig}}</td></tr>
-</tbody></table>
+<p class="meta">Lus dans l'environnement au démarrage. Pour en changer, modifiez la variable et redémarrez Palier.</p>
+</div>
+<div class="panel">
+<dl class="settings">
+<dt>PALIER_DOCKER_HOST</dt><dd>{{.DockerHost}}</dd>
+<dt>PALIER_DATA_DIR</dt><dd>{{.DataDir}}</dd>
+<dt>PALIER_LISTEN</dt><dd>{{.Listen}}</dd>
+<dt>PALIER_AI_KEY</dt><dd>{{if .AIKey}}définie, modèle {{.AIModel}}{{else}}absente : plans calculés sur les versions seules{{end}}</dd>
+<dt>PALIER_SCAN_INTERVAL</dt><dd>{{.ScanInterval}}</dd>
+<dt>PALIER_MATURATION</dt><dd>{{.Maturation}}</dd>
+<dt>PALIER_STABLE_SECONDS</dt><dd>{{.StableSeconds}}</dd>
+<dt>PALIER_AUTO</dt><dd>{{.Auto}}</dd>
+<dt>PALIER_WEBHOOK_URL</dt><dd>{{if .WebhookURL}}définie{{else}}absente{{end}}</dd>
+<dt>PALIER_GITHUB_TOKEN</dt><dd>{{if .GitHubToken}}défini{{else}}absent{{end}}</dd>
+<dt>PALIER_GITLAB_TOKEN</dt><dd>{{if .GitLabToken}}défini{{else}}absent{{end}}</dd>
+<dt>PALIER_REGISTRY_MIRROR</dt><dd>{{with .RegistryMirror}}{{.}}{{else}}absent{{end}}</dd>
+<dt>DOCKER_CONFIG</dt><dd>{{.DockerConfig}}</dd>
+</dl>
+</div>
 {{end}}

@@ -1,14 +1,23 @@
 {{define "head"}}<meta http-equiv="refresh" content="60">{{end}}
 {{define "content"}}
+<div class="head">
 <h1>Stacks</h1>
-<p class="muted">Dernière inspection : {{since .At}}.</p>
-{{with .Err}}<p class="error">{{.}}</p>{{end}}
+<p class="meta">{{if .At.IsZero}}Première inspection en cours.{{else}}Dernière inspection {{since .At}}.{{end}}</p>
+</div>
+{{with .Err}}<p class="notice bad">{{.}}</p>{{end}}
 {{if .Stacks}}
+<div class="panel">
 <table>
 <thead><tr><th>Stack</th><th>État</th><th>Services</th></tr></thead>
 <tbody>
-{{range .Stacks}}<tr><td><a href="/stacks/{{.Name}}">{{.Name}}</a></td><td>{{state .}}</td><td>{{len .Services}}</td></tr>
+{{range .Stacks}}{{$state := state .}}<tr>
+<td class="name"><a href="/stacks/{{.Name}}">{{.Name}}</a>{{with .WorkingDir}}<span class="sub mono">{{.}}</span>{{end}}</td>
+<td><span class="pill {{tone $state}}">{{$state}}</span></td>
+<td>{{range $i, $s := .Services}}{{if $i}}, {{end}}{{$s.Name}}{{end}}</td>
+</tr>
 {{end}}</tbody>
 </table>
-{{else}}<p>Aucune stack pour l'instant.</p>{{end}}
+</div>
+{{else if .At.IsZero}}<div class="panel empty">Première inspection en cours. La page se met à jour toute seule.</div>
+{{else}}<div class="panel empty">Aucun conteneur sur ce moteur Docker. Les stacks Compose apparaîtront ici dès qu'elles seront lancées.</div>{{end}}
 {{end}}

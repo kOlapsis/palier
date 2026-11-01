@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -79,5 +80,19 @@ func TestPagesRender(t *testing.T) {
 		if strings.Contains(w.Body.String(), "<script>alert") {
 			t.Errorf("%s: quote not escaped", path)
 		}
+	}
+}
+
+func TestCrumbsShowMandatoryStops(t *testing.T) {
+	svc := &inventory.Service{Name: "gitlab", Image: "docker.io/gitlab/gitlab-ce", Tag: "16.1.6-ce.0", Version: "16.1.6-ce.0",
+		Available: []inventory.Release{{Tag: "16.2.9-ce.0"}, {Tag: "16.3.9-ce.0"}, {Tag: "16.6.8-ce.0"}, {Tag: "16.7.10-ce.0"}, {Tag: "17.0.8-ce.0"}}}
+	want := []Crumb{{Tag: "16.1.6-ce.0"}, {Tag: "16.3.9-ce.0", Stop: true}, {Tag: "16.7.10-ce.0", Stop: true}, {Tag: "17.0.8-ce.0", Last: true}}
+	if got := crumbs(svc, nil); !slices.Equal(got, want) {
+		t.Fatalf("without plan: %v", got)
+	}
+	rec := &plan.Record{Plan: &plan.Plan{Steps: []plan.Step{{Changes: []plan.Change{{Service: "gitlab", To: "16.3.9-ce.0"}}}, {Changes: []plan.Change{{Service: "gitlab", To: "16.6.8-ce.0"}}}}}}
+	want = []Crumb{{Tag: "16.1.6-ce.0"}, {Tag: "16.3.9-ce.0", Stop: true}, {Tag: "16.6.8-ce.0", Last: true}}
+	if got := crumbs(svc, rec); !slices.Equal(got, want) {
+		t.Fatalf("with plan: %v", got)
 	}
 }

@@ -1,9 +1,11 @@
+{{define "section"}}login{{end}}
 {{define "content"}}
-<h1>Accès</h1>
-{{with .}}<p class="error">{{.Error}}</p>{{end}}
-<form method="post" action="/login">
-<label for="token">Jeton</label>
-<input id="token" name="token" type="password" autocomplete="current-password" required autofocus>
-<button type="submit">Entrer</button>
+<form class="gate" method="post" action="/login">
+<span class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h5v-5h5v-5h5V5h3"/><path d="M3 20h18" opacity=".35"/></svg>Palier</span>
+{{with .}}<p class="notice bad">{{.Error}}</p>{{end}}
+<label for="token">Jeton d'accès
+<input id="token" name="token" type="password" autocomplete="current-password" required autofocus></label>
+<p class="muted">Il se trouve dans le fichier <code>token</code> du répertoire de données.</p>
+<button class="primary" type="submit">Se connecter</button>
 </form>
 {{end}}
