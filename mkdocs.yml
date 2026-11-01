@@ -1,0 +1,23 @@
+site_name: Palier
+site_description: Mise à jour des stacks Docker Compose par paliers, avec point de reprise et retour arrière.
+docs_dir: docs
+theme:
+  name: material
+  language: fr
+  features:
+    - navigation.sections
+    - content.code.copy
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+nav:
+  - Accueil: index.md
+  - Installation: installation.md
+  - Utilisation: utilisation.md
+  - Configuration: configuration.md
+  - Fonctionnement: fonctionnement.md
+  - Limites: limites.md
+exclude_docs: |
+  compose.yaml
