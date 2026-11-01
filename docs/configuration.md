@@ -15,7 +15,7 @@ Toute la configuration passe par des variables d'environnement. La page `/settin
 | `PALIER_SCAN_INTERVAL` | `1h` | Intervalle entre deux inspections (durée Go : `30m`, `2h`…). |
 | `PALIER_MATURATION` | `72h` | Âge minimal d'une version avant qu'elle soit proposée. |
 | `PALIER_STABLE_SECONDS` | `60` | Durée pendant laquelle un service doit rester stable à chaque vérification. |
-| `PALIER_AUTO` | `off` | `off`, `patch` ou `minor`. Voir [l'application automatique](utilisation.md#lapplication-automatique). |
+| `PALIER_AUTO` | `minor` | `minor`, `patch` ou `off`. Voir [l'application automatique](utilisation.md#lapplication-automatique). |
 | `PALIER_WEBHOOK_URL` | vide | Adresse qui reçoit les événements en JSON. |
 | `PALIER_GITHUB_TOKEN` | vide | Lit les notes de version GitHub sans la limite anonyme. |
 | `PALIER_GITLAB_TOKEN` | vide | Lit les notes de version GitLab (gitlab.com) sans la limite anonyme, et celles des projets privés. |

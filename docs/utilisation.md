@@ -53,12 +53,14 @@ Une exécution finit dans l'un de ces états :
 
 ## L'application automatique
 
-Par défaut, rien ne s'applique sans clic. Avec `PALIER_AUTO=patch` ou `PALIER_AUTO=minor`, Palier applique seul un plan quand toutes ces conditions sont remplies :
+Par défaut (`PALIER_AUTO=minor`), Palier applique seul un plan quand toutes ces conditions sont remplies :
 
 - le plan est complet ;
 - chaque étape est jugée sûre et réversible ;
 - aucun changement ne dépasse le niveau autorisé (`patch` : correctifs seulement ; `minor` : correctifs et mineures ; jamais de majeure) ;
 - la stack n'est pas reportée.
+
+`PALIER_AUTO=patch` limite l'application automatique aux correctifs, et `PALIER_AUTO=off` la coupe : chaque plan attend alors un clic.
 
 Sur la page de la stack, une ligne sous le plan dit si l'application automatique le prendra, ou pourquoi elle l'écarte.
 

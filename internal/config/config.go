@@ -47,7 +47,7 @@ func Load(getenv func(string) string) (Config, error) {
 		Token:          get("PALIER_TOKEN", ""),
 		AIKey:          get("PALIER_AI_KEY", ""),
 		AIModel:        get("PALIER_AI_MODEL", "claude-sonnet-5-5"),
-		Auto:           get("PALIER_AUTO", "off"),
+		Auto:           get("PALIER_AUTO", "minor"),
 		WebhookURL:     get("PALIER_WEBHOOK_URL", ""),
 		GitHubToken:    get("PALIER_GITHUB_TOKEN", ""),
 		GitLabToken:    get("PALIER_GITLAB_TOKEN", ""),
