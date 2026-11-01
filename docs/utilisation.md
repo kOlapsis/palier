@@ -100,6 +100,7 @@ docker exec palier /palier plan outline          # le plan d'une stack
 docker exec palier /palier apply outline --dry-run
 docker exec palier /palier apply outline         # applique, code de sortie 1 si l'exécution ne finit pas « terminée »
 docker exec palier /palier runs                  # les 50 dernières exécutions
+docker exec palier /palier token                 # le jeton d'accès à l'interface
 ```
 
 Sans argument, `palier` lance `serve`, c'est-à-dire l'interface et les inspections régulières.

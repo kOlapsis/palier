@@ -72,7 +72,7 @@ The machine is `10.10.50.10`, on the NAT network `palier-lab` (host side `10.10.
 The access token of Palier is generated at the first `up` and kept on the machine:
 
 ```sh
-deploy/lab/lab ssh sudo cat /opt/palier/token
+deploy/lab/lab ssh sudo docker exec palier-palier-1 /palier token
 ```
 
 The `lab` script reads its variables from the environment and from `deploy/lab/lab.env` when that file exists (one `NAME=value` per line, ignored by git and never copied to the machine): `LAB_SSH_KEY`, `LAB_ANTHROPIC_API_KEY`, which becomes `PALIER_AI_KEY`, and the registry credentials `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, `REGISTRY_ADDRESS`, `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`. `up` writes the credentials into `/opt/palier/docker/config.json` on the machine, which Palier reads through `DOCKER_CONFIG`.

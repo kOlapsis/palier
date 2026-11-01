@@ -15,12 +15,12 @@ docker run -d --name palier --restart unless-stopped \
   -v /srv/stacks:/srv/stacks \
   -e PALIER_AI_KEY=sk-ant-... \
   palier:local
-docker exec palier cat /var/lib/palier/token
+docker exec palier /palier token
 ```
 
 Le dossier de vos stacks (ici `/srv/stacks`) se monte au même chemin que sur l'hôte : Palier lit et modifie les fichiers Compose au chemin que donnent les labels des conteneurs. `CHOWN` et `DAC_OVERRIDE` lui servent à réécrire ces fichiers en gardant leur propriétaire, leur groupe et leur mode. L'interface est sur le port 8080, protégée par le jeton. `deploy/compose.yaml` fait la même chose avec Compose.
 
-La ligne de commande passe par le même code : `palier serve` (par défaut), `palier scan`, `palier plan <stack>`, `palier apply <stack> [--dry-run]`, `palier runs`.
+La ligne de commande passe par le même code : `palier serve` (par défaut), `palier scan`, `palier plan <stack>`, `palier apply <stack> [--dry-run]`, `palier runs`, `palier token`.
 
 ## Variables
 

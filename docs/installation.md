@@ -68,7 +68,7 @@ DOCKER_GID=$(stat -c %g /var/run/docker.sock) docker compose up -d
 L'interface écoute sur le port 8080. Elle est protégée par un jeton, créé au premier démarrage dans le répertoire de données :
 
 ```sh
-docker exec palier cat /var/lib/palier/token
+docker exec palier /palier token
 ```
 
 Ouvrez `http://127.0.0.1:8080`, collez le jeton, et la liste des stacks apparaît après la première inspection. Pour choisir le jeton vous-même, définissez `PALIER_TOKEN`.

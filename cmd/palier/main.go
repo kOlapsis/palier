@@ -31,7 +31,7 @@ import (
 	"github.com/kolapsis/palier/internal/web"
 )
 
-const usage = "usage: palier [serve | scan | plan <stack> | apply <stack> [--dry-run] | runs]"
+const usage = "usage: palier [serve | scan | plan <stack> | apply <stack> [--dry-run] | runs | token]"
 
 func main() {
 	args := os.Args[1:]
@@ -91,6 +91,8 @@ func main() {
 			}
 			return nil
 		})
+	case cmd == "token" && len(args) == 0:
+		err = printToken()
 	case cmd == "runs" && len(args) == 0:
 		err = withApp(func(ctx context.Context, a *app) error {
 			runs, err := run.List(ctx, a.db, "", 50)
@@ -107,6 +109,21 @@ func main() {
 		slog.Error("arrêt sur erreur", "err", err)
 		os.Exit(1)
 	}
+}
+
+func printToken() error {
+	cfg, err := config.Load(os.Getenv)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		return err
+	}
+	if _, err := cfg.EnsureToken(); err != nil {
+		return err
+	}
+	fmt.Println(cfg.Token)
+	return nil
 }
 
 func printJSON(v any) error {
