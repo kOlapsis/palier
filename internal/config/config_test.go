@@ -15,7 +15,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Listen != ":8080" || c.ScanInterval != time.Hour || c.Maturation != 72*time.Hour || c.StableSeconds != 60 || c.Auto != "minor" || c.AIModel != "claude-sonnet-5-5" {
+	if c.Listen != ":8080" || c.ScanInterval != time.Hour || c.Maturation != 72*time.Hour || c.StableSeconds != 60 || c.Auto != "all" || c.AIModel != "claude-sonnet-5-5" {
 		t.Fatalf("defaults: %+v", c)
 	}
 }

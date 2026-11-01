@@ -98,11 +98,21 @@ func TestAutomatic(t *testing.T) {
 	patch := &Plan{Steps: []Step{step(Change{"redis", "7.2.4", "7.2.16"})}}
 	minor := &Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.11.0"})}}
 	unknown := &Plan{Steps: []Step{{Risk: "unknown", Reversible: "unknown"}}}
+	attention := &Plan{Steps: []Step{step(Change{"uptimekuma", "2.5.5", "2.5.8"})}}
+	attention.Steps[0].Risk, attention.Steps[0].Reversible = "attention", "conditional"
+	major := &Plan{Steps: []Step{step(Change{"postgres", "16.14", "17.6"})}}
+	blocking := &Plan{Steps: []Step{step(Change{"redis", "7.2.4", "7.2.16"})}}
+	blocking.Steps[0].Risk = "blocking"
+	irreversible := &Plan{Steps: []Step{step(Change{"redis", "7.2.4", "7.2.16"})}}
+	irreversible.Steps[0].Reversible = "no"
+	incomplete := &Plan{Steps: patch.Steps, Incomplete: []string{"citation absente"}}
 	for _, c := range []struct {
 		p    *Plan
 		auto string
 		want bool
-	}{{patch, "patch", true}, {minor, "patch", false}, {minor, "minor", true}, {patch, "off", false}, {unknown, "minor", false}} {
+	}{{patch, "patch", true}, {minor, "patch", false}, {minor, "minor", true}, {patch, "off", false},
+		{unknown, "all", true}, {attention, "all", true}, {attention, "patch", true}, {major, "all", true}, {major, "minor", false},
+		{blocking, "all", false}, {irreversible, "all", false}, {incomplete, "all", false}} {
 		if ok, why := Automatic(c.p, c.auto); ok != c.want {
 			t.Errorf("Automatic(%s) = %v (%s)", c.auto, ok, why)
 		}

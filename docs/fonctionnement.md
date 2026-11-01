@@ -92,4 +92,4 @@ L'ancien volume n'est jamais modifié. Si le réimport ou la comparaison échoue
 
 Après un correctif de PostgreSQL qui change la bibliothèque C de l'image, Palier reconstruit les index des bases concernées et met à jour leur version de collation, comme PostgreSQL le demande.
 
-Un autre moteur de base n'a pas de méthode d'export et de réimport : ses majeures restent bloquées et ne partent jamais en automatique.
+Un autre moteur de base n'a pas de méthode d'export et de réimport : ses majeures restent bloquées : le plan est incomplet et ne s'applique pas.

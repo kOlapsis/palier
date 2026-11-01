@@ -623,15 +623,15 @@ func Automatic(p *Plan, auto string) (bool, string) {
 		return false, "rien à appliquer"
 	}
 	for i, s := range p.Steps {
-		if s.Risk != "safe" {
-			return false, fmt.Sprintf("étape %d de niveau %s", i+1, s.Risk)
+		if s.Risk == "blocking" {
+			return false, fmt.Sprintf("étape %d bloquante : elle demande une action que Palier ne sait pas faire", i+1)
 		}
-		if s.Reversible != "yes" {
-			return false, fmt.Sprintf("étape %d de réversibilité %s", i+1, s.Reversible)
+		if s.Reversible == "no" {
+			return false, fmt.Sprintf("étape %d irréversible, même en restaurant les volumes", i+1)
 		}
 		for _, c := range s.Changes {
-			if l := Level(c.From, c.To); l == "major" || (auto == "patch" && l == "minor") {
-				return false, fmt.Sprintf("%s %s vers %s est une version %s", c.Service, c.From, c.To, l)
+			if l := Level(c.From, c.To); auto == "minor" && l == "major" || auto == "patch" && l != "patch" {
+				return false, fmt.Sprintf("%s %s vers %s est une version %s, au-delà de PALIER_AUTO=%s", c.Service, c.From, c.To, l, auto)
 			}
 		}
 	}

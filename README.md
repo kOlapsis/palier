@@ -34,7 +34,7 @@ La ligne de commande passe par le même code : `palier serve` (par défaut), `pa
 | `PALIER_SCAN_INTERVAL` | `1h` | Fréquence d'inspection |
 | `PALIER_MATURATION` | `72h` | Âge minimal d'une version proposée |
 | `PALIER_STABLE_SECONDS` | `60` | Durée de stabilité exigée à chaque vérification |
-| `PALIER_AUTO` | `minor` | Application sans clic des plans sûrs, réversibles, de correctifs et de mineures ; `patch` pour les correctifs seuls, `off` pour tout valider à la main |
+| `PALIER_AUTO` | `all` | Application seule de tout plan complet, majeures comprises, sauf étape bloquante ou irréversible ; `minor` exclut les majeures, `patch` garde les correctifs, `off` fait tout valider à la main |
 | `PALIER_WEBHOOK_URL` | vide | Reçoit un JSON à chaque plan prêt, fin d'exécution, retour arrière ou échec |
 | `PALIER_GITHUB_TOKEN`, `PALIER_GITLAB_TOKEN` | vide | Notes de version GitHub et gitlab.com sans la limite anonyme |
 | `PALIER_REGISTRY_MIRROR` | vide | Miroir Docker Hub, pour les lectures par digest |

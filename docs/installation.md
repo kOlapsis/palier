@@ -74,7 +74,7 @@ docker exec palier /palier token
 Ouvrez `http://127.0.0.1:8080`, collez le jeton, et la liste des stacks apparaît après la première inspection. Pour choisir le jeton vous-même, définissez `PALIER_TOKEN`.
 
 !!! note "Sans clé d'IA"
-    Palier fonctionne sans `PALIER_AI_KEY`. Il détecte les versions et propose des plans calculés sur les versions seules, de niveau « inconnu ». Ces plans ne partent jamais en automatique.
+    Palier fonctionne sans `PALIER_AI_KEY`. Il détecte les versions et propose des plans calculés sur les versions seules, de niveau « inconnu ». Ils s'appliquent seuls comme les autres, protégés par le retour arrière, mais sans analyse des notes.
 
 ## Journaux
 

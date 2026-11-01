@@ -47,7 +47,7 @@ func Load(getenv func(string) string) (Config, error) {
 		Token:          get("PALIER_TOKEN", ""),
 		AIKey:          get("PALIER_AI_KEY", ""),
 		AIModel:        get("PALIER_AI_MODEL", "claude-sonnet-5-5"),
-		Auto:           get("PALIER_AUTO", "minor"),
+		Auto:           get("PALIER_AUTO", "all"),
 		WebhookURL:     get("PALIER_WEBHOOK_URL", ""),
 		GitHubToken:    get("PALIER_GITHUB_TOKEN", ""),
 		GitLabToken:    get("PALIER_GITLAB_TOKEN", ""),
@@ -70,9 +70,9 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	c.StableSeconds = stable
 	switch c.Auto {
-	case "off", "patch", "minor":
+	case "off", "patch", "minor", "all":
 	default:
-		errs = append(errs, fmt.Errorf("PALIER_AUTO: %q, attendu off, patch ou minor", c.Auto))
+		errs = append(errs, fmt.Errorf("PALIER_AUTO: %q, attendu all, minor, patch ou off", c.Auto))
 	}
 	return c, errors.Join(errs...)
 }

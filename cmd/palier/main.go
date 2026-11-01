@@ -512,11 +512,13 @@ func serve() error {
 					slog.Info("application automatique écartée", "stack", st.Name, "auto", a.cfg.Auto, "reason", why)
 					continue
 				}
-				if id, err := start(st, "auto", false); err != nil {
+				id, p, err := a.begin(ctx, st, "auto", false)
+				if err != nil {
 					slog.Error("application automatique", "stack", st.Name, "err", err)
-				} else {
-					slog.Info("application automatique", "stack", st.Name, "run", id)
+					continue
 				}
+				slog.Info("application automatique", "stack", st.Name, "run", id)
+				a.eng.Execute(ctx, id, st, p, false)
 			}
 			a.waitForScan(ctx, rescan, next.At)
 			if ctx.Err() != nil {

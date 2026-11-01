@@ -53,14 +53,16 @@ Une exécution finit dans l'un de ces états :
 
 ## L'application automatique
 
-Par défaut (`PALIER_AUTO=minor`), Palier applique seul un plan quand toutes ces conditions sont remplies :
+Palier est fait pour travailler seul. Par défaut (`PALIER_AUTO=all`), il applique tout plan complet, majeures comprises, quel que soit le niveau de risque jugé par l'IA. Ce qui le protège, c'est le point de reprise à chaque palier, la vérification par Docker et le retour au dernier palier vérifié.
 
-- le plan est complet ;
-- chaque étape est jugée sûre et réversible ;
-- aucun changement ne dépasse le niveau autorisé (`patch` : correctifs seulement ; `minor` : correctifs et mineures ; jamais de majeure) ;
-- la stack n'est pas reportée.
+Un plan attend ta décision seulement dans ces cas :
 
-`PALIER_AUTO=patch` limite l'application automatique aux correctifs, et `PALIER_AUTO=off` la coupe : chaque plan attend alors un clic.
+- il est incomplet : une citation manque, un palier obligatoire est sauté, une dépendance sort de ce que l'application supporte ;
+- une étape est bloquante : elle demande une action que Palier ne sait pas faire ;
+- une étape est irréversible : même la restauration des volumes ne l'annulerait pas ;
+- la stack est reportée.
+
+Le niveau « attention » dit ce qui change, il ne bloque pas. `PALIER_AUTO=minor` exclut les majeures, `PALIER_AUTO=patch` garde seulement les correctifs, et `PALIER_AUTO=off` coupe l'application automatique : chaque plan attend alors un clic.
 
 Sur la page de la stack, une ligne sous le plan dit si l'application automatique le prendra, ou pourquoi elle l'écarte.
 

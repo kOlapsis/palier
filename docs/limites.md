@@ -16,7 +16,7 @@
 - **Identifiants de registre dans un `credsStore` ou des `credHelpers`.** Seule la section `auths` de `config.json` est lue.
 - **Conteneurs hors Compose.** Ils sont seulement observés.
 - **Notes de version hors GitHub et gitlab.com.** Une instance GitLab auto-hébergée, Codeberg ou une autre forge ne sont pas lues ; seules les fiches du catalogue complètent alors les notes.
-- **Versions sans notes.** Sans notes de version, le plan est de niveau « inconnu » et attend un clic.
+- **Versions sans notes.** Sans notes de version, le plan est de niveau « inconnu » : il s'applique seul, protégé par la vérification et le retour arrière, mais personne n'a lu ce qui change.
 
 ## Ce que le cache des plans implique
 
