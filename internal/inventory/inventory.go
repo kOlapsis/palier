@@ -58,6 +58,7 @@ type Service struct {
 	Notes          []notes.Note     `json:"notes,omitempty"`
 	Advisories     []notes.Advisory `json:"advisories,omitempty"`
 	NotesError     string           `json:"notes_error,omitempty"`
+	BuiltLocally   bool             `json:"built_locally,omitempty"`
 
 	current      version.V
 	digests      []string
@@ -172,7 +173,7 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 	}
 	var img docker.Image
 	// A container being recreated may point to an image that is already gone; its service keeps no image details.
-	_ = dc.Get(ctx, "/images/"+c.ImageID+"/json", &img)
+	imgErr := dc.Get(ctx, "/images/"+c.ImageID+"/json", &img)
 	ref := registry.ParseRef(d.Config.Image)
 	svc := &Service{
 		Name:        c.Labels[labelService],
@@ -197,6 +198,7 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 	if len(svc.digests) > 0 {
 		svc.Digest = svc.digests[0]
 	}
+	svc.BuiltLocally = imgErr == nil && len(img.RepoDigests) == 0
 	svc.labelVersion = img.Config.Labels["org.opencontainers.image.version"]
 	svc.Source = img.Config.Labels["org.opencontainers.image.source"]
 	svc.BackupHook = c.Labels["palier.hook.backup"]
@@ -360,6 +362,9 @@ func Detect(ctx context.Context, stacks []*Stack, reg *registry.Client, nc *note
 }
 
 func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Client, maturation time.Duration) {
+	if s.BuiltLocally {
+		return
+	}
 	ref := registry.ParseRef(s.Image + ":" + s.Tag)
 	tags, err := reg.Tags(ctx, ref)
 	if err != nil {
