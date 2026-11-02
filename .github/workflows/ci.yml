@@ -69,8 +69,7 @@ jobs:
             release-assets.githubusercontent.com:443
             registry-1.docker.io:443
             auth.docker.io:443
-            production.cloudflare.docker.com:443
-            *.r2.cloudflarestorage.com:443
+            production.cloudfront.docker.com:443
             deb.debian.org:80
             deb.debian.org:443
             proxy.golang.org:443
@@ -101,8 +100,8 @@ jobs:
           allowed-endpoints: >
             github.com:443
             api.github.com:443
-            ghcr.io:443
-            pkg-containers.githubusercontent.com:443
+            pypi.org:443
+            files.pythonhosted.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
