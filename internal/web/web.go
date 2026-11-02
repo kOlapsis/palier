@@ -381,7 +381,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusUnauthorized, "login.html", map[string]string{"Error": "Incorrect token."})
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", MaxAge: 30 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", MaxAge: 30 * 24 * 3600, HttpOnly: true, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https", SameSite: http.SameSiteStrictMode})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
