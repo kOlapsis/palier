@@ -89,6 +89,14 @@ details.versions summary { cursor: pointer; width: max-content; }
 details.versions p { margin: .3rem 0 0; font-family: var(--mono); line-height: 1.7; max-width: 38rem; }
 .flag { display: block; margin-top: .35rem; font-size: .8rem; }
 .flag.bad { color: var(--bad); }
+tr:has(+ tr.advisories) td { border-bottom: 0; }
+tr.advisories td { padding-top: 0; }
+tr.advisories summary { cursor: pointer; width: max-content; }
+tr.advisories ul { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; grid-template-columns: max-content max-content 1fr; gap: .35rem 1rem; font-size: .85rem; }
+tr.advisories li { display: contents; }
+.sev { font-weight: 600; color: var(--muted); }
+.sev.critical, .sev.high { color: var(--bad); }
+.sev.medium { color: var(--warn); }
 
 .planhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1.5rem; margin: 2.25rem 0 1rem; }
 .planhead h2 { margin: 0; }

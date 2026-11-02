@@ -3,6 +3,7 @@ package web
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/subtle"
 	"embed"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/kolapsis/palier/internal/catalog"
 	"github.com/kolapsis/palier/internal/config"
 	"github.com/kolapsis/palier/internal/inventory"
+	"github.com/kolapsis/palier/internal/notes"
 	"github.com/kolapsis/palier/internal/plan"
 	"github.com/kolapsis/palier/internal/run"
 	"github.com/kolapsis/palier/internal/version"
@@ -92,6 +95,9 @@ func (s *server) state(st *inventory.Stack) string {
 			return name
 		}
 	}
+	if s.deps.Current().At.IsZero() {
+		return "checking versions"
+	}
 	rec, _ := s.plan(st.Name)
 	switch {
 	case rec != nil && len(rec.Plan.Incomplete) > 0:
@@ -129,6 +135,39 @@ func since(t time.Time) string {
 	return fmt.Sprintf("%d h ago", int(d.Hours()))
 }
 
+func severityRank(s string) int {
+	if i := slices.Index([]string{"critical", "high", "medium", "low"}, s); i >= 0 {
+		return i
+	}
+	return 4
+}
+
+func worstFirst(list []notes.Advisory) []notes.Advisory {
+	out := slices.Clone(list)
+	slices.SortStableFunc(out, func(a, b notes.Advisory) int { return cmp.Compare(severityRank(a.Severity), severityRank(b.Severity)) })
+	return out
+}
+
+func severities(list []notes.Advisory) string {
+	counts := map[string]int{}
+	for _, a := range list {
+		counts[cmp.Or(a.Severity, "unknown")]++
+	}
+	var parts []string
+	for _, a := range worstFirst(list) {
+		s := cmp.Or(a.Severity, "unknown")
+		if counts[s] > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", counts[s], s))
+			counts[s] = 0
+		}
+	}
+	noun := "security advisories"
+	if len(list) == 1 {
+		noun = "security advisory"
+	}
+	return fmt.Sprintf("%d %s: %s", len(list), noun, strings.Join(parts, ", "))
+}
+
 var labels = map[string]string{
 	"done": "completed", "rolled_back": "rolled back",
 	"ai": "AI", "versions": "versions only",
@@ -136,7 +175,7 @@ var labels = map[string]string{
 
 var tones = map[string]string{
 	"up to date": "ok", "done": "ok", "safe": "ok", "yes": "ok",
-	"plan ready": "accent", "running": "run", "computing plan": "run",
+	"plan ready": "accent", "running": "run", "computing plan": "run", "checking versions": "run",
 	"awaiting decision": "warn", "detection incomplete": "warn", "rolled back": "warn", "rolled_back": "warn", "attention": "warn", "conditional": "warn",
 	"incomplete plan": "bad", "failed": "bad", "blocking": "bad", "no": "bad",
 }
@@ -243,11 +282,13 @@ func New(token string, deps Deps) http.Handler {
 			}
 			return v
 		},
-		"join":    func(v []string) string { return strings.Join(v, ", ") },
-		"tone":    func(v string) string { return tones[v] },
-		"crumbs":  crumbs,
-		"hasStop": hasStop,
-		"inc":     func(i int) int { return i + 1 },
+		"join":       func(v []string) string { return strings.Join(v, ", ") },
+		"tone":       func(v string) string { return tones[v] },
+		"crumbs":     crumbs,
+		"hasStop":    hasStop,
+		"inc":        func(i int) int { return i + 1 },
+		"worstFirst": worstFirst,
+		"severities": severities,
 		"when": func(v string) string {
 			t, err := time.Parse(time.RFC3339, v)
 			if err != nil {

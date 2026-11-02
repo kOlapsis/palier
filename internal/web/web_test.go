@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kolapsis/palier/internal/inventory"
+	"github.com/kolapsis/palier/internal/notes"
 	"github.com/kolapsis/palier/internal/plan"
 	"github.com/kolapsis/palier/internal/run"
 )
@@ -108,5 +109,15 @@ func TestPlanOlderThanLastRunIsHidden(t *testing.T) {
 	runs[0].Finished = "2026-11-01T22:40:00Z"
 	if got, _ := s.plan("immich"); got != rec {
 		t.Fatal("a plan computed after the last run is hidden")
+	}
+}
+
+func TestSeverities(t *testing.T) {
+	list := []notes.Advisory{{ID: "a", Severity: "medium"}, {ID: "b", Severity: "high"}, {ID: "c", Severity: "critical"}, {ID: "d", Severity: "high"}, {ID: "e"}}
+	if got, want := severities(list), "5 security advisories: 1 critical, 2 high, 1 medium, 1 unknown"; got != want {
+		t.Errorf("severities = %q, want %q", got, want)
+	}
+	if got := worstFirst(list); got[0].ID != "c" || got[1].ID != "b" || got[2].ID != "d" || got[4].ID != "e" {
+		t.Errorf("worstFirst order = %v", got)
 	}
 }

@@ -503,6 +503,11 @@ func serve() error {
 		return id, nil
 	}
 	go func() {
+		if stacks, err := inventory.Scan(ctx, a.dc); err == nil {
+			mu.Lock()
+			snap = web.Snapshot{Stacks: stacks}
+			mu.Unlock()
+		}
 		for {
 			began := time.Now()
 			stacks, err := a.scan(ctx)
@@ -569,7 +574,11 @@ func serve() error {
 		Current: current,
 		Plan:    func(stack string) (*plan.Record, error) { return a.storedPlan(ctx, stack) },
 		Apply: func(stack string, dryRun bool) (int64, error) {
-			for _, st := range current().Stacks {
+			snap := current()
+			if snap.At.IsZero() {
+				return 0, fmt.Errorf("the first scan is still checking versions, try again when it ends")
+			}
+			for _, st := range snap.Stacks {
 				if st.Name == stack && !st.Observed {
 					return start(st, "interface", dryRun)
 				}
