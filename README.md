@@ -1,58 +1,175 @@
-# Palier
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="Palier: Docker Compose updates in verified steps" width="100%">
+</p>
 
-Palier met à jour seul les stacks Docker Compose d'une machine, stack par stack et par paliers. Il lit les notes de version de toutes les versions sautées, fait proposer un plan par une IA, vérifie ce plan, l'applique étape par étape avec un point de reprise, contrôle le résultat avec ce que Docker rapporte, et remet toute la stack au dernier palier vérifié si une étape échoue.
+<p align="center"><strong>Docker Compose updates that read the release notes before touching anything.</strong></p>
 
-## Lancer Palier
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="docs/index.md">Documentation</a>
+</p>
+
+Palier updates the Docker Compose stacks of a machine on its own. It does more than bump a tag: it reads the release notes of every skipped version, has an AI build a plan, checks that plan, then applies it in steps. If a step fails, the whole stack goes back to the last step that worked.
+
+One Go binary, one container, the Docker socket. No agent, no account, no license.
+
+---
+
+## The problem
+
+Bumping a tag is easy. What breaks a self-hosted stack is everything else:
+
+- a **required intermediate version** that was skipped;
+- a **Compose file that changes**: a removed service, a renamed variable, a replaced base image;
+- a **database** that changes major version and refuses to start on the old volume;
+- a **dependency** upgraded beyond what the application supports;
+- a failure in the middle, leaving a **half-updated** stack.
+
+All of this is written in the release notes. Palier reads them for you.
+
+## What it did on the bench
+
+Every Palier feature is proven in a virtual machine with a real Docker, on real applications.
+
+**GitLab CE 16.1.6 → 19.5.1, in 13 steps.** GitLab forbids skipping its required upgrade stops. Palier followed the path 16.3.9 → 16.7.10 → 16.11.10 → 17.3.7 → … → 19.5.1, waiting for the background migrations to finish at each stop (up to 14 minutes for 18.8.11). Duration: 3 h 43, unattended. At the end, GitLab is `healthy` with its project, its issue and its accounts, and `compose.yaml` kept its owner and mode.
+
+**Immich v1.105.1 → v3.3.5, with two Compose breaking changes.** Palier removed the `immich-microservices` service, dropped a `command`, set the port variable the notes ask for, and replaced the database image (`pgvecto-rs` → VectorChord) at the step where Immich requires it. Eight steps, all verified. Photos downloaded afterwards have the same SHA-1 as before.
+
+**A failure forced at the second step.** The `docker-compose.yml` file, the `.env` and the four volumes come back identical, the removed service reappears, and the data is intact.
+
+## How it works
+
+```
+ inventory ──► versions ──► release notes ──► plan (AI) ──► validation ──► step-by-step apply
+                              + security advisories           (code)         │
+                                                                             ├─ restore point
+                                                                             ├─ step
+                                                                             ├─ Docker verification
+                                                                             └─ failure? back to the last verified step
+```
+
+1. **Inventory.** Palier reads the containers of the Docker engine, groups the Compose ones into stacks, and records images, digests, HEALTHCHECK, volumes and `depends_on`.
+2. **Versions.** It finds newer versions in the registry (Docker Hub, GHCR, any OCI registry). Prereleases are excluded, variants such as `-alpine` are kept, and a version must have matured for 72 h before it is proposed.
+3. **Notes.** It reads the notes of **every** version between the running one and the target (GitHub, gitlab.com), the GitHub security advisories that affect the running version, and the documentation excerpts from its catalog.
+4. **Plan.** The AI picks operations from a closed list: `set_image`, `compose_edit`, `recreate`, `stop`, `start`, `wait_stable`, `exec_check`, `db_dump_restore`. It never writes a command.
+5. **Validation.** The code rejects any plan that skips a required step, targets a version that does not exist, upgrades a dependency beyond what the application cites as supported, or states something without quoting it word for word from a note.
+6. **Apply.** Step by step, with a restore point of the whole stack (Compose files, `.env`, images, volume copies) before each step.
+7. **Verification.** Only what Docker reports: the container is running, stays stable, does not loop, and is `healthy` if it has a HEALTHCHECK.
+
+## Safeguards
+
+- **A rollback on every failure.** A step is never left half applied. If Palier is stopped in the middle of a run, it puts the stack back at the last verified step when it restarts.
+- **The stack follows its application.** A database or cache never goes higher than what the application declares it supports. Without a citation, it stays on its major version.
+- **Database major upgrades that keep the data safe.** PostgreSQL, MySQL and MariaDB change major version by export and reimport on a new volume. The old volume is never touched, and Palier compares roles, databases, tables, rows, indexes and constraints before going on.
+- **PostgreSQL collations.** After a patch release that changes the C library of the image, Palier rebuilds the affected indexes and updates the collation version.
+- **Vulnerabilities first.** A version that fixes a vulnerability in the running version skips the maturation delay.
+- **Notes are data.** Release notes, image names and logs are never treated as instructions or displayed as HTML.
+- **The Compose file stays the source of truth.** Palier edits it in place, keeps its owner, group and mode, and hides no state on the side.
+- **A backup hook.** The `palier.hook.backup` label runs your backup command in the container before any change. If it fails, nothing is applied.
+
+## Automatic mode
+
+By default (`PALIER_AUTO=all`), Palier applies any complete plan on its own, major versions included, one stack after the other. It asks for a decision only for what it cannot do alone: a blocking step, an irreversible step or an incomplete plan.
+
+Prefer to stay in control? `minor` excludes major versions, `patch` keeps only patch releases, `off` makes you approve everything in the interface.
+
+## Quick start
 
 ```sh
+git clone https://github.com/kolapsis/palier && cd palier
 docker build -t palier:local -f deploy/Dockerfile .
-docker run -d --name palier --restart unless-stopped \
-  --group-add "$(stat -c %g /var/run/docker.sock)" \
-  --read-only --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE \
-  -p 127.0.0.1:8080:8080 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v palier-data:/var/lib/palier \
-  -v /srv/stacks:/srv/stacks \
-  -e PALIER_AI_KEY=sk-ant-... \
-  palier:local
+```
+
+```yaml
+name: palier
+
+services:
+  palier:
+    image: palier:local
+    restart: unless-stopped
+    group_add:
+      - ${DOCKER_GID:?}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - palier-data:/var/lib/palier
+      - /srv/stacks:/srv/stacks
+      - ${HOME}/.docker/config.json:/etc/palier-docker/config.json:ro
+    environment:
+      DOCKER_CONFIG: /etc/palier-docker
+      PALIER_AI_KEY: sk-ant-...
+      PALIER_GITHUB_TOKEN: ghp_...
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE]
+
+volumes:
+  palier-data: {}
+```
+
+```sh
+DOCKER_GID=$(stat -c %g /var/run/docker.sock) docker compose up -d
 docker exec palier /palier token
 ```
 
-Le dossier de vos stacks (ici `/srv/stacks`) se monte au même chemin que sur l'hôte : Palier lit et modifie les fichiers Compose au chemin que donnent les labels des conteneurs. `CHOWN` et `DAC_OVERRIDE` lui servent à réécrire ces fichiers en gardant leur propriétaire, leur groupe et leur mode. L'interface est sur le port 8080, protégée par le jeton. `deploy/compose.yaml` fait la même chose avec Compose.
+Open http://127.0.0.1:8080 and paste the token. The stack list appears after the first scan.
 
-La ligne de commande passe par le même code : `palier serve` (par défaut), `palier scan`, `palier plan <stack>`, `palier apply <stack> [--dry-run]`, `palier runs`, `palier token`.
+Three things to get right:
 
-## Variables
+- **Mount the stacks folder at the same path as on the host** (`/srv/stacks` here). Palier finds each Compose file at the path given by the container labels.
+- **`CHOWN` and `DAC_OVERRIDE`** let it rewrite Compose files while keeping owner, group and mode. Everything else is dropped. Do not add `no-new-privileges`, which would cancel these two capabilities.
+- **An AI key** is needed in practice. Without it, Palier works on version numbers only, without reading what changes.
 
-| Variable | Défaut | Rôle |
+## Configuration
+
+| Variable | Default | Purpose |
 |---|---|---|
-| `PALIER_DOCKER_HOST` | `unix:///var/run/docker.sock` | Moteur Docker |
-| `PALIER_DATA_DIR` | `/var/lib/palier` | SQLite, exports de bases |
-| `PALIER_LISTEN` | `:8080` | Port web |
-| `PALIER_TOKEN` | généré au premier démarrage dans le répertoire de données | Accès à l'interface |
-| `PALIER_AI_KEY`, `PALIER_AI_MODEL` | vide, `claude-sonnet-5-5` | IA ; sans clé, des plans sur les versions seules, de niveau inconnu |
-| `PALIER_SCAN_INTERVAL` | `1h` | Fréquence d'inspection |
-| `PALIER_MATURATION` | `72h` | Âge minimal d'une version proposée |
-| `PALIER_STABLE_SECONDS` | `60` | Durée de stabilité exigée à chaque vérification |
-| `PALIER_AUTO` | `all` | Application seule de tout plan complet, majeures comprises, sauf étape bloquante ou irréversible ; `minor` exclut les majeures, `patch` garde les correctifs, `off` fait tout valider à la main |
-| `PALIER_WEBHOOK_URL` | vide | Reçoit un JSON à chaque plan prêt, fin d'exécution, retour arrière ou échec |
-| `PALIER_GITHUB_TOKEN`, `PALIER_GITLAB_TOKEN` | vide | Notes de version GitHub et gitlab.com, avis de sécurité GitHub, sans la limite anonyme |
-| `PALIER_REGISTRY_MIRROR` | vide | Miroir Docker Hub, pour les lectures par digest |
-| `DOCKER_CONFIG` | `$HOME/.docker` | Identifiants des registres privés, section `auths` de `config.json` |
+| `PALIER_AI_KEY`, `PALIER_AI_MODEL` | empty, `claude-sonnet-5-5` | AI that reads the notes and builds the plan |
+| `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off` |
+| `PALIER_SCAN_INTERVAL` | `1h` | Scan frequency |
+| `PALIER_MATURATION` | `72h` | Minimum age of a proposed version |
+| `PALIER_STABLE_SECONDS` | `60` | Stability time required at each verification |
+| `PALIER_WEBHOOK_URL` | empty | JSON on every plan ready, run end, rollback or failure |
+| `PALIER_GITHUB_TOKEN`, `PALIER_GITLAB_TOKEN` | empty | Notes and security advisories without the anonymous limit |
+| `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror |
+| `PALIER_TOKEN` | generated at first start | Access to the interface |
 
-Un label `palier.hook.backup` sur un service donne une commande de sauvegarde, lancée dans son conteneur avant toute modification ; si elle échoue, rien n'est appliqué.
+The full list is in [docs/configuration.md](docs/configuration.md).
 
-## Ce que Palier fait
+## Command line
 
-- Il inventorie les stacks Compose, leurs services, leurs dépendances (`depends_on`) et leurs volumes. Un conteneur lancé hors Compose est seulement observé.
-- Il trouve les versions plus récentes au registre (Docker Hub, GHCR, registres OCI) et lit les notes de version GitHub et gitlab.com, les avis de sécurité GitHub qui touchent la version en service (une version qui corrige une faille passe sans délai de maturation), ainsi que les extraits de documentation de son catalogue.
-- L'IA propose un plan dans un vocabulaire fermé d'opérations : `set_image`, `compose_edit`, `recreate`, `stop`, `start`, `wait_stable`, `exec_check`, `db_dump_restore`. Le code vérifie le plan avant toute exécution : versions existantes, paliers obligatoires, une dépendance dans l'intervalle que son application cite à chaque étape, citations mot pour mot.
-- Par défaut (`PALIER_AUTO=all`), il applique seul tout plan complet, majeures comprises, une stack après l'autre. Il ne demande une décision que pour une étape bloquante ou irréversible, ou un plan incomplet.
-- Il applique avec un point de reprise de toute la stack : fichiers Compose, images, copie des volumes. Il vérifie chaque étape (en service, stable, sans boucle de redémarrage, `healthy` si l'image a un HEALTHCHECK), reprend un point de reprise après chaque étape vérifiée, et revient au dernier à tout échec, y compris après un redémarrage de Palier au milieu d'une exécution.
-- Il passe une base PostgreSQL, MySQL ou MariaDB d'une majeure à l'autre par export et réimport sur un volume neuf, sans jamais toucher à l'ancien, et compare rôles, bases, tables, lignes, index et contraintes. Après un correctif de PostgreSQL qui change la bibliothèque C de l'image, il reconstruit les index des bases et met à jour leur version de collation.
+The web interface and the command line use the same code:
 
-## Ce qu'il ne fait pas
+```sh
+palier serve                   # web interface and scans (default)
+palier scan                    # inventory and available versions
+palier plan <stack>            # compute and print the plan
+palier apply <stack> --dry-run # show what would be done
+palier apply <stack>           # apply
+palier runs                    # run history
+palier token                   # print the interface token
+```
 
-Pas de comptes ni de rôles, pas d'agent ni de machine distante, pas de licence, pas d'autre alerte que le webhook, pas de nettoyage des images, pas de mise à jour de lui-même. Les autres moteurs de base n'ont pas de méthode d'export et de réimport : leurs majeures restent bloquées. Les identifiants de registre rangés dans un `credsStore` ou des `credHelpers` ne sont pas lus.
+## Limitations
 
-La feuille de route est dans `docs/roadmap.md`. La documentation complète est dans `docs/` (MkDocs : `docker compose -f docs/compose.yaml up`, puis http://127.0.0.1:8000). Chaque phase est prouvée sur un banc avec un vrai Docker (`deploy/lab`).
+- One Palier per Docker machine: no agent, no remote machine.
+- A single token for the interface: no accounts or roles.
+- The webhook is the only alert.
+- Databases other than PostgreSQL, MySQL and MariaDB stay blocked on their major version.
+- Notes outside GitHub and gitlab.com are not read.
+- Registry credentials in a `credsStore` or `credHelpers` are not read.
+- Containers started outside Compose are only observed.
+- No cleanup of old images, no update of Palier itself.
+
+The details are in [docs/limitations.md](docs/limitations.md).
+
+## Documentation
+
+The full documentation is in [`docs/`](docs/index.md): [installation](docs/installation.md), [usage](docs/usage.md), [configuration](docs/configuration.md), [how it works](docs/how-it-works.md). To read it locally:
+
+```sh
+docker compose -f docs/compose.yaml up
+```
+
+then open http://127.0.0.1:8000.

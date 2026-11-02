@@ -1,63 +1,63 @@
 # Configuration
 
-Toute la configuration passe par des variables d'environnement. La page `/settings` de l'interface montre les valeurs lues, en lecture seule. Une valeur invalide arrête Palier au démarrage avec un message qui nomme la variable.
+All configuration goes through environment variables. The `/settings` page of the interface shows the values read, read-only. An invalid value stops Palier at startup with a message that names the variable.
 
 ## Variables
 
-| Variable | Défaut | Rôle |
+| Variable | Default | Purpose |
 |---|---|---|
-| `PALIER_DOCKER_HOST` | `unix:///var/run/docker.sock` | Moteur Docker. |
-| `PALIER_DATA_DIR` | `/var/lib/palier` | Base SQLite, jeton, exports de bases. |
-| `PALIER_LISTEN` | `:8080` | Adresse d'écoute de l'interface. |
-| `PALIER_TOKEN` | généré au premier démarrage | Jeton d'accès à l'interface. Sans valeur, il est écrit dans `token` du répertoire de données. |
-| `PALIER_AI_KEY` | vide | Clé de l'API Anthropic. Sans clé, les plans sont calculés sur les versions seules. |
-| `PALIER_AI_MODEL` | `claude-sonnet-5-5` | Modèle utilisé pour les plans. |
-| `PALIER_SCAN_INTERVAL` | `1h` | Intervalle entre deux inspections (durée Go : `30m`, `2h`…). |
-| `PALIER_MATURATION` | `72h` | Âge minimal d'une version avant qu'elle soit proposée. Une version qui corrige une faille de la version en service n'attend pas. |
-| `PALIER_STABLE_SECONDS` | `60` | Durée pendant laquelle un service doit rester stable à chaque vérification. |
-| `PALIER_AUTO` | `all` | `all`, `minor`, `patch` ou `off`. Voir [l'application automatique](utilisation.md#lapplication-automatique). |
-| `PALIER_WEBHOOK_URL` | vide | Adresse qui reçoit les événements en JSON. |
-| `PALIER_GITHUB_TOKEN` | vide | Lit les notes de version et les avis de sécurité GitHub sans la limite anonyme. |
-| `PALIER_GITLAB_TOKEN` | vide | Lit les notes de version GitLab (gitlab.com) sans la limite anonyme, et celles des projets privés. |
-| `PALIER_REGISTRY_MIRROR` | vide | Miroir de Docker Hub (`mirror.gcr.io`, par exemple), utilisé pour les lectures par digest. |
-| `DOCKER_CONFIG` | `$HOME/.docker` | Dossier du `config.json` qui contient les identifiants des registres privés. |
+| `PALIER_DOCKER_HOST` | `unix:///var/run/docker.sock` | Docker engine. |
+| `PALIER_DATA_DIR` | `/var/lib/palier` | SQLite database, token, database exports. |
+| `PALIER_LISTEN` | `:8080` | Listen address of the interface. |
+| `PALIER_TOKEN` | generated at first start | Access token for the interface. Without a value, it is written to `token` in the data directory. |
+| `PALIER_AI_KEY` | empty | Anthropic API key. Without a key, plans are computed from versions alone. |
+| `PALIER_AI_MODEL` | `claude-sonnet-5-5` | Model used for plans. |
+| `PALIER_SCAN_INTERVAL` | `1h` | Interval between two scans (Go duration: `30m`, `2h`…). |
+| `PALIER_MATURATION` | `72h` | Minimum age of a version before it is proposed. A version that fixes a vulnerability in the running version does not wait. |
+| `PALIER_STABLE_SECONDS` | `60` | Time a service must stay stable at each verification. |
+| `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off`. See [automatic apply](usage.md#automatic-apply). |
+| `PALIER_WEBHOOK_URL` | empty | Address that receives events as JSON. |
+| `PALIER_GITHUB_TOKEN` | empty | Reads GitHub release notes and security advisories without the anonymous limit. |
+| `PALIER_GITLAB_TOKEN` | empty | Reads GitLab release notes (gitlab.com) without the anonymous limit, and those of private projects. |
+| `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror (`mirror.gcr.io`, for example), used for reads by digest. |
+| `DOCKER_CONFIG` | `$HOME/.docker` | Folder of the `config.json` that holds the credentials of private registries. |
 
-## Registres privés
+## Private registries
 
-Palier lit la section `auths` du `config.json` de Docker, au format habituel. Montez ce fichier dans le conteneur et faites pointer `DOCKER_CONFIG` sur son dossier :
+Palier reads the `auths` section of the Docker `config.json`, in the usual format. Mount this file in the container and point `DOCKER_CONFIG` at its folder:
 
 ```sh
 -v /root/.docker/config.json:/etc/palier-docker/config.json:ro \
 -e DOCKER_CONFIG=/etc/palier-docker
 ```
 
-Les identifiants de Docker Hub servent aussi à l'API de Docker Hub, qui donne la date de publication des tags, cent à la fois : avec eux, la limite de requêtes est plus haute qu'en accès anonyme.
+Docker Hub credentials are also used for the Docker Hub API, which gives the publication date of tags, a hundred at a time: with them, the request limit is higher than with anonymous access.
 
-Les identifiants rangés dans un `credsStore` ou des `credHelpers` (ECR, GAR, ACR) ne sont pas lus.
+Credentials stored in a `credsStore` or `credHelpers` (ECR, GAR, ACR) are not read.
 
-## Miroir de Docker Hub
+## Docker Hub mirror
 
-Le miroir allège les requêtes faites à Docker Hub, qui limite les accès anonymes. Palier n'y lit que ce qui est désigné par un digest, et revient sur Docker Hub si le miroir ne l'a pas. La liste des tags et le digest d'un tag restent lus sur Docker Hub : un miroir n'en garde qu'une partie, parfois ancienne. Les identifiants Docker Hub ne sont jamais envoyés au miroir.
+The mirror reduces the requests made to Docker Hub, which limits anonymous access. Palier reads from it only what is designated by a digest, and falls back to Docker Hub if the mirror does not have it. The tag list and the digest of a tag are still read from Docker Hub: a mirror keeps only part of them, sometimes outdated. Docker Hub credentials are never sent to the mirror.
 
-## Labels sur vos services
+## Labels on your services
 
-Deux labels, posés dans le fichier Compose de vos stacks, changent le comportement de Palier.
+Two labels, set in the Compose file of your stacks, change how Palier behaves.
 
 ### `palier.hook.backup`
 
-Une commande de sauvegarde, lancée dans le conteneur du service avant toute modification de la stack, avec `sh -c`. Si elle échoue, l'exécution est abandonnée et rien n'est modifié.
+A backup command, run in the container of the service with `sh -c` before any change to the stack. If it fails, the run is abandoned and nothing is changed.
 
 ```yaml
 services:
   postgres:
     image: postgres:16.4
     labels:
-      palier.hook.backup: "pg_dumpall -U outline > /backup/avant-palier.sql"
+      palier.hook.backup: "pg_dumpall -U outline > /backup/before-palier.sql"
 ```
 
 ### `palier.depends_on`
 
-Des dépendances en plus de celles de `depends_on`, séparées par des virgules. Utile quand une application dépend d'un service sans que le fichier Compose le dise.
+Dependencies in addition to those of `depends_on`, separated by commas. Useful when an application depends on a service without the Compose file saying so.
 
 ```yaml
 services:
@@ -66,4 +66,4 @@ services:
       palier.depends_on: "postgres,redis"
 ```
 
-Une dépendance suit son application : sa version cible dépend de ce que l'application déclare supporter (voir [Fonctionnement](fonctionnement.md#la-stack-suit-son-application)).
+A dependency follows its application: its target version depends on what the application declares it supports (see [How it works](how-it-works.md#the-stack-follows-its-application)).

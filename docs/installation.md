@@ -1,16 +1,16 @@
 # Installation
 
-Palier tourne dans un conteneur sur la machine dont il met à jour les stacks.
+Palier runs in a container on the machine whose stacks it updates.
 
-## Construire l'image
+## Build the image
 
 ```sh
 docker build -t palier:local -f deploy/Dockerfile .
 ```
 
-L'image ne contient que le binaire `palier`, le binaire `docker compose` et les certificats racines. Elle tourne avec un utilisateur non root.
+The image contains only the `palier` binary, the `docker compose` binary and the root certificates. It runs as a non-root user.
 
-## Lancer avec `docker run`
+## Run with `docker run`
 
 ```sh
 docker run -d --name palier --restart unless-stopped \
@@ -27,7 +27,7 @@ docker run -d --name palier --restart unless-stopped \
   palier:local
 ```
 
-## Lancer avec Compose
+## Run with Compose
 
 ```yaml
 name: palier
@@ -61,43 +61,43 @@ volumes:
 DOCKER_GID=$(stat -c %g /var/run/docker.sock) docker compose up -d
 ```
 
-## Ce qu'il faut fournir à Palier
+## What to give Palier
 
-| Quoi | Pourquoi |
+| What | Why |
 |---|---|
-| `PALIER_AI_KEY` | Indispensable en pratique. C'est l'IA qui lit les notes et les avis de sécurité, construit le plan et juge chaque étape. Sans elle, Palier ne travaille que sur les numéros de version. |
-| Identifiants Docker Hub (`config.json` monté, `DOCKER_CONFIG`) | Docker Hub limite fortement les accès anonymes. Avec des identifiants, Palier lit les tags, les digests et les dates de publication sans être bloqué. |
-| `PALIER_GITHUB_TOKEN` | Les notes de version et les avis de sécurité GitHub sont limités à 60 requêtes par heure sans jeton. |
-| `PALIER_GITLAB_TOKEN` | Même chose pour les projets hébergés sur gitlab.com. |
+| `PALIER_AI_KEY` | Needed in practice. The AI reads the notes and security advisories, builds the plan and judges each step. Without it, Palier works on version numbers only. |
+| Docker Hub credentials (mounted `config.json`, `DOCKER_CONFIG`) | Docker Hub heavily limits anonymous access. With credentials, Palier reads tags, digests and publication dates without being blocked. |
+| `PALIER_GITHUB_TOKEN` | GitHub release notes and security advisories are limited to 60 requests per hour without a token. |
+| `PALIER_GITLAB_TOKEN` | Same for projects hosted on gitlab.com. |
 
-Un jeton GitHub sans aucun droit particulier suffit : Palier ne lit que des données publiques.
+A GitHub token with no particular permission is enough: Palier only reads public data.
 
-## Trois points à respecter
+## Three things to get right
 
-**Le dossier des stacks se monte au même chemin que sur l'hôte.** Palier trouve le fichier Compose de chaque stack au chemin que donnent les labels de ses conteneurs (`com.docker.compose.project.working_dir`). Si vos stacks sont dans `/srv/stacks` sur l'hôte, montez `/srv/stacks:/srv/stacks`. Avec un autre chemin dans le conteneur, Palier ne trouve pas les fichiers.
+**Mount the stacks folder at the same path as on the host.** Palier finds the Compose file of each stack at the path given by the labels of its containers (`com.docker.compose.project.working_dir`). If your stacks are in `/srv/stacks` on the host, mount `/srv/stacks:/srv/stacks`. With a different path in the container, Palier cannot find the files.
 
-**Le groupe du socket Docker.** `--group-add` donne à l'utilisateur du conteneur le droit de parler au socket. La valeur est le numéro de groupe du socket sur l'hôte.
+**The group of the Docker socket.** `--group-add` gives the container user the right to talk to the socket. The value is the group number of the socket on the host.
 
-**`CHOWN` et `DAC_OVERRIDE`.** Palier réécrit les fichiers Compose en gardant leur propriétaire, leur groupe et leur mode. Ces deux capacités lui servent à cela, et le reste est retiré. N'ajoutez pas `no-new-privileges` : il annulerait ces capacités, que le binaire porte comme capacités de fichier.
+**`CHOWN` and `DAC_OVERRIDE`.** Palier rewrites Compose files while keeping their owner, group and mode. These two capabilities allow that, and everything else is dropped. Do not add `no-new-privileges`: it would cancel these capabilities, which the binary carries as file capabilities.
 
-## Ouvrir l'interface
+## Open the interface
 
-L'interface écoute sur le port 8080. Elle est protégée par un jeton, créé au premier démarrage dans le répertoire de données :
+The interface listens on port 8080. It is protected by a token, created at first start in the data directory:
 
 ```sh
 docker exec palier /palier token
 ```
 
-Ouvrez `http://127.0.0.1:8080`, collez le jeton, et la liste des stacks apparaît après la première inspection. Pour choisir le jeton vous-même, définissez `PALIER_TOKEN`.
+Open `http://127.0.0.1:8080`, paste the token, and the stack list appears after the first scan. To choose the token yourself, set `PALIER_TOKEN`.
 
-Le premier démarrage prend quelques minutes, et la page se met à jour toute seule. La page [Utilisation](utilisation.md#le-premier-demarrage) décrit ce qui se passe pendant ce temps.
+The first start takes a few minutes, and the page updates by itself. The [Usage](usage.md#first-start) page describes what happens in the meantime.
 
-!!! note "Sans clé d'IA"
-    Palier fonctionne sans `PALIER_AI_KEY`, mais il perd l'essentiel. Il détecte les versions et propose des plans calculés sur les versions seules, de niveau « inconnu ». Ces plans s'appliquent seuls comme les autres, protégés par le retour arrière, mais personne n'a lu ce qui change, et les paliers obligatoires ou les dépendances ne sont pas pris en compte.
+!!! note "Without an AI key"
+    Palier works without `PALIER_AI_KEY`, but loses most of its value. It detects versions and proposes plans computed from versions alone, with an "unknown" risk level. These plans are applied on their own like the others, protected by the rollback, but nobody has read what changes, and required steps and dependencies are not taken into account.
 
-## Journaux
+## Logs
 
-Palier écrit ses journaux en JSON sur la sortie standard :
+Palier writes its logs as JSON to standard output:
 
 ```sh
 docker logs -f palier

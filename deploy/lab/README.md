@@ -24,7 +24,7 @@ The bench runs as the current user. Disks are libvirt storage volumes, so libvir
 deploy/lab/lab host-setup
 ```
 
-Run it once. Through `sudo`, it installs the virtualisation packages, starts libvirtd and adds the current user to the `libvirt` and `kvm` groups (log in again afterwards). Then, as the current user, it installs the Ansible collections. On a host that already has all of this, it is not needed.
+Run it once. Through `sudo`, it installs the virtualization packages, starts libvirtd and adds the current user to the `libvirt` and `kvm` groups (log in again afterwards). Then, as the current user, it installs the Ansible collections. On a host that already has all of this, it is not needed.
 
 ## Commands
 
