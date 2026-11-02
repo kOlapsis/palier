@@ -2,13 +2,31 @@
 
 Palier runs in a container on the machine whose stacks it updates.
 
-## Build the image
+## The image
 
-```sh
-docker build -t palier:local -f deploy/Dockerfile .
+```
+ghcr.io/kolapsis/palier:0.1.0
 ```
 
-The image contains only the `palier` binary, the `docker compose` binary and the root certificates. It runs as a non-root user.
+It is published for `linux/amd64` and `linux/arm64`. It contains only the `palier` binary, the `docker compose` binary and the root certificates, and runs as a non-root user.
+
+## Verify the image
+
+Each release image is built by the `release` workflow of this repository, signed with Sigstore, and carries its build provenance and SBOM. Check the signature with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/):
+
+```sh
+cosign verify ghcr.io/kolapsis/palier:0.1.0 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity https://github.com/kOlapsis/palier/.github/workflows/release.yml@refs/tags/v0.1.0
+```
+
+And the build provenance with the GitHub CLI:
+
+```sh
+gh attestation verify oci://ghcr.io/kolapsis/palier:0.1.0 --owner kOlapsis
+```
+
+To build it yourself instead: `docker build -t palier:local -f deploy/Dockerfile .`
 
 ## Run with `docker run`
 
@@ -24,7 +42,7 @@ docker run -d --name palier --restart unless-stopped \
   -e DOCKER_CONFIG=/etc/palier-docker \
   -e PALIER_AI_KEY=sk-ant-... \
   -e PALIER_GITHUB_TOKEN=ghp_... \
-  palier:local
+  ghcr.io/kolapsis/palier:0.1.0
 ```
 
 ## Run with Compose
@@ -34,7 +52,7 @@ name: palier
 
 services:
   palier:
-    image: palier:local
+    image: ghcr.io/kolapsis/palier:0.1.0
     restart: unless-stopped
     group_add:
       - ${DOCKER_GID:?}

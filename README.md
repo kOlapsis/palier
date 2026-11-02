@@ -75,17 +75,14 @@ Prefer to stay in control? `minor` excludes major versions, `patch` keeps only p
 
 ## Quick start
 
-```sh
-git clone https://github.com/kolapsis/palier && cd palier
-docker build -t palier:local -f deploy/Dockerfile .
-```
+The image is published on GHCR for `linux/amd64` and `linux/arm64`, signed, with its build provenance and SBOM ([how to verify it](docs/installation.md#verify-the-image)).
 
 ```yaml
 name: palier
 
 services:
   palier:
-    image: palier:local
+    image: ghcr.io/kolapsis/palier:0.1.0
     restart: unless-stopped
     group_add:
       - ${DOCKER_GID:?}
