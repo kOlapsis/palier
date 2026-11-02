@@ -85,7 +85,7 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	}
 	dump, err := m.dump(ctx)
 	if err == nil {
-		err = compose.RunIO(ctx, e.DockerHost, cp.Project, nil, f, m.exec(dump)...)
+		err = compose.RunIO(ctx, e.DockerHost, cp.Project, m.env, nil, f, m.exec(dump)...)
 	}
 	f.Close()
 	if err != nil {
@@ -147,7 +147,7 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 		return err
 	}
 	var out bytes.Buffer
-	err = compose.RunIO(ctx, e.DockerHost, cp.Project, in, &out, m.exec(m.restore)...)
+	err = compose.RunIO(ctx, e.DockerHost, cp.Project, m.env, in, &out, m.exec(m.restore)...)
 	in.Close()
 	if err != nil {
 		return fmt.Errorf("reimport into %s: %w", svc.Name, err)
@@ -244,7 +244,8 @@ type dbMethod struct {
 func (m *dbMethod) exec(cmd []string) []string {
 	args := []string{"exec", "-T"}
 	for _, e := range m.env {
-		args = append(args, "-e", e)
+		name, _, _ := strings.Cut(e, "=")
+		args = append(args, "-e", name)
 	}
 	return append(append(args, m.service), cmd...)
 }
@@ -267,7 +268,7 @@ func (e *Engine) method(ctx context.Context, p compose.Project, service, engine 
 	m := &dbMethod{service: service}
 	run := func(cmd ...string) ([]string, error) {
 		var out bytes.Buffer
-		if err := compose.RunIO(ctx, e.DockerHost, p, nil, &out, m.exec(cmd)...); err != nil {
+		if err := compose.RunIO(ctx, e.DockerHost, p, m.env, nil, &out, m.exec(cmd)...); err != nil {
 			return nil, err
 		}
 		return strings.Fields(out.String()), nil
@@ -381,7 +382,7 @@ func summarize(query func(db, sql string) ([]string, error), roles, databases, a
 func (e *Engine) waitReady(ctx context.Context, p compose.Project, m *dbMethod) error {
 	deadline := time.Now().Add(5 * time.Minute)
 	for {
-		err := compose.RunIO(ctx, e.DockerHost, p, nil, &bytes.Buffer{}, m.exec(m.ready)...)
+		err := compose.RunIO(ctx, e.DockerHost, p, m.env, nil, &bytes.Buffer{}, m.exec(m.ready)...)
 		if err == nil {
 			return nil
 		}
@@ -452,14 +453,14 @@ func (e *Engine) refreshCollations(ctx context.Context, id int64, cp *Checkpoint
 		}
 	}
 	var out bytes.Buffer
-	if err := compose.RunIO(ctx, e.DockerHost, cp.Project, nil, &out, "exec", "-T", svc.Name, "psql", "-U", user, "-d", "postgres", "-At", "-c", pgStaleCollations); err != nil {
+	if err := compose.RunIO(ctx, e.DockerHost, cp.Project, nil, nil, &out, "exec", "-T", svc.Name, "psql", "-U", user, "-d", "postgres", "-At", "-c", pgStaleCollations); err != nil {
 		return nil
 	}
 	for _, db := range strings.Fields(out.String()) {
 		e.event(id, "%s: database %s has a stale collation version, REINDEX then REFRESH COLLATION VERSION", svc.Name, db)
 		quoted := `"` + strings.ReplaceAll(db, `"`, `""`) + `"`
 		for _, sql := range []string{"REINDEX DATABASE " + quoted, "ALTER DATABASE " + quoted + " REFRESH COLLATION VERSION"} {
-			if err := compose.RunIO(ctx, e.DockerHost, cp.Project, nil, &bytes.Buffer{}, "exec", "-T", svc.Name, "psql", "-v", "ON_ERROR_STOP=1", "-U", user, "-d", db, "-c", sql); err != nil {
+			if err := compose.RunIO(ctx, e.DockerHost, cp.Project, nil, nil, &bytes.Buffer{}, "exec", "-T", svc.Name, "psql", "-v", "ON_ERROR_STOP=1", "-U", user, "-d", db, "-c", sql); err != nil {
 				return fmt.Errorf("%s on %s: %w", sql, db, err)
 			}
 		}

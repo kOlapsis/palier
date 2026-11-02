@@ -28,12 +28,12 @@ type Project struct {
 // Run executes docker compose with args on the project and returns its combined output.
 func Run(ctx context.Context, dockerHost string, p Project, args ...string) (string, error) {
 	var out bytes.Buffer
-	err := RunIO(ctx, dockerHost, p, nil, &out, args...)
+	err := RunIO(ctx, dockerHost, p, nil, nil, &out, args...)
 	return out.String(), err
 }
 
-// RunIO executes docker compose with args, reading stdin and writing its standard output to stdout.
-func RunIO(ctx context.Context, dockerHost string, p Project, stdin io.Reader, stdout io.Writer, args ...string) error {
+// RunIO executes docker compose with args and extra environment env, reading stdin and writing its standard output to stdout.
+func RunIO(ctx context.Context, dockerHost string, p Project, env []string, stdin io.Reader, stdout io.Writer, args ...string) error {
 	full := []string{"-p", p.Name, "--project-directory", p.WorkingDir}
 	for _, f := range p.ConfigFiles {
 		full = append(full, "-f", f)
@@ -43,7 +43,7 @@ func RunIO(ctx context.Context, dockerHost string, p Project, stdin io.Reader, s
 	}
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "docker-compose", append(full, args...)...)
-	cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost)
+	cmd.Env = append(append(os.Environ(), env...), "DOCKER_HOST="+dockerHost)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("docker compose %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
