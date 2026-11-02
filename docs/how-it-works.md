@@ -89,7 +89,11 @@ This rule applies at each step, and it sets the order: if a version of the appli
 ## 5. Execution
 
 1. The backup hooks (`palier.hook.backup`) run. If one fails, nothing is changed.
-2. Palier takes a restore point: a copy of the Compose files and their `.env` file, the image and digest of each service, and a copy of the volumes of the services that change. Single files, host system paths (`/proc`, `/sys`, `/dev`, `/run`, `/tmp`, `/var/lib/docker`…) and logs under `/var/log` are not copied.
+2. Palier takes a restore point: a copy of the Compose files and their `.env` file, the image and digest of each service, and a copy of the volumes of the services that change.
+
+   - Single files, host system paths (`/proc`, `/sys`, `/dev`, `/run`, `/tmp`, `/var/lib/docker`…) and logs under `/var/log` are not copied.
+   - For an application with a catalog card, the bulk data the upgrade does not rewrite is not copied either: Git repositories, uploads, artifacts, media. For GitLab, `/var/opt/gitlab` is copied without `git-data`, `gitlab-rails/uploads` or `gitlab-rails/shared/artifacts`, so the copy holds the database and the configuration.
+   - Before each copy, Palier measures it and the free space on the Docker disk. It does not copy when less than 10% of the disk, or 2 GiB, would stay free, nor when an application without a catalog card has more than 20 GiB to copy. The run log says so, and a rollback does not restore that mount.
 3. Each step applies its operations in order. Clients are stopped in reverse dependency order and restarted in order.
 4. Verification follows each step. Once the step is verified, Palier takes a new restore point of the stack as it is, then deletes the previous one, and moves to the next step.
 

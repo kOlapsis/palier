@@ -9,5 +9,10 @@
       "url": "https://docs.immich.app/administration/postgres-standalone",
       "text": "Immich is known to work with Postgres versions >= 14, < 20."
     }
+  ],
+  "bulk": [
+    "/usr/src/app/upload",
+    "/data",
+    "/cache"
   ]
 }

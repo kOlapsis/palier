@@ -13,5 +13,19 @@
       "url": "https://forgejo.org/docs/latest/admin/upgrade/",
       "text": "To be safe, make sure to perform a full backup before upgrading. It is a requirement when upgrading to a new stable release (going from v17.0 to v18.0 for instance) but is also a good precaution when installing a minor or patch release (going from v17.0.0 to v17.0.1 for instance)."
     }
+  ],
+  "bulk": [
+    "/data/git/repositories",
+    "/data/git/lfs",
+    "/data/gitea/attachments",
+    "/data/gitea/lfs",
+    "/data/gitea/packages",
+    "/data/gitea/repo-archive",
+    "/var/lib/gitea/git/repositories",
+    "/var/lib/gitea/git/lfs",
+    "/var/lib/gitea/attachments",
+    "/var/lib/gitea/lfs",
+    "/var/lib/gitea/packages",
+    "/var/lib/gitea/repo-archive"
   ]
 }

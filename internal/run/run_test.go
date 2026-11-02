@@ -1,6 +1,7 @@
 package run
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -92,11 +93,53 @@ func TestDataMounts(t *testing.T) {
 		{Type: "volume", Source: "tmp", Destination: "/tmp"},
 		{Type: "volume", Source: "gitlab_data", Destination: "/var/opt/gitlab"},
 	}}
+	copies, bulk := dataMounts(s)
 	var got []string
-	for _, m := range dataMounts(s) {
-		got = append(got, m.Source)
+	for _, c := range copies {
+		got = append(got, c.Mount.Source)
 	}
-	if want := []string{"/runner", "tmp", "gitlab_data"}; !slices.Equal(got, want) {
-		t.Errorf("dataMounts = %v, want %v", got, want)
+	if want := []string{"/runner", "tmp", "gitlab_data"}; !slices.Equal(got, want) || len(bulk) > 0 || copies[2].Exclude != nil {
+		t.Errorf("dataMounts = %v %v", copies, bulk)
+	}
+	gitlab := &inventory.Service{Image: "docker.io/gitlab/gitlab-ce", Mounts: []inventory.Mount{
+		{Type: "bind", Source: "/app/gitlab/data/config", Destination: "/etc/gitlab"},
+		{Type: "bind", Source: "/app/gitlab/data/data", Destination: "/var/opt/gitlab"},
+		{Type: "bind", Source: "/app/gitlab/repos", Destination: "/var/opt/gitlab/git-data"},
+	}}
+	copies, bulk = dataMounts(gitlab)
+	if len(copies) != 2 || copies[0].Exclude != nil || !slices.Contains(copies[1].Exclude, "git-data") || !slices.Contains(copies[1].Exclude, "gitlab-rails/shared/artifacts") || !slices.Equal(bulk, []string{"/var/opt/gitlab/git-data"}) {
+		t.Errorf("gitlab dataMounts = %+v %v", copies, bulk)
+	}
+}
+
+func TestAncestors(t *testing.T) {
+	got := ancestors([]string{"git-data", "gitlab-rails/uploads", "gitlab-rails/shared/artifacts", "gitlab-ci/builds"})
+	if want := []string{"gitlab-rails", "gitlab-rails/shared", "gitlab-ci"}; !slices.Equal(got, want) {
+		t.Errorf("ancestors = %v, want %v", got, want)
+	}
+}
+
+func TestCopyVerdict(t *testing.T) {
+	const gib = 1 << 20
+	for _, c := range []struct {
+		out   string
+		state bool
+		skip  bool
+	}{
+		{"5242880 104857600 209715200", false, false},
+		{"du: x: Permission denied\n5242880 104857600 209715200", false, false},
+		{"31457280 104857600 209715200", false, true},
+		{"31457280 104857600 209715200", true, false},
+		{"31457280 40000000 209715200", true, true},
+		{fmt.Sprint(gib, " ", 3*gib, " ", 8*gib), true, false},
+		{fmt.Sprint(gib, " ", 2*gib, " ", 8*gib), true, true},
+	} {
+		why, err := copyVerdict(c.out, c.state)
+		if err != nil || (why != "") != c.skip {
+			t.Errorf("copyVerdict(%q, %v) = %q, %v", c.out, c.state, why, err)
+		}
+	}
+	if _, err := copyVerdict("garbage", true); err == nil {
+		t.Error("copyVerdict accepts garbage")
 	}
 }

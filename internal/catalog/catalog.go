@@ -1,4 +1,4 @@
-// Package catalog holds the cards Palier ships: documentation excerpts, required upgrade stops and check commands of known images.
+// Package catalog holds the cards Palier ships: documentation excerpts, required upgrade stops, check commands and bulk data paths of known images.
 package catalog
 
 import (
@@ -17,6 +17,7 @@ type Card struct {
 	Excerpts []Excerpt           `json:"excerpts"`
 	Stops    []string            `json:"stops,omitempty"`
 	Checks   map[string][]string `json:"checks,omitempty"`
+	Bulk     []string            `json:"bulk,omitempty"` // container paths of data an upgrade does not rewrite, left out of volume copies
 }
 
 // Excerpt is a passage of the documentation, copied word for word, that facts may quote.

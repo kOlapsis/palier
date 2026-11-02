@@ -41,5 +41,9 @@
     "5.7",
     "5.8",
     "5.9"
+  ],
+  "bulk": [
+    "/mastodon/public/system",
+    "/opt/mastodon/public/system"
   ]
 }

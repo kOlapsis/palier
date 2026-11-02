@@ -17,5 +17,6 @@
       "url": "https://element-hq.github.io/synapse/latest/upgrade.html",
       "text": "In line with our deprecation policy, we've dropped support for PostgreSQL 13, as it is no longer supported upstream. This release of Synapse requires PostgreSQL 14+."
     }
-  ]
+  ],
+  "bulk": ["/data/media_store"]
 }

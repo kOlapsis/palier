@@ -13,5 +13,19 @@
       "url": "https://docs.gitea.com/installation/upgrade-from-gitea",
       "text": "Since you can not run an old Gitea with an upgraded database, a backup should always be made before a database upgrade."
     }
+  ],
+  "bulk": [
+    "/data/git/repositories",
+    "/data/git/lfs",
+    "/data/gitea/attachments",
+    "/data/gitea/lfs",
+    "/data/gitea/packages",
+    "/data/gitea/repo-archive",
+    "/var/lib/gitea/git/repositories",
+    "/var/lib/gitea/git/lfs",
+    "/var/lib/gitea/attachments",
+    "/var/lib/gitea/lfs",
+    "/var/lib/gitea/packages",
+    "/var/lib/gitea/repo-archive"
   ]
 }

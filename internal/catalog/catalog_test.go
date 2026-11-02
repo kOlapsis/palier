@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"path"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -13,6 +15,8 @@ func TestCardsLoad(t *testing.T) {
 		t.Fatalf("outline card: %+v", c)
 	}
 }
+
+var bulkPath = regexp.MustCompile(`^(/[A-Za-z0-9._-]+)+$`)
 
 func TestEveryCardIsUsable(t *testing.T) {
 	seen := map[string]string{}
@@ -32,6 +36,11 @@ func TestEveryCardIsUsable(t *testing.T) {
 		for _, e := range c.Excerpts {
 			if n := len([]rune(e.Text)); n < 20 || !strings.HasPrefix(e.URL, "https://") {
 				t.Errorf("%s: excerpt of %d characters from %q", c.ID, n, e.URL)
+			}
+		}
+		for _, b := range c.Bulk {
+			if !bulkPath.MatchString(b) || path.Clean(b) != b || b == "/" {
+				t.Errorf("%s: bulk path %q is not a clean absolute path", c.ID, b)
 			}
 		}
 		for _, s := range c.Stops {

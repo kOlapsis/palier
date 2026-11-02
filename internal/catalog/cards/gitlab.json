@@ -37,5 +37,20 @@
       "-c",
       "test \"$(gitlab-psql -At -c 'SELECT count(*) FROM batched_background_migrations WHERE status NOT IN (3, 6)')\" = 0"
     ]
-  }
+  },
+  "bulk": [
+    "/var/opt/gitlab/git-data",
+    "/var/opt/gitlab/gitlab-rails/uploads",
+    "/var/opt/gitlab/gitlab-rails/shared/artifacts",
+    "/var/opt/gitlab/gitlab-rails/shared/lfs-objects",
+    "/var/opt/gitlab/gitlab-rails/shared/packages",
+    "/var/opt/gitlab/gitlab-rails/shared/pages",
+    "/var/opt/gitlab/gitlab-rails/shared/terraform_state",
+    "/var/opt/gitlab/gitlab-rails/shared/ci_secure_files",
+    "/var/opt/gitlab/gitlab-rails/shared/dependency_proxy",
+    "/var/opt/gitlab/gitlab-rails/shared/external-diffs",
+    "/var/opt/gitlab/gitlab-rails/shared/registry",
+    "/var/opt/gitlab/gitlab-ci/builds",
+    "/var/opt/gitlab/backups"
+  ]
 }
