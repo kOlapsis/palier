@@ -1,14 +1,14 @@
 {{define "head"}}{{if eq .Status "running"}}<meta http-equiv="refresh" content="3">{{end}}{{end}}
 {{define "content"}}
 <div class="head">
-<h1>{{if .DryRun}}Essai à blanc{{else}}Exécution{{end}} {{.ID}}</h1>
+<h1>{{if .DryRun}}Dry run{{else}}Run{{end}} {{.ID}}</h1>
 <span class="pill {{tone .Status}}">{{label .Status}}</span>
-<p class="meta">Stack <a href="/stacks/{{.Stack}}">{{.Stack}}</a>, lancée par {{.Author}} le {{when .Started}}{{with .Finished}}, finie le {{when .}}{{end}}.</p>
+<p class="meta">Stack <a href="/stacks/{{.Stack}}">{{.Stack}}</a>, started by {{.Author}} on {{when .Started}}{{with .Finished}}, finished on {{when .}}{{end}}.</p>
 </div>
 {{with .Error}}<pre class="error">{{.}}</pre>{{end}}
 {{if and .Steps (not .DryRun)}}{{template "progress" .}}{{end}}
 <div class="panel">
-<table class="log"><thead><tr><th>Heure</th><th>Phase</th></tr></thead><tbody>
+<table class="log"><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>
 {{range .Events}}<tr><td>{{when .At}}</td><td><pre>{{.Message}}</pre></td></tr>{{end}}
 </tbody></table>
 </div>

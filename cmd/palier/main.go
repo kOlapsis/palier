@@ -87,7 +87,7 @@ func main() {
 				return err
 			}
 			if v.Status != run.Done {
-				return fmt.Errorf("exécution %d : %s", id, v.Status)
+				return fmt.Errorf("run %d: %s", id, v.Status)
 			}
 			return nil
 		})
@@ -106,7 +106,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		slog.Error("arrêt sur erreur", "err", err)
+		slog.Error("fatal error", "err", err)
 		os.Exit(1)
 	}
 }
@@ -166,7 +166,7 @@ func setup() (*app, error) {
 	reg := registry.New(db, auths, cfg.RegistryMirror)
 	for _, domain := range []string{"docker.io", "ghcr.io"} {
 		if reg.UsesCredentials(domain) {
-			slog.Info("identifiants de registre chargés", "registry", domain, "docker_config", cfg.DockerConfig)
+			slog.Info("registry credentials loaded", "registry", domain, "docker_config", cfg.DockerConfig)
 		}
 	}
 	a := &app{}
@@ -229,7 +229,7 @@ func (a *app) stack(ctx context.Context, name string) (*inventory.Stack, error) 
 			return st, nil
 		}
 	}
-	return nil, fmt.Errorf("pas de stack Compose %q", name)
+	return nil, fmt.Errorf("no Compose stack %q", name)
 }
 
 // build identifies this binary, so that a new version of the rules recomputes the stored plans.
@@ -320,15 +320,15 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 	hasNotes := slices.ContainsFunc(st.Services, func(s *inventory.Service) bool { return len(s.Notes) > 0 })
 	switch {
 	case a.cfg.AIKey == "":
-		rec.Plan = plan.Fallback(st, "Pas de clé d'IA : plan calculé sur les versions seules.")
+		rec.Plan = plan.Fallback(st, "No AI key: plan computed from versions only.")
 	case !hasNotes:
-		rec.Plan = plan.Fallback(st, "Aucune note de version trouvée : plan calculé sur les versions seules.")
+		rec.Plan = plan.Fallback(st, "No release notes found: plan computed from versions only.")
 	default:
-		slog.Info("calcul du plan par l'IA", "stack", st.Name, "model", a.cfg.AIModel)
+		slog.Info("computing plan with AI", "stack", st.Name, "model", a.cfg.AIModel)
 		p, err := ai.Propose(ctx, a.cfg.AIKey, a.cfg.AIModel, st)
 		if err != nil {
-			rec.Plan = plan.Fallback(st, "Plan calculé sur les versions seules.")
-			rec.Plan.Incomplete = append(rec.Plan.Incomplete, "l'IA n'a pas rendu de plan : "+err.Error())
+			rec.Plan = plan.Fallback(st, "Plan computed from versions only.")
+			rec.Plan.Incomplete = append(rec.Plan.Incomplete, "the AI returned no plan: "+err.Error())
 			plan.Validate(rec.Plan, st)
 			return rec, nil
 		}
@@ -378,10 +378,10 @@ func (a *app) begin(ctx context.Context, st *inventory.Stack, author string, dry
 		return 0, nil, err
 	}
 	if rec == nil || len(rec.Plan.Steps) == 0 {
-		return 0, nil, fmt.Errorf("%s est à jour", st.Name)
+		return 0, nil, fmt.Errorf("%s is up to date", st.Name)
 	}
 	if len(rec.Plan.Incomplete) > 0 {
-		return 0, nil, fmt.Errorf("le plan de %s est incomplet et ne s'applique pas", st.Name)
+		return 0, nil, fmt.Errorf("the plan for %s is incomplete and cannot be applied", st.Name)
 	}
 	kind := "apply"
 	if dryRun {
@@ -410,7 +410,7 @@ func (a *app) notRetried(ctx context.Context, stack string, p *plan.Plan) (bool,
 	if status == run.Done || status == run.Running || body != string(current) || time.Since(at) > retryAfter || at.Before(startedAt) {
 		return true, ""
 	}
-	return false, fmt.Sprintf("le même plan a fini « %s » à l'exécution %d ; nouvel essai le %s, ou plus tôt si le plan change", status, id, at.Add(retryAfter).Format("02/01 15:04"))
+	return false, fmt.Sprintf("the same plan ended \"%s\" in run %d; retry on %s, or sooner if the plan changes", status, id, at.Add(retryAfter).Format("Jan 2 3:04 PM"))
 }
 
 // waitForScan returns at the next scan interval, on a rescan request, or as soon as a run started by another process has finished.
@@ -457,7 +457,7 @@ func (a *app) notify(event map[string]any) {
 		return
 	}
 	resp.Body.Close()
-	slog.Info("webhook envoyé", "event", event["event"], "stack", event["stack"], "status", resp.StatusCode)
+	slog.Info("webhook sent", "event", event["event"], "stack", event["stack"], "status", resp.StatusCode)
 }
 
 func serve() error {
@@ -471,7 +471,7 @@ func serve() error {
 		return err
 	}
 	if generated {
-		slog.Info("jeton d'accès créé", "file", filepath.Join(a.cfg.DataDir, "token"))
+		slog.Info("access token created", "file", filepath.Join(a.cfg.DataDir, "token"))
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -509,9 +509,9 @@ func serve() error {
 			next := web.Snapshot{Stacks: stacks, At: time.Now()}
 			if err != nil {
 				next.Err = err.Error()
-				slog.Error("inspection", "err", err)
+				slog.Error("scan", "err", err)
 			} else {
-				slog.Info("inspection terminée", "stacks", len(stacks), "duration", time.Since(began).Round(time.Millisecond).String())
+				slog.Info("scan finished", "stacks", len(stacks), "duration", time.Since(began).Round(time.Millisecond).String())
 			}
 			mu.Lock()
 			snap = next
@@ -529,21 +529,21 @@ func serve() error {
 				}
 				ok, why := plan.Automatic(rec.Plan, a.cfg.Auto)
 				if until := a.postponed(ctx, st.Name); ok && time.Now().Before(until) {
-					ok, why = false, "reporté jusqu'au "+until.Format("2006-01-02")
+					ok, why = false, "postponed until "+until.Format("2006-01-02")
 				}
 				if ok {
 					ok, why = a.notRetried(ctx, st.Name, rec.Plan)
 				}
 				if !ok {
-					slog.Info("application automatique écartée", "stack", st.Name, "auto", a.cfg.Auto, "reason", why)
+					slog.Info("automatic apply skipped", "stack", st.Name, "auto", a.cfg.Auto, "reason", why)
 					continue
 				}
 				id, p, err := a.begin(ctx, st, "auto", false)
 				if err != nil {
-					slog.Error("application automatique", "stack", st.Name, "err", err)
+					slog.Error("automatic apply", "stack", st.Name, "err", err)
 					continue
 				}
-				slog.Info("application automatique", "stack", st.Name, "run", id)
+				slog.Info("automatic apply", "stack", st.Name, "run", id)
 				a.eng.Execute(ctx, id, st, p, false)
 				if fresh, err := a.scan(ctx); err == nil {
 					mu.Lock()
@@ -574,7 +574,7 @@ func serve() error {
 					return start(st, "interface", dryRun)
 				}
 			}
-			return 0, fmt.Errorf("pas de stack Compose %q", stack)
+			return 0, fmt.Errorf("no Compose stack %q", stack)
 		},
 		Decide: func(stack, kind, service, version, until string) error {
 			if err := a.decide(ctx, stack, kind, service, version, until, "interface"); err != nil {
@@ -594,20 +594,20 @@ func serve() error {
 			}
 			return ok, why
 		},
-		Run:       func(id int64) (*run.View, error) { return run.Load(ctx, a.db, id) },
-		Runs:      func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 10) },
-		Config:    a.cfg,
+		Run:    func(id int64) (*run.View, error) { return run.Load(ctx, a.db, id) },
+		Runs:   func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 10) },
+		Config: a.cfg,
 	}
 	srv := &http.Server{Addr: a.cfg.Listen, Handler: web.New(a.cfg.Token, deps), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	slog.Info("palier démarré", "listen", a.cfg.Listen, "data_dir", a.cfg.DataDir, "ai", a.cfg.AIKey != "", "auto", a.cfg.Auto)
+	slog.Info("palier started", "listen", a.cfg.Listen, "data_dir", a.cfg.DataDir, "ai", a.cfg.AIKey != "", "auto", a.cfg.Auto)
 	select {
 	case err := <-errc:
 		return err
 	case <-ctx.Done():
 	}
-	slog.Info("arrêt demandé")
+	slog.Info("shutdown requested")
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdown); err != nil && !errors.Is(err, http.ErrServerClosed) {

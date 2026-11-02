@@ -58,7 +58,7 @@ func Load(getenv func(string) string) (Config, error) {
 	duration := func(name, def string) time.Duration {
 		d, err := time.ParseDuration(get(name, def))
 		if err != nil || d <= 0 {
-			errs = append(errs, fmt.Errorf("%s: durée invalide %q", name, get(name, def)))
+			errs = append(errs, fmt.Errorf("%s: invalid duration %q", name, get(name, def)))
 		}
 		return d
 	}
@@ -66,13 +66,13 @@ func Load(getenv func(string) string) (Config, error) {
 	c.Maturation = duration("PALIER_MATURATION", "72h")
 	stable, err := strconv.Atoi(get("PALIER_STABLE_SECONDS", "60"))
 	if err != nil || stable <= 0 {
-		errs = append(errs, fmt.Errorf("PALIER_STABLE_SECONDS: nombre de secondes invalide %q", get("PALIER_STABLE_SECONDS", "60")))
+		errs = append(errs, fmt.Errorf("PALIER_STABLE_SECONDS: invalid number of seconds %q", get("PALIER_STABLE_SECONDS", "60")))
 	}
 	c.StableSeconds = stable
 	switch c.Auto {
 	case "off", "patch", "minor", "all":
 	default:
-		errs = append(errs, fmt.Errorf("PALIER_AUTO: %q, attendu all, minor, patch ou off", c.Auto))
+		errs = append(errs, fmt.Errorf("PALIER_AUTO: %q, expected all, minor, patch or off", c.Auto))
 	}
 	return c, errors.Join(errs...)
 }

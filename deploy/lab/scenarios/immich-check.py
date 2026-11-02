@@ -15,7 +15,7 @@ try:
     token = json.loads(call("/auth/login", {"email": "admin@palier.lab", "password": "palier-lab-password"}))["accessToken"]
     items = json.loads(call("/search/metadata", {}, token))["assets"]["items"]
 except Exception as e:
-    print("  photos : Immich ne répond pas sur 2283 :", e)
+    print("  photos: Immich does not answer on 2283:", e)
     sys.exit(0)
 for a in sorted(items, key=lambda a: a["originalFileName"]):
     data = None
@@ -25,4 +25,4 @@ for a in sorted(items, key=lambda a: a["originalFileName"]):
             break
         except Exception:
             pass
-    print("  photo %s : %s" % (a["originalFileName"], hashlib.sha1(data).hexdigest() if data else "original illisible"))
+    print("  photo %s : %s" % (a["originalFileName"], hashlib.sha1(data).hexdigest() if data else "original unreadable"))

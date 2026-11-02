@@ -1,6 +1,6 @@
-{{define "progress"}}{{$v := .}}<ol class="progress" aria-label="Étapes de l'exécution {{.ID}}">{{range $i, $s := .Steps}}<li class="{{if lt $i $v.StepsDone}}done{{else if eq $i $v.StepsDone}}{{if eq $v.Status "running"}}current{{else if or (eq $v.Status "rolled_back") (eq $v.Status "failed")}}failed{{end}}{{end}}">Étape {{inc $i}} : {{$s}}</li>{{end}}</ol>{{end}}
+{{define "progress"}}{{$v := .}}<ol class="progress" aria-label="Steps of run {{.ID}}">{{range $i, $s := .Steps}}<li class="{{if lt $i $v.StepsDone}}done{{else if eq $i $v.StepsDone}}{{if eq $v.Status "running"}}current{{else if or (eq $v.Status "rolled_back") (eq $v.Status "failed")}}failed{{end}}{{end}}">Step {{inc $i}}: {{$s}}</li>{{end}}</ol>{{end}}
 {{define "layout"}}<!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -165,8 +165,8 @@ ol.progress li.failed::before { content: "\2715"; display: grid; place-items: ce
 <body class="on-{{block "section" .}}stacks{{end}}">
 <aside class="rail">
 <a class="brand" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h5v-5h5v-5h5V5h3"/><path d="M3 20h18" opacity=".35"/></svg>Palier</a>
-<nav aria-label="Navigation"><a href="/">Stacks</a><a href="/settings">Réglages</a></nav>
-<p>Mises à jour Docker Compose par paliers, avec point de reprise.</p>
+<nav aria-label="Navigation"><a href="/">Stacks</a><a href="/settings">Settings</a></nav>
+<p>Docker Compose updates in steps, with a checkpoint.</p>
 </aside>
 <main>{{template "content" .}}</main>
 </body>

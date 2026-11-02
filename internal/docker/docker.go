@@ -35,7 +35,7 @@ func New(host string) (*Client, error) {
 	case "tcp", "http":
 		return &Client{http: &http.Client{Timeout: time.Minute}, base: "http://" + u.Host}, nil
 	}
-	return nil, fmt.Errorf("adresse du moteur Docker non prise en charge : %s", host)
+	return nil, fmt.Errorf("unsupported Docker engine address: %s", host)
 }
 
 // Get decodes the JSON answer of the engine to GET path into out.

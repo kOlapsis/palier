@@ -64,7 +64,7 @@ func (c *Client) Advisories(ctx context.Context, repo string) ([]Advisory, error
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("avis de sécurité de %s : GET %s : %s", repo, url, resp.Status)
+		return nil, fmt.Errorf("security advisories of %s: GET %s: %s", repo, url, resp.Status)
 	}
 	var raw []struct {
 		GHSA            string     `json:"ghsa_id"`

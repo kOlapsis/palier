@@ -91,7 +91,7 @@ func LoadAuths(dir string) (map[string]string, error) {
 		Auths map[string]struct{ Auth string }
 	}
 	if err := json.Unmarshal(b, &cfg); err != nil {
-		return nil, fmt.Errorf("%s : %w", filepath.Join(dir, "config.json"), err)
+		return nil, fmt.Errorf("%s: %w", filepath.Join(dir, "config.json"), err)
 	}
 	auths := map[string]string{}
 	for host, a := range cfg.Auths {
@@ -192,7 +192,7 @@ func (c *Client) authorize(ctx context.Context, domain, challenge string) (strin
 	creds := c.credentials(domain)
 	if strings.HasPrefix(challenge, "Basic ") {
 		if creds == "" {
-			return "", fmt.Errorf("le registre %s demande des identifiants", domain)
+			return "", fmt.Errorf("registry %s requires credentials", domain)
 		}
 		return "Basic " + creds, nil
 	}
@@ -201,7 +201,7 @@ func (c *Client) authorize(ctx context.Context, domain, challenge string) (strin
 		params[m[1]] = m[2]
 	}
 	if !strings.HasPrefix(challenge, "Bearer ") || params["realm"] == "" {
-		return "", fmt.Errorf("authentification du registre non prise en charge : %q", challenge)
+		return "", fmt.Errorf("unsupported registry authentication: %q", challenge)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, params["realm"], nil)
 	if err != nil {
@@ -223,7 +223,7 @@ func (c *Client) authorize(ctx context.Context, domain, challenge string) (strin
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("jeton du registre %s : %s", params["realm"], resp.Status)
+		return "", fmt.Errorf("registry %s token: %s", params["realm"], resp.Status)
 	}
 	var t struct {
 		Token       string
@@ -280,7 +280,7 @@ func (c *Client) Pushed(ctx context.Context, r Ref, tag string) (time.Time, erro
 		if t, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
 			return t, err
 		}
-		return time.Time{}, fmt.Errorf("%s:%s absent de la liste des tags de Docker Hub", r.Name(), tag)
+		return time.Time{}, fmt.Errorf("%s:%s is not in the Docker Hub tag list", r.Name(), tag)
 	}
 	pushed, err := c.configCreated(ctx, r, tag)
 	if err != nil {
@@ -400,7 +400,7 @@ func (c *Client) hubGet(ctx context.Context, url string, out any) error {
 func (c *Client) hubLogin(ctx context.Context) (string, error) {
 	raw, err := base64.StdEncoding.DecodeString(c.credentials("docker.io"))
 	if err != nil {
-		return "", fmt.Errorf("identifiants Docker Hub illisibles : %w", err)
+		return "", fmt.Errorf("unreadable Docker Hub credentials: %w", err)
 	}
 	user, secret, _ := strings.Cut(string(raw), ":")
 	body, _ := json.Marshal(map[string]string{"identifier": user, "secret": secret})
@@ -415,7 +415,7 @@ func (c *Client) hubLogin(ctx context.Context) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("connexion à l'API Docker Hub : %s", resp.Status)
+		return "", fmt.Errorf("Docker Hub API connection: %s", resp.Status)
 	}
 	var t struct {
 		AccessToken string `json:"access_token"`
@@ -440,7 +440,7 @@ func (c *Client) Digest(ctx context.Context, r Ref, tag string) (string, error) 
 	resp.Body.Close()
 	d := resp.Header.Get("Docker-Content-Digest")
 	if d == "" {
-		return "", fmt.Errorf("%s:%s : le registre ne donne pas de digest", r.Name(), tag)
+		return "", fmt.Errorf("%s:%s: the registry gives no digest", r.Name(), tag)
 	}
 	return d, nil
 }
@@ -520,7 +520,7 @@ func (c *Client) configCreated(ctx context.Context, r Ref, tag string) (time.Tim
 			}
 		}
 		if digest == "" {
-			return time.Time{}, fmt.Errorf("%s:%s n'a pas d'image linux/%s", r.Name(), tag, runtime.GOARCH)
+			return time.Time{}, fmt.Errorf("%s:%s has no linux/%s image", r.Name(), tag, runtime.GOARCH)
 		}
 		if err := c.getJSON(ctx, r, base+"/manifests/"+digest, manifestTypes, &m); err != nil {
 			return time.Time{}, err

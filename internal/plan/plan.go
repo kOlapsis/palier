@@ -129,14 +129,14 @@ func Validate(p *Plan, st *inventory.Stack) {
 		s := &p.Steps[i]
 		n := i + 1
 		if !slices.Contains(Risks, s.Risk) {
-			p.incomplete("étape %d : niveau de risque %q inconnu", n, s.Risk)
+			p.incomplete("step %d: unknown risk level %q", n, s.Risk)
 		}
 		if !slices.Contains(Reversibles, s.Reversible) {
-			p.incomplete("étape %d : réversibilité %q inconnue", n, s.Reversible)
+			p.incomplete("step %d: unknown reversibility %q", n, s.Reversible)
 		}
 		for _, name := range s.StopDuring {
 			if services[name] == nil {
-				p.incomplete("étape %d : le service %s à arrêter n'existe pas", n, name)
+				p.incomplete("step %d: the service %s to stop does not exist", n, name)
 			}
 		}
 		for _, op := range s.Operations {
@@ -147,18 +147,18 @@ func Validate(p *Plan, st *inventory.Stack) {
 		for _, c := range s.Changes {
 			svc := services[c.Service]
 			if svc == nil {
-				p.incomplete("étape %d : le service %s n'existe pas", n, c.Service)
+				p.incomplete("step %d: service %s does not exist", n, c.Service)
 				continue
 			}
 			if seen[c.Service] {
-				p.incomplete("étape %d : %s change deux fois ; un seul palier par service et par étape", n, c.Service)
+				p.incomplete("step %d: %s changes twice; one version per service per step", n, c.Service)
 			}
 			seen[c.Service] = true
 			if c.From != current[c.Service] {
-				p.incomplete("étape %d : %s part de %s alors qu'il sera en %s", n, c.Service, c.From, current[c.Service])
+				p.incomplete("step %d: %s starts from %s but will be at %s", n, c.Service, c.From, current[c.Service])
 			}
 			if !slices.ContainsFunc(svc.Available, func(r inventory.Release) bool { return r.Tag == c.To }) && !citedImageChange(p, s, c, st) {
-				p.incomplete("étape %d : %s %s n'est pas une version disponible au registre", n, c.Service, c.To)
+				p.incomplete("step %d: %s %s is not a version available in the registry", n, c.Service, c.To)
 			}
 			checkChangeOps(p, n, s, c, svc, st)
 			checkDatabase(p, n, c, svc, s)
@@ -189,11 +189,11 @@ func checkGate(p *Plan, n int, s *Step, services map[string]*inventory.Service) 
 		svc := services[s.Gate.Service]
 		switch {
 		case s.Gate.Op != "exec_check":
-			p.incomplete("étape %d : condition de passage %s inconnue", n, s.Gate.Op)
+			p.incomplete("step %d: unknown gate condition %s", n, s.Gate.Op)
 		case svc == nil:
-			p.incomplete("étape %d : la condition de passage vise %s, qui n'existe pas", n, s.Gate.Service)
+			p.incomplete("step %d: the gate targets %s, which does not exist", n, s.Gate.Service)
 		case catalog.For(svc.Image) == nil || catalog.For(svc.Image).Checks[s.Gate.CheckRef] == nil:
-			p.incomplete("étape %d : la condition %s n'est pas une commande de la fiche de %s", n, s.Gate.CheckRef, s.Gate.Service)
+			p.incomplete("step %d: the condition %s is not a command of the card of %s", n, s.Gate.CheckRef, s.Gate.Service)
 		}
 	}
 	for _, c := range s.Changes {
@@ -202,7 +202,7 @@ func checkGate(p *Plan, n int, s *Step, services map[string]*inventory.Service) 
 			continue
 		}
 		if card := catalog.For(svc.Image); card != nil && card.Checks["background_migrations"] != nil && (!gated || s.Gate.Service != c.Service) {
-			p.incomplete("étape %d : %s doit attendre la fin de ses migrations de fond (exec_check background_migrations)", n, c.Service)
+			p.incomplete("step %d: %s must wait for its background migrations to finish (exec_check background_migrations)", n, c.Service)
 		}
 	}
 }
@@ -246,7 +246,7 @@ func checkStops(p *Plan, svc *inventory.Service) {
 			continue
 		}
 		if !slices.Contains(targets, highest) {
-			p.incomplete("%s doit passer par le palier obligatoire %s (%s, dernier correctif de %s)", svc.Name, stop, highest, stop)
+			p.incomplete("%s must go through the required stop %s (%s, latest patch of %s)", svc.Name, stop, highest, stop)
 		}
 	}
 }
@@ -288,19 +288,19 @@ func withheld(p *Plan, st *inventory.Stack, final map[string]string) []string {
 		for _, m := range majors {
 			tags = append(tags, highest[m])
 		}
-		why := fmt.Sprintf("aucune note de %s ne cite de version de %s", clients(st, s.Name), s.Name)
+		why := fmt.Sprintf("no release note of %s cites a version of %s", clients(st, s.Name), s.Name)
 		for _, step := range p.Steps {
 			for _, f := range step.Facts {
 				if f.Category == "supported_dependency" && f.Dependency == s.Name && f.MaxVersion != "" {
-					why = fmt.Sprintf("%s %s supporte %s jusqu'à %s", f.Service, f.Version, s.Name, f.MaxVersion)
+					why = fmt.Sprintf("%s %s supports %s up to %s", f.Service, f.Version, s.Name, f.MaxVersion)
 				}
 			}
 		}
-		verb := "existe mais n'est pas proposé"
+		verb := "exists but is not offered"
 		if len(tags) > 1 {
-			verb = "existent mais ne sont pas proposés"
+			verb = "exist but are not offered"
 		}
-		out = append(out, fmt.Sprintf("%s %s %s : %s ; %s reste en %d.", s.Name, strings.Join(tags, ", "), verb, why, s.Name, reached.Nums[0]))
+		out = append(out, fmt.Sprintf("%s %s %s: %s; %s stays on %d.", s.Name, strings.Join(tags, ", "), verb, why, s.Name, reached.Nums[0]))
 	}
 	return out
 }
@@ -360,16 +360,16 @@ func checkIntervals(p *Plan, n int, changes []Change, current map[string]string,
 			cited = cited || k[1] == c.Service
 		}
 		if !cited {
-			p.incomplete("étape %d : %s est une dépendance ; sa majeure ne change pas sans un fait cité de l'application qui la supporte à sa version de cette étape", n, c.Service)
+			p.incomplete("step %d: %s is a dependency; its major does not change without a quoted fact from the application that supports it at its version of this step", n, c.Service)
 		}
 	}
 	for _, f := range latest {
 		dep := current[f.Dependency]
 		if c, ok := compareTo(dep, f.MinVersion); f.MinVersion != "" && ok && c < 0 {
-			p.incomplete("étape %d : %s %s exige %s %s au moins, le plan le laisse en %s", n, f.Service, current[f.Service], f.Dependency, f.MinVersion, dep)
+			p.incomplete("step %d: %s %s requires %s %s at least, the plan leaves it at %s", n, f.Service, current[f.Service], f.Dependency, f.MinVersion, dep)
 		}
 		if c, ok := compareTo(dep, f.MaxVersion); f.MaxVersion != "" && ok && c > 0 {
-			p.incomplete("étape %d : %s %s supporte %s jusqu'à %s, le plan le passe en %s", n, f.Service, current[f.Service], f.Dependency, f.MaxVersion, dep)
+			p.incomplete("step %d: %s %s supports %s up to %s, the plan moves it to %s", n, f.Service, current[f.Service], f.Dependency, f.MaxVersion, dep)
 		}
 	}
 }
@@ -381,54 +381,54 @@ func mustParse(v string) version.V {
 
 func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Service) {
 	if !slices.Contains(Ops, op.Op) {
-		p.incomplete("étape %d : opération %q hors du vocabulaire", n, op.Op)
+		p.incomplete("step %d: operation %q is outside the vocabulary", n, op.Op)
 		return
 	}
 	if !slices.Contains(implemented, op.Op) {
-		p.incomplete("étape %d : l'opération %s n'est pas encore prise en charge", n, op.Op)
+		p.incomplete("step %d: operation %s is not supported yet", n, op.Op)
 	}
 	names := op.Targets()
 	if len(names) == 0 {
-		p.incomplete("étape %d : l'opération %s ne nomme aucun service", n, op.Op)
+		p.incomplete("step %d: operation %s names no service", n, op.Op)
 	}
 	for _, name := range names {
 		if services[name] == nil {
-			p.incomplete("étape %d : l'opération %s vise le service %s, qui n'existe pas", n, op.Op, name)
+			p.incomplete("step %d: operation %s targets service %s, which does not exist", n, op.Op, name)
 		}
 	}
 	if op.Op == "compose_edit" {
 		if len(op.Edits) == 0 {
-			p.incomplete("étape %d : compose_edit sans modification", n)
+			p.incomplete("step %d: compose_edit without an edit", n)
 		}
 		for _, e := range op.Edits {
 			switch {
 			case !slices.Contains(EditActions, e.Action):
-				p.incomplete("étape %d : modification %q hors du vocabulaire", n, e.Action)
+				p.incomplete("step %d: edit %q is outside the vocabulary", n, e.Action)
 			case (e.Action == "set_env" || e.Action == "unset_env" || e.Action == "rename_env") && e.Name == "",
 				e.Action == "rename_env" && e.NewName == "",
 				(e.Action == "set_command" || e.Action == "set_healthcheck" || e.Action == "add_volume" || e.Action == "remove_volume") && e.Value == "":
-				p.incomplete("étape %d : modification %s de %s incomplète", n, e.Action, op.Service)
+				p.incomplete("step %d: edit %s of %s is incomplete", n, e.Action, op.Service)
 			}
 		}
 	}
 	if op.Op == "set_image" && (op.Image == "" || op.Tag == "") {
-		p.incomplete("étape %d : set_image sans image ni tag", n)
+		p.incomplete("step %d: set_image without image or tag", n)
 	}
 	if op.Op == "db_dump_restore" {
 		switch {
 		case !slices.Contains(databases, op.Engine):
-			p.incomplete("étape %d : pas de méthode d'export et de réimport pour le moteur %q", n, op.Engine)
+			p.incomplete("step %d: no export and reimport method for engine %q", n, op.Engine)
 		case op.ToTag == "":
-			p.incomplete("étape %d : db_dump_restore sans version cible", n)
+			p.incomplete("step %d: db_dump_restore without a target version", n)
 		case services[op.Service] != nil && engine(services[op.Service].Image) != op.Engine:
-			p.incomplete("étape %d : db_dump_restore %s sur %s, dont l'image n'est pas une base %s", n, op.Engine, op.Service, op.Engine)
+			p.incomplete("step %d: db_dump_restore %s on %s, whose image is not a %s database", n, op.Engine, op.Service, op.Engine)
 		}
 	}
 	if svc := services[op.Service]; op.Op == "exec_check" && (svc == nil || catalog.For(svc.Image) == nil || catalog.For(svc.Image).Checks[op.CheckRef] == nil) {
-		p.incomplete("étape %d : exec_check %s n'est pas une commande de la fiche de %s", n, op.CheckRef, op.Service)
+		p.incomplete("step %d: exec_check %s is not a command of the card of %s", n, op.CheckRef, op.Service)
 	}
 	if op.Op == "wait_stable" && op.Seconds <= 0 {
-		p.incomplete("étape %d : wait_stable sans durée", n)
+		p.incomplete("step %d: wait_stable without a duration", n)
 	}
 }
 
@@ -497,24 +497,24 @@ func checkChangeOps(p *Plan, n int, s *Step, c Change, svc *inventory.Service, s
 	set := slices.IndexFunc(s.Operations, func(o Operation) bool { return o.Op == "set_image" && o.Service == c.Service })
 	dump := slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service })
 	if dump && set >= 0 {
-		p.incomplete("étape %d : set_image de %s en plus de db_dump_restore, qui change déjà l'image", n, c.Service)
+		p.incomplete("step %d: set_image of %s in addition to db_dump_restore, which already changes the image", n, c.Service)
 		return
 	}
 	if set < 0 {
 		if !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service && o.ToTag == c.To }) {
-			p.incomplete("étape %d : aucun set_image ni db_dump_restore ne passe %s en %s", n, c.Service, c.To)
+			p.incomplete("step %d: no set_image or db_dump_restore moves %s to %s", n, c.Service, c.To)
 		}
 		return
 	}
 	op := s.Operations[set]
 	if op.Tag != c.To {
-		p.incomplete("étape %d : set_image donne le tag %s à %s, le changement annonce %s", n, op.Tag, c.Service, c.To)
+		p.incomplete("step %d: set_image gives tag %s to %s, the change says %s", n, op.Tag, c.Service, c.To)
 	}
 	if registry.ParseRef(op.Image).Name() != svc.Image && !citedImageChange(p, s, c, st) {
-		p.incomplete("étape %d : set_image change l'image de %s (%s au lieu de %s) sans fait cité de l'application qui impose cette image", n, c.Service, op.Image, svc.Image)
+		p.incomplete("step %d: set_image changes the image of %s (%s instead of %s) without a quoted fact from the application that requires this image", n, c.Service, op.Image, svc.Image)
 	}
 	if !slices.ContainsFunc(s.Operations[set:], func(o Operation) bool { return o.Op == "recreate" && slices.Contains(o.Targets(), c.Service) }) {
-		p.incomplete("étape %d : aucun recreate après le set_image de %s", n, c.Service)
+		p.incomplete("step %d: no recreate after the set_image of %s", n, c.Service)
 	}
 }
 
@@ -533,7 +533,7 @@ func checkDatabase(p *Plan, n int, c Change, svc *inventory.Service, s *Step) {
 		return
 	}
 	if db := engine(svc.Image); db != "" && !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service }) {
-		p.incomplete("étape %d : %s change de majeure (%s vers %s) sans db_dump_restore, obligatoire pour %s", n, c.Service, c.From, c.To, db)
+		p.incomplete("step %d: %s changes major (%s to %s) without db_dump_restore, which is required for %s", n, c.Service, c.From, c.To, db)
 	}
 }
 
@@ -542,7 +542,7 @@ func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
 	for _, f := range facts {
 		length := utf8.RuneCountInString(f.Quote)
 		if !slices.Contains(Categories, f.Category) || length < 20 || length > 1000 {
-			p.incomplete("étape %d : fait %s retiré (catégorie inconnue ou citation hors de 20 à 1000 caractères)", n, f.Category)
+			p.incomplete("step %d: fact %s dropped (unknown category or quote outside 20 to 1000 characters)", n, f.Category)
 			continue
 		}
 		url, tag := "", ""
@@ -554,7 +554,7 @@ func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
 			}
 		}
 		if url == "" {
-			p.incomplete("étape %d : fait %s retiré, sa citation ne figure pas mot pour mot dans les notes", n, f.Category)
+			p.incomplete("step %d: fact %s dropped, its quote does not appear word for word in the notes", n, f.Category)
 			continue
 		}
 		f.SourceURL = url
@@ -618,20 +618,20 @@ func Automatic(p *Plan, auto string) (bool, string) {
 	case auto == "off":
 		return false, "PALIER_AUTO=off"
 	case len(p.Incomplete) > 0:
-		return false, "plan incomplet"
+		return false, "incomplete plan"
 	case len(p.Steps) == 0:
-		return false, "rien à appliquer"
+		return false, "nothing to apply"
 	}
 	for i, s := range p.Steps {
 		if s.Risk == "blocking" {
-			return false, fmt.Sprintf("étape %d bloquante : elle demande une action que Palier ne sait pas faire", i+1)
+			return false, fmt.Sprintf("step %d is blocking: it needs an action Palier cannot perform", i+1)
 		}
 		if s.Reversible == "no" {
-			return false, fmt.Sprintf("étape %d irréversible, même en restaurant les volumes", i+1)
+			return false, fmt.Sprintf("step %d is irreversible, even by restoring the volumes", i+1)
 		}
 		for _, c := range s.Changes {
 			if l := Level(c.From, c.To); auto == "minor" && l == "major" || auto == "patch" && l != "patch" {
-				return false, fmt.Sprintf("%s %s vers %s est une version %s, au-delà de PALIER_AUTO=%s", c.Service, c.From, c.To, l, auto)
+				return false, fmt.Sprintf("%s %s to %s is a %s version, beyond PALIER_AUTO=%s", c.Service, c.From, c.To, l, auto)
 			}
 		}
 	}

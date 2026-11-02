@@ -41,7 +41,7 @@ func TestCompareSummaries(t *testing.T) {
 	if got := compareSummaries(before, before); got != "" {
 		t.Fatalf("identical summaries differ: %s", got)
 	}
-	if got := summaryLine(before); got != "rôles 1, bases 1, tables 1, lignes 3, index 1, contraintes 1" {
+	if got := summaryLine(before); got != "roles 1, databases 1, tables 1, rows 3, indexes 1, constraints 1" {
 		t.Fatal(got)
 	}
 }
@@ -63,7 +63,7 @@ func TestSummarizeCountsRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := summaryLine(lines); got != "rôles 1, bases 1, tables 1, lignes 3, index 1, contraintes 0" {
+	if got := summaryLine(lines); got != "roles 1, databases 1, tables 1, rows 3, indexes 1, constraints 0" {
 		t.Fatal(got, lines)
 	}
 }

@@ -4,40 +4,40 @@
 <div class="head">
 <h1>{{.Stack.Name}}</h1>
 <span class="pill {{tone $state}}">{{$state}}</span>
-<p class="meta">{{with .Stack.WorkingDir}}<span class="mono">{{.}}</span>, {{end}}dernière inspection {{since .At}}</p>
+<p class="meta">{{with .Stack.WorkingDir}}<span class="mono">{{.}}</span>, {{end}}last scan {{since .At}}</p>
 </div>
 {{with .Error}}<p class="notice bad">{{.}}</p>{{end}}
-{{with .Postponed}}<p class="notice info">Application automatique reportée jusqu'au {{.}}.</p>{{end}}
+{{with .Postponed}}<p class="notice info">Automatic apply postponed until {{.}}.</p>{{end}}
 {{range .Stack.Errors}}<p class="notice bad">{{.}}</p>{{end}}
 
 <div class="panel">
 <table>
-<thead><tr><th>Service</th><th>En service</th><th>État</th><th>Dépend de</th><th class="paths">Paliers</th></tr></thead>
+<thead><tr><th>Service</th><th>Running</th><th>State</th><th>Depends on</th><th class="paths">Upgrade path</th></tr></thead>
 <tbody>
 {{range .Stack.Services}}<tr>
 <td class="name">{{.Name}}<span class="sub">{{label .Role}}</span></td>
 <td><span class="mono">{{.Tag}}</span>
 <span class="sub mono">{{.Image}}</span>
-{{if and .Version (ne .Version .Tag)}}<span class="sub">version {{.Version}}, d'après {{if eq .VersionSource "digest"}}le digest{{else if eq .VersionSource "annotation"}}l'annotation OCI du registre{{else}}le label OCI{{end}}</span>{{end}}
-{{if .Republished}}<span class="flag muted">Tag republié au registre avec un autre contenu : ce n'est pas une nouvelle version.</span>{{end}}
-{{range .Advisories}}<span class="flag bad">Faille {{label .Severity}} : <a href="{{.URL}}" rel="noreferrer noopener">{{with .CVE}}{{.}}{{else}}{{.ID}}{{end}}</a>, {{.Summary}}</span>{{end}}</td>
-<td>{{.State}}{{with .Health}}<span class="sub">{{.}}</span>{{end}}{{if .Restarts}}<span class="sub">{{.Restarts}} redémarrages</span>{{end}}</td>
-<td>{{with .DependsOn}}{{join .}}{{else}}<span class="muted">aucun</span>{{end}}</td>
+{{if and .Version (ne .Version .Tag)}}<span class="sub">version {{.Version}}, read from {{if eq .VersionSource "digest"}}the digest{{else if eq .VersionSource "annotation"}}the registry's OCI annotation{{else}}the OCI label{{end}}</span>{{end}}
+{{if .Republished}}<span class="flag muted">Tag republished in the registry with different content: this is not a new version.</span>{{end}}
+{{range .Advisories}}<span class="flag bad">Security advisory ({{label .Severity}}): <a href="{{.URL}}" rel="noreferrer noopener">{{with .CVE}}{{.}}{{else}}{{.ID}}{{end}}</a>, {{.Summary}}</span>{{end}}</td>
+<td>{{.State}}{{with .Health}}<span class="sub">{{.}}</span>{{end}}{{if .Restarts}}<span class="sub">{{.Restarts}} restart{{if ne .Restarts 1}}s{{end}}</span>{{end}}</td>
+<td>{{with .DependsOn}}{{join .}}{{else}}<span class="muted">none</span>{{end}}</td>
 <td>{{$path := crumbs . $.Record}}{{if gt (len $path) 1}}
-<ol class="path" aria-label="Paliers de {{.Name}}">{{range $i, $c := $path}}<li class="{{if eq $i 0}}from{{else if $c.Last}}last{{else if $c.Stop}}stop{{end}}"><span{{if $c.Stop}} title="Palier obligatoire"{{end}}>{{$c.Tag}}</span></li>{{end}}</ol>
-{{else if and .Available $.Record}}<span class="muted">reste en {{or .Version .Tag}} : le plan ne le change pas</span>{{else}}<span class="muted">à jour</span>{{end}}
-{{with .Available}}<details class="versions"><summary>{{len .}} version{{if gt (len .) 1}}s{{end}} plus récente{{if gt (len .) 1}}s{{end}}</summary><p>{{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</p></details>{{end}}
-{{with .Maturing}}<span class="flag muted">En maturation : {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>{{end}}
+<ol class="path" aria-label="Upgrade path of {{.Name}}">{{range $i, $c := $path}}<li class="{{if eq $i 0}}from{{else if $c.Last}}last{{else if $c.Stop}}stop{{end}}"><span{{if $c.Stop}} title="Required stop"{{end}}>{{$c.Tag}}</span></li>{{end}}</ol>
+{{else if and .Available $.Record}}<span class="muted">stays on {{or .Version .Tag}}: the plan does not change it</span>{{else}}<span class="muted">up to date</span>{{end}}
+{{with .Available}}<details class="versions"><summary>{{len .}} newer version{{if gt (len .) 1}}s{{end}}</summary><p>{{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</p></details>{{end}}
+{{with .Maturing}}<span class="flag muted">Maturing: {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>{{end}}
 {{with .DetectionError}}<span class="flag bad">{{.}}</span>{{end}}
 {{with .NotesError}}<span class="flag bad">{{.}}</span>{{end}}</td>
 </tr>
 {{end}}</tbody>
 </table>
 </div>
-{{if hasStop .Stack .Record}}<p class="legend"><i></i>palier obligatoire de la fiche du catalogue ; la dernière version du fil est la cible.</p>{{end}}
+{{if hasStop .Stack .Record}}<p class="legend"><i></i>required stop from the catalog card; the last version of the path is the target.</p>{{end}}
 
 {{with .Runs}}{{with index . 0}}{{if and (eq .Status "running") (not .DryRun)}}
-<h2>Exécution <a href="/runs/{{.ID}}">{{.ID}}</a> en cours</h2>
+<h2>Run <a href="/runs/{{.ID}}">{{.ID}}</a> in progress</h2>
 {{template "progress" .}}
 {{end}}{{end}}{{end}}
 
@@ -45,29 +45,29 @@
 <div class="planhead">
 <div>
 <h2>Plan</h2>
-<p>Plan {{if eq $.Record.Source "ai"}}de l'IA{{else}}calculé sur les versions seules{{end}}, confirmé {{since $.Record.Created}}. {{if $.Auto}}L'application automatique le prendra.{{else if $.AutoWhy}}Pas d'application automatique : {{$.AutoWhy}}.{{end}}</p>
+<p>{{if eq $.Record.Source "ai"}}AI plan{{else}}Plan computed from versions only{{end}}, confirmed {{since $.Record.Created}}. {{if $.Auto}}Automatic apply will pick it up.{{else if $.AutoWhy}}No automatic apply: {{$.AutoWhy}}.{{end}}</p>
 </div>
 {{if .Steps}}<div class="actions">
-<form method="post" action="/stacks/{{$.Stack.Name}}/dry-run"><button>Essai à blanc</button></form>
-{{if not .Incomplete}}<form method="post" action="/stacks/{{$.Stack.Name}}/apply"><button class="primary">Appliquer le plan</button></form>{{end}}
+<form method="post" action="/stacks/{{$.Stack.Name}}/dry-run"><button>Dry run</button></form>
+{{if not .Incomplete}}<form method="post" action="/stacks/{{$.Stack.Name}}/apply"><button class="primary">Apply plan</button></form>{{end}}
 </div>{{end}}
 </div>
-{{if not .Steps}}<p class="muted">Rien à appliquer.</p>{{end}}
-{{with .Incomplete}}<div class="notice bad">Plan incomplet, il ne s'applique pas :<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-{{with .Withheld}}<div class="notice info">Versions écartées :<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{if not .Steps}}<p class="muted">Nothing to apply.</p>{{end}}
+{{with .Incomplete}}<div class="notice bad">Incomplete plan, it will not be applied:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{with .Withheld}}<div class="notice info">Versions left out:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 <ol class="steps">
 {{range $i, $s := .Steps}}<li><div class="step">
-<header><strong>Étape {{inc $i}}</strong>
-<span class="pill {{tone .Risk}}">risque {{label .Risk}}</span>
-<span class="pill {{tone .Reversible}}">réversible : {{label .Reversible}}</span></header>
+<header><strong>Step {{inc $i}}</strong>
+<span class="pill {{tone .Risk}}">risk: {{label .Risk}}</span>
+<span class="pill {{tone .Reversible}}">reversible: {{label .Reversible}}</span></header>
 {{with .Why}}<p>{{.}}</p>{{end}}
 <ul class="changes">
-{{range .Changes}}<li>{{.Service}} : <code>{{.From}}</code> vers <code>{{.To}}</code></li>{{end}}
-{{with .StopDuring}}<li class="muted">Arrêtés pendant l'étape : {{join .}}</li>{{end}}
+{{range .Changes}}<li>{{.Service}}: <code>{{.From}}</code> to <code>{{.To}}</code></li>{{end}}
+{{with .StopDuring}}<li class="muted">Stopped during the step: {{join .}}</li>{{end}}
 </ul>
-<ol class="ops">{{range .Operations}}<li>{{.Op}}{{with .Service}} {{.}}{{end}}{{with .Services}} {{join .}}{{end}}{{with .Image}} {{.}}{{end}}{{with .Tag}}:{{.}}{{end}}{{with .ToImage}} vers {{.}}{{end}}{{with .ToTag}}:{{.}}{{end}}{{with .CheckRef}} {{.}}{{end}}{{with .Seconds}} {{.}} s{{end}}{{range .Edits}} · {{.Action}}{{with .Name}} {{.}}{{end}}{{with .Value}} = {{.}}{{end}}{{with .NewName}} → {{.}}{{end}}{{end}}</li>{{end}}</ol>
-{{with .Gate}}{{if eq .Op "exec_check"}}<p class="muted">Condition de passage : {{.CheckRef}} sur {{.Service}}.</p>{{end}}{{end}}
-{{with .Facts}}<details><summary>{{len .}} fait{{if gt (len .) 1}}s{{end}} cité{{if gt (len .) 1}}s{{end}}</summary>
+<ol class="ops">{{range .Operations}}<li>{{.Op}}{{with .Service}} {{.}}{{end}}{{with .Services}} {{join .}}{{end}}{{with .Image}} {{.}}{{end}}{{with .Tag}}:{{.}}{{end}}{{with .ToImage}} to {{.}}{{end}}{{with .ToTag}}:{{.}}{{end}}{{with .CheckRef}} {{.}}{{end}}{{with .Seconds}} {{.}} s{{end}}{{range .Edits}} · {{.Action}}{{with .Name}} {{.}}{{end}}{{with .Value}} = {{.}}{{end}}{{with .NewName}} → {{.}}{{end}}{{end}}</li>{{end}}</ol>
+{{with .Gate}}{{if eq .Op "exec_check"}}<p class="muted">Gate: {{.CheckRef}} on {{.Service}}.</p>{{end}}{{end}}
+{{with .Facts}}<details><summary>{{len .}} quoted fact{{if gt (len .) 1}}s{{end}}</summary>
 {{range .}}<div class="fact"><div><strong>{{.Category}}</strong>, {{.Service}} {{.Version}}{{with .Dependency}}, {{.}}{{end}}{{with .MinVersion}} min {{.}}{{end}}{{with .MaxVersion}} max {{.}}{{end}} · <a href="{{.SourceURL}}" rel="noreferrer noopener">source</a></div>
 <blockquote>{{.Quote}}</blockquote></div>{{end}}
 </details>{{end}}
@@ -75,17 +75,17 @@
 {{end}}</ol>
 {{if .Steps}}
 <div class="decide">
-{{range .Steps}}{{range .Changes}}<form method="post" action="/stacks/{{$.Stack.Name}}/ignore"><input type="hidden" name="service" value="{{.Service}}"><input type="hidden" name="version" value="{{.To}}"><button class="small">Ignorer {{.Service}} {{.To}}</button></form>{{end}}{{end}}
-<form method="post" action="/stacks/{{$.Stack.Name}}/postpone"><label>Reporter l'application automatique jusqu'au <input type="date" name="until" required></label> <button class="small">Reporter</button></form>
+{{range .Steps}}{{range .Changes}}<form method="post" action="/stacks/{{$.Stack.Name}}/ignore"><input type="hidden" name="service" value="{{.Service}}"><input type="hidden" name="version" value="{{.To}}"><button class="small">Ignore {{.Service}} {{.To}}</button></form>{{end}}{{end}}
+<form method="post" action="/stacks/{{$.Stack.Name}}/postpone"><label>Postpone automatic apply until <input type="date" name="until" required></label> <button class="small">Postpone</button></form>
 </div>
 {{end}}
 {{end}}{{end}}
 
 {{with .Runs}}
-<h2>Exécutions</h2>
+<h2>Runs</h2>
 <div class="panel">
-<table><thead><tr><th>N°</th><th>Début</th><th>Par</th><th>Résultat</th></tr></thead><tbody>
-{{range .}}<tr><td><a href="/runs/{{.ID}}">{{.ID}}</a></td><td>{{when .Started}}</td><td>{{.Author}}</td><td>{{if .DryRun}}<span class="muted">essai à blanc</span> {{end}}<span class="pill {{tone .Status}}">{{label .Status}}</span></td></tr>{{end}}
+<table><thead><tr><th>#</th><th>Started</th><th>By</th><th>Result</th></tr></thead><tbody>
+{{range .}}<tr><td><a href="/runs/{{.ID}}">{{.ID}}</a></td><td>{{when .Started}}</td><td>{{.Author}}</td><td>{{if .DryRun}}<span class="muted">dry run</span> {{end}}<span class="pill {{tone .Status}}">{{label .Status}}</span></td></tr>{{end}}
 </tbody></table>
 </div>
 {{end}}

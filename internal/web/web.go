@@ -56,10 +56,10 @@ type server struct {
 }
 
 var stateNames = map[string]string{
-	run.Running:    "en cours",
-	run.Failed:     "échec",
-	run.RolledBack: "revenue en arrière",
-	run.Abandoned:  "abandonnée",
+	run.Running:    "running",
+	run.Failed:     "failed",
+	run.RolledBack: "rolled back",
+	run.Abandoned:  "abandoned",
 }
 
 // plan returns the stored plan of a stack, or nil when a run finished after it was computed and it no longer describes the stack.
@@ -85,7 +85,7 @@ func (s *server) automatic(stack string, p *plan.Plan) (bool, string) {
 
 func (s *server) state(st *inventory.Stack) string {
 	if st.Observed {
-		return "observée seulement"
+		return "observed only"
 	}
 	if runs, _ := s.deps.Runs(st.Name); len(runs) > 0 && !runs[0].DryRun {
 		if name, ok := stateNames[runs[0].Status]; ok {
@@ -95,54 +95,50 @@ func (s *server) state(st *inventory.Stack) string {
 	rec, _ := s.plan(st.Name)
 	switch {
 	case rec != nil && len(rec.Plan.Incomplete) > 0:
-		return "plan incomplet"
+		return "incomplete plan"
 	case rec != nil && len(rec.Plan.Steps) > 0:
 		if ok, _ := s.automatic(st.Name, rec.Plan); ok {
-			return "plan prêt"
+			return "plan ready"
 		}
-		return "en attente de décision"
+		return "awaiting decision"
 	}
 	for _, svc := range st.Services {
 		if svc.DetectionError != "" {
-			return "détection incomplète"
+			return "detection incomplete"
 		}
 	}
 	for _, svc := range st.Services {
 		if len(svc.Available) > 0 && rec == nil {
-			return "plan en calcul"
+			return "computing plan"
 		}
 	}
-	return "à jour"
+	return "up to date"
 }
 
 func since(t time.Time) string {
 	if t.IsZero() {
-		return "jamais"
+		return "never"
 	}
 	d := time.Since(t).Round(time.Second)
 	switch {
 	case d < time.Minute:
-		return fmt.Sprintf("il y a %d s", int(d.Seconds()))
+		return fmt.Sprintf("%d s ago", int(d.Seconds()))
 	case d < time.Hour:
-		return fmt.Sprintf("il y a %d min", int(d.Minutes()))
+		return fmt.Sprintf("%d min ago", int(d.Minutes()))
 	}
-	return fmt.Sprintf("il y a %d h", int(d.Hours()))
+	return fmt.Sprintf("%d h ago", int(d.Hours()))
 }
 
 var labels = map[string]string{
-	"safe": "sûr", "attention": "attention", "blocking": "bloquant", "unknown": "inconnu",
-	"yes": "oui", "conditional": "sous condition", "no": "non",
-	"done": "terminée", "rolled_back": "revenue en arrière", "failed": "échec", "abandoned": "abandonnée", "running": "en cours",
-	"application": "application", "dependency": "dépendance", "observed": "observé",
-	"ai": "IA", "versions": "versions seules",
-	"low": "faible", "medium": "moyenne", "high": "haute", "critical": "critique",
+	"done": "completed", "rolled_back": "rolled back",
+	"ai": "AI", "versions": "versions only",
 }
 
 var tones = map[string]string{
-	"à jour": "ok", "done": "ok", "safe": "ok", "yes": "ok",
-	"plan prêt": "accent", "en cours": "run", "plan en calcul": "run", "running": "run",
-	"en attente de décision": "warn", "détection incomplète": "warn", "revenue en arrière": "warn", "rolled_back": "warn", "attention": "warn", "conditional": "warn",
-	"plan incomplet": "bad", "échec": "bad", "failed": "bad", "blocking": "bad", "no": "bad",
+	"up to date": "ok", "done": "ok", "safe": "ok", "yes": "ok",
+	"plan ready": "accent", "running": "run", "computing plan": "run",
+	"awaiting decision": "warn", "detection incomplete": "warn", "rolled back": "warn", "rolled_back": "warn", "attention": "warn", "conditional": "warn",
+	"incomplete plan": "bad", "failed": "bad", "blocking": "bad", "no": "bad",
 }
 
 // Crumb is one version on the path of a service, from the running version to its target.
@@ -257,7 +253,7 @@ func New(token string, deps Deps) http.Handler {
 			if err != nil {
 				return v
 			}
-			return t.Format("02/01/2006 15:04:05") + " UTC"
+			return t.Format("Jan 2, 2006 3:04:05 PM") + " UTC"
 		},
 	}
 	for _, p := range []string{"index.html", "login.html", "stack.html", "run.html", "settings.html"} {
@@ -296,7 +292,7 @@ func (s *server) stack(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := map[string]any{"Stack": st, "At": at, "Error": r.URL.Query().Get("erreur")}
+	data := map[string]any{"Stack": st, "At": at, "Error": r.URL.Query().Get("error")}
 	if rec, err := s.plan(st.Name); err != nil {
 		data["Error"] = err.Error()
 	} else {
@@ -315,7 +311,7 @@ func (s *server) stack(w http.ResponseWriter, r *http.Request) {
 func back(w http.ResponseWriter, r *http.Request, err error) {
 	target := "/stacks/" + url.PathEscape(r.PathValue("name"))
 	if err != nil {
-		target += "?erreur=" + url.QueryEscape(err.Error())
+		target += "?error=" + url.QueryEscape(err.Error())
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
@@ -337,10 +333,10 @@ func (s *server) decide(kind string) http.HandlerFunc {
 		var err error
 		switch {
 		case kind == "ignore" && (service == "" || version == ""):
-			err = errors.New("service et version à ignorer manquants")
+			err = errors.New("service and version to ignore are missing")
 		case kind == "postpone":
 			if _, e := time.Parse("2006-01-02", until); e != nil {
-				err = errors.New("date de report invalide")
+				err = errors.New("invalid postpone date")
 			}
 		}
 		if err == nil {
@@ -382,7 +378,7 @@ func (s *server) valid(token string) bool {
 func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	token := r.FormValue("token")
 	if !s.valid(token) {
-		s.render(w, http.StatusUnauthorized, "login.html", map[string]string{"Error": "Jeton incorrect."})
+		s.render(w, http.StatusUnauthorized, "login.html", map[string]string{"Error": "Incorrect token."})
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", MaxAge: 30 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteStrictMode})
@@ -392,8 +388,8 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 func (s *server) render(w http.ResponseWriter, status int, page string, data any) {
 	var buf bytes.Buffer
 	if err := s.pages[page].ExecuteTemplate(&buf, "layout", data); err != nil {
-		slog.Error("rendu de page", "page", page, "err", err)
-		http.Error(w, "erreur interne", http.StatusInternalServerError)
+		slog.Error("page render", "page", page, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

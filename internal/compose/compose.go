@@ -46,7 +46,7 @@ func RunIO(ctx context.Context, dockerHost string, p Project, stdin io.Reader, s
 	cmd.Env = append(os.Environ(), "DOCKER_HOST="+dockerHost)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker compose %s : %w : %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		return fmt.Errorf("docker compose %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func ImageFile(files []string, service string) (string, error) {
 		}
 	}
 	if found == "" {
-		return "", fmt.Errorf("aucun fichier Compose ne donne l'image du service %s", service)
+		return "", fmt.Errorf("no Compose file gives the image of service %s", service)
 	}
 	return found, nil
 }
@@ -75,13 +75,13 @@ func imageNode(data []byte, service string) (*yaml.Node, error) {
 		return nil, err
 	}
 	if len(doc.Content) == 0 {
-		return nil, errors.New("fichier vide")
+		return nil, errors.New("empty file")
 	}
 	n := child(doc.Content[0], "services")
 	n = child(n, service)
 	n = child(n, "image")
 	if n == nil || n.Kind != yaml.ScalarNode {
-		return nil, fmt.Errorf("pas d'image pour le service %s", service)
+		return nil, fmt.Errorf("no image for service %s", service)
 	}
 	return n, nil
 }
@@ -105,11 +105,11 @@ func SetImage(data []byte, service, image string) ([]byte, error) {
 		return nil, err
 	}
 	if strings.Contains(n.Value, "$") {
-		return nil, fmt.Errorf("l'image du service %s passe par une variable (%s), Palier ne sait pas encore la changer", service, n.Value)
+		return nil, fmt.Errorf("the image of service %s uses a variable (%s), Palier cannot change it yet", service, n.Value)
 	}
 	lines := bytes.SplitAfter(data, []byte("\n"))
 	if n.Line < 1 || n.Line > len(lines) {
-		return nil, fmt.Errorf("position de l'image du service %s introuvable", service)
+		return nil, fmt.Errorf("position of the image of service %s not found", service)
 	}
 	start := 0
 	for _, l := range lines[:n.Line-1] {
@@ -130,7 +130,7 @@ func SetImage(data []byte, service, image string) ([]byte, error) {
 		length, replacement = end+2, "'"+image+"'"
 	default:
 		if !strings.HasPrefix(rest, n.Value) {
-			return nil, fmt.Errorf("image du service %s écrite sur plusieurs lignes, non prise en charge", service)
+			return nil, fmt.Errorf("image of service %s is written over several lines, which is not supported", service)
 		}
 		length, replacement = len(n.Value), image
 	}
@@ -190,7 +190,7 @@ func Edit(data []byte, fn func(root *yaml.Node) error) ([]byte, error) {
 		return nil, err
 	}
 	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return nil, errors.New("fichier Compose sans contenu")
+		return nil, errors.New("Compose file has no content")
 	}
 	if err := fn(doc.Content[0]); err != nil {
 		return nil, err
@@ -224,7 +224,7 @@ func MountSource(root *yaml.Node, service, target string) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("le service %s ne monte rien sur %s", service, target)
+	return "", fmt.Errorf("service %s mounts nothing on %s", service, target)
 }
 
 // ReplaceMount mounts the named volume at target in place of what service mounted at oldTarget, and declares the volume.
@@ -257,7 +257,7 @@ func ReplaceMount(root *yaml.Node, service, oldTarget, volume, target string) er
 		}
 	}
 	if !found {
-		return fmt.Errorf("le service %s ne monte rien sur %s", service, oldTarget)
+		return fmt.Errorf("service %s mounts nothing on %s", service, oldTarget)
 	}
 	top := child(root, "volumes")
 	if top == nil {
@@ -334,7 +334,7 @@ func ApplyEdit(root *yaml.Node, service, action, name, value, newName string) (s
 	services := child(root, "services")
 	svc := child(services, service)
 	if svc == nil {
-		return "", fmt.Errorf("pas de service %s dans le fichier", service)
+		return "", fmt.Errorf("no service %s in the file", service)
 	}
 	switch action {
 	case "remove_service":
@@ -346,12 +346,12 @@ func ApplyEdit(root *yaml.Node, service, action, name, value, newName string) (s
 				deps.Content = slicesDeleteScalar(deps.Content, service)
 			}
 		}
-		return "service " + service + " retiré", nil
+		return "service " + service + " removed", nil
 	case "set_env", "unset_env", "rename_env":
 		env := child(svc, "environment")
 		if env == nil {
 			if action != "set_env" {
-				return name + " absent de l'environnement de " + service + ", rien à faire", nil
+				return name + " not in the environment of " + service + ", nothing to do", nil
 			}
 			env = &yaml.Node{Kind: yaml.MappingNode}
 			svc.Content = append(svc.Content, scalar("environment"), env)
@@ -360,7 +360,7 @@ func ApplyEdit(root *yaml.Node, service, action, name, value, newName string) (s
 	case "set_command", "set_healthcheck":
 		var n yaml.Node
 		if err := yaml.Unmarshal([]byte(value), &n); err != nil || len(n.Content) == 0 {
-			return "", fmt.Errorf("valeur illisible pour %s : %q", action, value)
+			return "", fmt.Errorf("unreadable value for %s: %q", action, value)
 		}
 		key, node := "command", n.Content[0]
 		if action == "set_healthcheck" {
@@ -368,13 +368,13 @@ func ApplyEdit(root *yaml.Node, service, action, name, value, newName string) (s
 		}
 		removeKey(svc, key)
 		svc.Content = append(svc.Content, scalar(key), node)
-		return key + " de " + service + " fixé à " + value, nil
+		return key + " of " + service + " set to " + value, nil
 	case "unset_command", "unset_healthcheck":
 		key := strings.TrimPrefix(action, "unset_")
 		if !removeKey(svc, key) {
-			return key + " absent de " + service + ", rien à faire", nil
+			return key + " not in " + service + ", nothing to do", nil
 		}
-		return key + " retiré de " + service, nil
+		return key + " removed from " + service, nil
 	case "add_volume", "remove_volume":
 		vols := child(svc, "volumes")
 		if action == "add_volume" {
@@ -383,20 +383,20 @@ func ApplyEdit(root *yaml.Node, service, action, name, value, newName string) (s
 				svc.Content = append(svc.Content, scalar("volumes"), vols)
 			}
 			vols.Content = append(vols.Content, scalar(value))
-			return "volume " + value + " ajouté à " + service, nil
+			return "volume " + value + " added to " + service, nil
 		}
 		if vols != nil {
 			for i, item := range vols.Content {
 				parts := strings.Split(item.Value, ":")
 				if item.Value == value || len(parts) >= 2 && parts[1] == value || child(item, "target") != nil && child(item, "target").Value == value {
 					vols.Content = append(vols.Content[:i], vols.Content[i+1:]...)
-					return "volume " + value + " retiré de " + service, nil
+					return "volume " + value + " removed from " + service, nil
 				}
 			}
 		}
-		return "volume " + value + " absent de " + service + ", rien à faire", nil
+		return "volume " + value + " not in " + service + ", nothing to do", nil
 	}
-	return "", fmt.Errorf("modification %q inconnue", action)
+	return "", fmt.Errorf("unknown edit %q", action)
 }
 
 func editEnv(env *yaml.Node, service, action, name, value, newName string) (string, error) {
@@ -414,13 +414,13 @@ func editEnv(env *yaml.Node, service, action, name, value, newName string) (stri
 			case "rename_env":
 				item.Value = newName + "=" + v
 			}
-			return action + " " + name + " sur " + service, nil
+			return action + " " + name + " on " + service, nil
 		}
 		if action == "set_env" {
 			env.Content = append(env.Content, scalar(name+"="+value))
-			return name + " ajouté à " + service, nil
+			return name + " added to " + service, nil
 		}
-		return name + " absent de l'environnement de " + service + ", rien à faire", nil
+		return name + " not in the environment of " + service + ", nothing to do", nil
 	}
 	for i := 0; i+1 < len(env.Content); i += 2 {
 		if env.Content[i].Value != name {
@@ -434,13 +434,13 @@ func editEnv(env *yaml.Node, service, action, name, value, newName string) (stri
 		case "rename_env":
 			env.Content[i].Value = newName
 		}
-		return action + " " + name + " sur " + service, nil
+		return action + " " + name + " on " + service, nil
 	}
 	if action == "set_env" {
 		env.Content = append(env.Content, scalar(name), scalar(value))
-		return name + " ajouté à " + service, nil
+		return name + " added to " + service, nil
 	}
-	return name + " absent de l'environnement de " + service + ", rien à faire", nil
+	return name + " not in the environment of " + service + ", nothing to do", nil
 }
 
 func removeKey(m *yaml.Node, key string) bool {

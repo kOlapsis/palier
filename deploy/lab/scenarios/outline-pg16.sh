@@ -8,4 +8,4 @@ sed -i -e 's|image: docker.io/library/postgres:.*|image: docker.io/library/postg
 docker volume rm outline_postgres-data-18
 docker volume ls -q | grep postgres-data | tr '\n' ' '; echo
 outline_state
-echo "postgres : $(pg_counts outline-postgres-1) ; montages : $(mounts_of outline-postgres-1)"
+echo "postgres: $(pg_counts outline-postgres-1); mounts: $(mounts_of outline-postgres-1)"

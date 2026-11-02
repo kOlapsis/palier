@@ -34,7 +34,7 @@ const (
 	Abandoned  = "abandoned"
 )
 
-var results = map[string]string{Done: "terminée", RolledBack: "revenue en arrière", Failed: "échec", Abandoned: "abandonnée"}
+var results = map[string]string{Done: "completed", RolledBack: "rolled back", Failed: "failed", Abandoned: "abandoned"}
 
 // Engine applies plans on the local engine.
 type Engine struct {
@@ -69,7 +69,7 @@ type Saved struct {
 }
 
 // ErrBusy means a run is already in progress on the stack.
-var ErrBusy = errors.New("une exécution est déjà en cours sur cette stack")
+var ErrBusy = errors.New("a run is already in progress on this stack")
 
 // Begin records a new run of p on stack.
 func (e *Engine) Begin(ctx context.Context, stack string, p *plan.Plan, author string, dryRun bool) (int64, error) {
@@ -93,9 +93,9 @@ func now() string { return time.Now().UTC().Format(time.RFC3339) }
 
 func (e *Engine) event(id int64, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	slog.Info("exécution", "run", id, "event", msg)
+	slog.Info("run", "run", id, "event", msg)
 	if _, err := e.DB.Exec(`INSERT INTO run_events (run_id, at, message) VALUES (?, ?, ?)`, id, now(), msg); err != nil {
-		slog.Error("journal d'exécution", "run", id, "err", err)
+		slog.Error("run log", "run", id, "err", err)
 	}
 }
 
@@ -105,9 +105,9 @@ func (e *Engine) finish(id int64, status string, cause error) {
 		msg = cause.Error()
 	}
 	if _, err := e.DB.Exec(`UPDATE runs SET status = ?, error = ?, finished = ? WHERE id = ?`, status, msg, now(), id); err != nil {
-		slog.Error("fin d'exécution", "run", id, "err", err)
+		slog.Error("run end", "run", id, "err", err)
 	}
-	e.event(id, "résultat : %s", results[status])
+	e.event(id, "result: %s", results[status])
 	var stack string
 	var dryRun bool
 	if e.Finished != nil && e.DB.QueryRow(`SELECT stack, dry_run FROM runs WHERE id = ?`, id).Scan(&stack, &dryRun) == nil && !dryRun {
@@ -129,7 +129,7 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		}
 		for _, c := range firstChanges(p, s.Name) {
 			if c.From != running {
-				e.finish(id, Abandoned, fmt.Errorf("la stack a changé depuis le calcul du plan : %s est en %s, le plan part de %s", s.Name, running, c.From))
+				e.finish(id, Abandoned, fmt.Errorf("the stack changed since the plan was computed: %s is at %s, the plan starts from %s", s.Name, running, c.From))
 				return
 			}
 		}
@@ -142,9 +142,9 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		if s.BackupHook == "" {
 			continue
 		}
-		e.event(id, "hook de sauvegarde de %s : %s", s.Name, s.BackupHook)
+		e.event(id, "backup hook of %s: %s", s.Name, s.BackupHook)
 		if _, err := compose.Run(ctx, e.DockerHost, ProjectOf(st), "exec", "-T", s.Name, "sh", "-c", s.BackupHook); err != nil {
-			e.finish(id, Abandoned, fmt.Errorf("le hook de sauvegarde de %s a échoué, rien n'est appliqué : %w", s.Name, err))
+			e.finish(id, Abandoned, fmt.Errorf("the backup hook of %s failed, nothing is applied: %w", s.Name, err))
 			return
 		}
 	}
@@ -153,7 +153,7 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		err = e.save(id, cp)
 	}
 	if err != nil {
-		e.finish(id, Abandoned, fmt.Errorf("point de reprise impossible : %w", err))
+		e.finish(id, Abandoned, fmt.Errorf("cannot create checkpoint: %w", err))
 		return
 	}
 	if err := e.modified(id); err != nil {
@@ -161,23 +161,23 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		return
 	}
 	if err := e.snapshot(ctx, id, st, cp, changedServices(st, p)); err != nil {
-		e.event(id, "copie des volumes impossible : %v", err)
+		e.event(id, "cannot copy volumes: %v", err)
 		e.rollback(context.WithoutCancel(ctx), id, cp, err)
 		return
 	}
-	e.event(id, "point de reprise : fichiers Compose %d, services %d, copies de volumes %d", len(cp.Files), len(cp.Services), len(cp.Snapshots))
+	e.event(id, "checkpoint: %d Compose files, %d services, %d volume copies", len(cp.Files), len(cp.Services), len(cp.Snapshots))
 	for i, step := range p.Steps {
-		e.event(id, "étape %d sur %d : %s", i+1, len(p.Steps), describe(step))
+		e.event(id, "step %d of %d: %s", i+1, len(p.Steps), describe(step))
 		if err := e.step(ctx, id, st, cp, step); err != nil {
-			e.event(id, "échec de l'étape %d : %v", i+1, err)
+			e.event(id, "step %d failed: %v", i+1, err)
 			e.rollback(context.WithoutCancel(ctx), id, cp, err)
 			return
 		}
-		e.event(id, "étape %d vérifiée", i+1)
+		e.event(id, "step %d verified", i+1)
 		if i+1 < len(p.Steps) {
 			next, err := e.advance(ctx, id, cp, &plan.Plan{Steps: p.Steps[i+1:]}, i+1)
 			if err != nil {
-				e.event(id, "point de reprise impossible après l'étape %d : %v", i+1, err)
+				e.event(id, "cannot create checkpoint after step %d: %v", i+1, err)
 				e.rollback(context.WithoutCancel(ctx), id, cp, err)
 				return
 			}
@@ -196,7 +196,7 @@ func (e *Engine) advance(ctx context.Context, id int64, prev *Checkpoint, rest *
 	}
 	i := slices.IndexFunc(stacks, func(st *inventory.Stack) bool { return st.Name == prev.Project.Name && !st.Observed })
 	if i < 0 {
-		return nil, fmt.Errorf("stack %s introuvable", prev.Project.Name)
+		return nil, fmt.Errorf("stack %s not found", prev.Project.Name)
 	}
 	now := stacks[i]
 	cp, err := checkpoint(now)
@@ -213,7 +213,7 @@ func (e *Engine) advance(ctx context.Context, id int64, prev *Checkpoint, rest *
 		return nil, err
 	}
 	e.dropSnapshots(ctx, id, prev)
-	e.event(id, "point de reprise après l'étape %d : fichiers Compose %d, services %d, copies de volumes %d", done, len(cp.Files), len(cp.Services), len(cp.Snapshots))
+	e.event(id, "checkpoint after step %d: %d Compose files, %d services, %d volume copies", done, len(cp.Files), len(cp.Services), len(cp.Snapshots))
 	return cp, nil
 }
 
@@ -255,12 +255,12 @@ func firstChanges(p *plan.Plan, service string) []plan.Change {
 func describe(s plan.Step) string {
 	var parts []string
 	for _, c := range s.Changes {
-		parts = append(parts, fmt.Sprintf("%s %s vers %s", c.Service, c.From, c.To))
+		parts = append(parts, fmt.Sprintf("%s %s to %s", c.Service, c.From, c.To))
 	}
 	if len(s.StopDuring) > 0 {
-		parts = append(parts, "arrêt de "+strings.Join(s.StopDuring, ", "))
+		parts = append(parts, "stop "+strings.Join(s.StopDuring, ", "))
 	}
-	return strings.Join(parts, " ; ")
+	return strings.Join(parts, "; ")
 }
 
 func checkpoint(st *inventory.Stack) (*Checkpoint, error) {
@@ -302,7 +302,7 @@ func (e *Engine) step(ctx context.Context, id int64, st *inventory.Stack, cp *Ch
 	stopped := dependencyOrder(st, step.StopDuring)
 	slices.Reverse(stopped)
 	for _, name := range stopped {
-		e.event(id, "arrêt de %s", name)
+		e.event(id, "stopping %s", name)
 		if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "stop", name); err != nil {
 			return err
 		}
@@ -314,7 +314,7 @@ func (e *Engine) step(ctx context.Context, id int64, st *inventory.Stack, cp *Ch
 	}
 	if len(stopped) > 0 {
 		slices.Reverse(stopped)
-		e.event(id, "démarrage de %s", strings.Join(stopped, ", "))
+		e.event(id, "starting %s", strings.Join(stopped, ", "))
 		if _, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"up", "-d", "--no-deps"}, stopped...)...); err != nil {
 			return err
 		}
@@ -342,16 +342,16 @@ const (
 
 // gate runs the check command of the card until it succeeds.
 func (e *Engine) gate(ctx context.Context, id int64, st *inventory.Stack, cp *Checkpoint, g plan.Operation) error {
-	e.event(id, "attente de %s sur %s", g.CheckRef, g.Service)
+	e.event(id, "waiting for %s on %s", g.CheckRef, g.Service)
 	deadline := time.Now().Add(gateTimeout)
 	for tries := 1; ; tries++ {
 		err := e.runCheck(ctx, st, cp, g)
 		if err == nil {
-			e.event(id, "%s réussi sur %s après %d essai(s)", g.CheckRef, g.Service, tries)
+			e.event(id, "%s passed on %s after %d attempt(s)", g.CheckRef, g.Service, tries)
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("%s toujours en échec sur %s après %s : %w", g.CheckRef, g.Service, gateTimeout, err)
+			return fmt.Errorf("%s still failing on %s after %s: %w", g.CheckRef, g.Service, gateTimeout, err)
 		}
 		select {
 		case <-ctx.Done():
@@ -364,11 +364,11 @@ func (e *Engine) gate(ctx context.Context, id int64, st *inventory.Stack, cp *Ch
 func (e *Engine) runCheck(ctx context.Context, st *inventory.Stack, cp *Checkpoint, op plan.Operation) error {
 	svc := service(st, op.Service)
 	if svc == nil {
-		return fmt.Errorf("service %s introuvable", op.Service)
+		return fmt.Errorf("service %s not found", op.Service)
 	}
 	card := catalog.For(svc.Image)
 	if card == nil || card.Checks[op.CheckRef] == nil {
-		return fmt.Errorf("pas de commande %s dans la fiche de %s", op.CheckRef, op.Service)
+		return fmt.Errorf("no command %s in the card of %s", op.CheckRef, op.Service)
 	}
 	_, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"exec", "-T", op.Service}, card.Checks[op.CheckRef]...)...)
 	return err
@@ -410,11 +410,11 @@ func (e *Engine) operation(ctx context.Context, id int64, st *inventory.Stack, c
 	case "compose_edit":
 		return e.composeEdit(ctx, id, cp, op)
 	case "recreate":
-		e.event(id, "recreate de %s", strings.Join(services, ", "))
+		e.event(id, "recreate %s", strings.Join(services, ", "))
 		_, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"up", "-d", "--no-deps"}, services...)...)
 		return err
 	case "stop", "start":
-		e.event(id, "%s de %s", op.Op, strings.Join(services, ", "))
+		e.event(id, "%s %s", op.Op, strings.Join(services, ", "))
 		_, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{op.Op}, services...)...)
 		return err
 	case "wait_stable":
@@ -422,10 +422,10 @@ func (e *Engine) operation(ctx context.Context, id int64, st *inventory.Stack, c
 	case "db_dump_restore":
 		return e.dumpRestore(ctx, id, st, cp, op)
 	case "exec_check":
-		e.event(id, "exec_check %s sur %s", op.CheckRef, op.Service)
+		e.event(id, "exec_check %s on %s", op.CheckRef, op.Service)
 		return e.runCheck(ctx, st, cp, op)
 	}
-	return fmt.Errorf("opération %s non prise en charge", op.Op)
+	return fmt.Errorf("unsupported operation %s", op.Op)
 }
 
 func currentImage(data []byte, service string) (string, error) {
@@ -467,18 +467,18 @@ func (e *Engine) setImage(id int64, cp *Checkpoint, op plan.Operation) error {
 	}
 	if repo, variable, ok := compose.ImageVariable(raw); ok {
 		if op.Image != "" && registry.ParseRef(op.Image).Name() != registry.ParseRef(repo).Name() {
-			return fmt.Errorf("l'image de %s passe par la variable %s : Palier ne change pas son dépôt", op.Service, variable)
+			return fmt.Errorf("the image of %s uses the variable %s: Palier does not change its repository", op.Service, variable)
 		}
 		env, err := compose.ReadState(envFile(cp.Project))
 		if err != nil {
 			return err
 		}
 		if current, _ := compose.EnvVar([]byte(env.Data), variable); current == op.Tag {
-			e.event(id, "%s : %s vaut déjà %s", env.Path, variable, op.Tag)
+			e.event(id, "%s: %s is already %s", env.Path, variable, op.Tag)
 			return nil
 		}
 		env.Data = string(compose.SetEnvVar([]byte(env.Data), variable, op.Tag))
-		e.event(id, "%s : %s passe à %s (image de %s)", env.Path, variable, op.Tag, op.Service)
+		e.event(id, "%s: %s set to %s (image of %s)", env.Path, variable, op.Tag, op.Service)
 		return compose.Write(env)
 	}
 	ref, err := currentImage([]byte(fs.Data), op.Service)
@@ -496,7 +496,7 @@ func (e *Engine) setImage(id int64, cp *Checkpoint, op plan.Operation) error {
 		return err
 	}
 	fs.Data = string(data)
-	e.event(id, "%s : image de %s passée à %s:%s", file, op.Service, ref, op.Tag)
+	e.event(id, "%s: image of %s set to %s:%s", file, op.Service, ref, op.Tag)
 	return compose.Write(fs)
 }
 
@@ -504,7 +504,7 @@ func (e *Engine) setImage(id int64, cp *Checkpoint, op plan.Operation) error {
 func (e *Engine) composeEdit(ctx context.Context, id int64, cp *Checkpoint, op plan.Operation) error {
 	for _, ed := range op.Edits {
 		if ed.Action == "remove_service" {
-			e.event(id, "arrêt et suppression du conteneur de %s", op.Service)
+			e.event(id, "stopping and removing the container of %s", op.Service)
 			if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "rm", "-s", "-f", op.Service); err != nil {
 				return err
 			}
@@ -537,10 +537,10 @@ func (e *Engine) composeEdit(ctx context.Context, id int64, cp *Checkpoint, op p
 		if err := compose.Write(fs); err != nil {
 			return err
 		}
-		e.event(id, "%s : %s", file, strings.Join(done, " ; "))
+		e.event(id, "%s: %s", file, strings.Join(done, "; "))
 		return nil
 	}
-	return fmt.Errorf("aucun fichier Compose ne déclare le service %s", op.Service)
+	return fmt.Errorf("no Compose file declares service %s", op.Service)
 }
 
 // present returns the services of the checkpoint the Compose files still declare.
@@ -595,7 +595,7 @@ func (e *Engine) healthGrace(ctx context.Context, project string, services []str
 
 // verify waits until every service runs, is healthy when it has a healthcheck, and stays so for stable without restarting.
 func (e *Engine) verify(ctx context.Context, id int64, project string, services []string, stable time.Duration) error {
-	e.event(id, "vérification de %s pendant %d s", strings.Join(services, ", "), int(stable.Seconds()))
+	e.event(id, "verifying %s for %d s", strings.Join(services, ", "), int(stable.Seconds()))
 	grace := e.healthGrace(ctx, project, services)
 	deadline := time.Now().Add(stable + grace)
 	restarts := map[string]int{}
@@ -614,7 +614,7 @@ func (e *Engine) verify(ctx context.Context, id int64, project string, services 
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("pas stable après %d s : %s", int((stable + grace).Seconds()), waiting)
+			return fmt.Errorf("not stable after %d s: %s", int((stable + grace).Seconds()), waiting)
 		}
 		select {
 		case <-ctx.Done():
@@ -633,7 +633,7 @@ func (e *Engine) check(ctx context.Context, project string, services []string, r
 	for _, name := range services {
 		i := slices.IndexFunc(list, func(c docker.Container) bool { return c.Labels["com.docker.compose.service"] == name })
 		if i < 0 {
-			return name + " n'a pas de conteneur", nil
+			return name + " has no container", nil
 		}
 		var d docker.ContainerDetail
 		if err := e.Docker.Get(ctx, "/containers/"+list[i].ID+"/json", &d); err != nil {
@@ -647,21 +647,21 @@ func (e *Engine) check(ctx context.Context, project string, services []string, r
 		fail := ""
 		switch {
 		case d.RestartCount > base || d.State.Status == "restarting":
-			fail = fmt.Sprintf("%s redémarre en boucle", name)
+			fail = fmt.Sprintf("%s keeps restarting", name)
 		case d.State.Status == "exited" || d.State.Status == "dead":
-			fail = fmt.Sprintf("%s s'est arrêté", name)
+			fail = fmt.Sprintf("%s stopped", name)
 		case d.State.Health != nil && d.State.Health.Status == "unhealthy":
-			fail = fmt.Sprintf("%s est unhealthy", name)
+			fail = fmt.Sprintf("%s is unhealthy", name)
 		}
 		if fail != "" {
 			logs, _ := e.Docker.Logs(ctx, d.ID, 20)
-			return "", fmt.Errorf("%s ; dernières lignes du journal :\n%s", fail, strings.TrimSpace(logs))
+			return "", fmt.Errorf("%s; last log lines:\n%s", fail, strings.TrimSpace(logs))
 		}
 		if d.State.Status != "running" {
-			return name + " est " + d.State.Status, nil
+			return name + " is " + d.State.Status, nil
 		}
 		if d.State.Health != nil && d.State.Health.Status != "healthy" {
-			return name + " est " + d.State.Health.Status, nil
+			return name + " is " + d.State.Health.Status, nil
 		}
 	}
 	return "", nil
@@ -669,18 +669,18 @@ func (e *Engine) check(ctx context.Context, project string, services []string, r
 
 func (e *Engine) rollback(ctx context.Context, id int64, cp *Checkpoint, cause error) {
 	if cp.Step > 0 {
-		e.event(id, "retour arrière de toute la stack au dernier palier vérifié, après l'étape %d", cp.Step)
-		cause = fmt.Errorf("%v ; la stack reste au dernier palier vérifié, après l'étape %d", cause, cp.Step)
+		e.event(id, "rolling back the whole stack to the last verified step, after step %d", cp.Step)
+		cause = fmt.Errorf("%v; the stack stays at the last verified step, after step %d", cause, cp.Step)
 	} else {
-		e.event(id, "retour arrière de toute la stack au point de reprise")
+		e.event(id, "rolling back the whole stack to the checkpoint")
 	}
 	err := e.restore(ctx, id, cp)
 	if err == nil {
 		err = e.verify(ctx, id, cp.Project.Name, names(cp), e.Stable)
 	}
 	if err != nil {
-		e.event(id, "le retour arrière a échoué : %v", err)
-		e.finish(id, Failed, fmt.Errorf("%v ; retour arrière : %w", cause, err))
+		e.event(id, "rollback failed: %v", err)
+		e.finish(id, Failed, fmt.Errorf("%v; rollback: %w", cause, err))
 		return
 	}
 	e.dropSnapshots(ctx, id, cp)
@@ -692,7 +692,7 @@ func (e *Engine) restore(ctx context.Context, id int64, cp *Checkpoint) error {
 		if err := compose.Write(f); err != nil {
 			return err
 		}
-		e.event(id, "%s restauré", f.Path)
+		e.event(id, "%s restored", f.Path)
 	}
 	if cp.SnapshotsDone {
 		if err := e.restoreSnapshots(ctx, id, cp); err != nil {
@@ -705,15 +705,15 @@ func (e *Engine) restore(ctx context.Context, id int64, cp *Checkpoint) error {
 			return err
 		}
 	}
-	e.event(id, "images d'origine retaguées, recreate de la stack")
+	e.event(id, "original images retagged, recreating the stack")
 	if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "up", "-d"); err != nil {
 		return err
 	}
 	for _, v := range cp.CreatedVolumes {
 		if err := e.Docker.Delete(ctx, "/volumes/"+url.PathEscape(v)); err != nil {
-			e.event(id, "volume %s créé pendant l'exécution non supprimé : %v", v, err)
+			e.event(id, "volume %s created during the run was not removed: %v", v, err)
 		} else {
-			e.event(id, "volume %s créé pendant l'exécution supprimé", v)
+			e.event(id, "volume %s created during the run removed", v)
 		}
 	}
 	return nil
@@ -741,18 +741,18 @@ func (e *Engine) Recover(ctx context.Context) error {
 	}
 	rows.Close()
 	for _, p := range list {
-		cause := errors.New("Palier s'est arrêté pendant l'exécution")
+		cause := errors.New("Palier stopped during the run")
 		if !p.modified {
-			e.event(p.id, "reprise au démarrage : aucune modification faite")
+			e.event(p.id, "recovery at startup: no changes made")
 			e.finish(p.id, Abandoned, cause)
 			continue
 		}
 		var cp Checkpoint
 		if err := json.Unmarshal([]byte(p.cp), &cp); err != nil {
-			e.finish(p.id, Failed, fmt.Errorf("%v ; point de reprise illisible : %w", cause, err))
+			e.finish(p.id, Failed, fmt.Errorf("%v; unreadable checkpoint: %w", cause, err))
 			continue
 		}
-		e.event(p.id, "reprise au démarrage : la stack avait été modifiée")
+		e.event(p.id, "recovery at startup: the stack had been modified")
 		e.rollback(ctx, p.id, &cp, cause)
 	}
 	return nil
@@ -762,10 +762,10 @@ func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *p
 	files := map[string][]byte{}
 	var problems []string
 	for i, step := range p.Steps {
-		e.event(id, "étape %d sur %d : %s", i+1, len(p.Steps), describe(step))
+		e.event(id, "step %d of %d: %s", i+1, len(p.Steps), describe(step))
 		for _, op := range step.Operations {
 			if op.Op != "set_image" {
-				e.event(id, "ferait : %s %s", op.Op, strings.Join(op.Targets(), " "))
+				e.event(id, "would do: %s %s", op.Op, strings.Join(op.Targets(), " "))
 				continue
 			}
 			svc := st.Services[slices.IndexFunc(st.Services, func(s *inventory.Service) bool { return s.Name == op.Service })]
@@ -774,7 +774,7 @@ func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *p
 				repo = registry.ParseRef(op.Image).Name()
 			}
 			if _, err := e.Registry.Digest(ctx, registry.ParseRef(repo+":"+op.Tag), op.Tag); err != nil {
-				problems = append(problems, fmt.Sprintf("%s:%s absente du registre : %v", repo, op.Tag, err))
+				problems = append(problems, fmt.Sprintf("%s:%s is not in the registry: %v", repo, op.Tag, err))
 			}
 			file, err := compose.ImageFile(st.ConfigFiles, op.Service)
 			if err == nil && files[file] == nil {
@@ -788,7 +788,7 @@ func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *p
 			}
 			if raw, _ := compose.ImageValue(files[file], op.Service); err == nil {
 				if _, variable, ok := compose.ImageVariable(raw); ok {
-					e.event(id, "ferait : %s passe à %s (image de %s, présente au registre)", variable, op.Tag, op.Service)
+					e.event(id, "would do: %s set to %s (image of %s, present in the registry)", variable, op.Tag, op.Service)
 					continue
 				}
 				files[file], err = compose.SetImage(files[file], op.Service, ref+":"+op.Tag)
@@ -797,11 +797,11 @@ func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *p
 				problems = append(problems, err.Error())
 				continue
 			}
-			e.event(id, "ferait : %s, image de %s passée à %s:%s (présente au registre)", file, op.Service, ref, op.Tag)
+			e.event(id, "would do: %s, image of %s set to %s:%s (present in the registry)", file, op.Service, ref, op.Tag)
 		}
 	}
 	if len(problems) > 0 {
-		e.finish(id, Failed, errors.New(strings.Join(problems, " ; ")))
+		e.finish(id, Failed, errors.New(strings.Join(problems, "; ")))
 		return
 	}
 	e.finish(id, Done, nil)

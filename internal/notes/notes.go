@@ -126,7 +126,7 @@ func (c *Client) page(ctx context.Context, repo string, page int, after version.
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, false, fmt.Errorf("notes de version de %s : GET %s : %s", repo, url, resp.Status)
+		return nil, false, fmt.Errorf("release notes of %s: GET %s: %s", repo, url, resp.Status)
 	}
 	var releases []struct {
 		TagName     string    `json:"tag_name"`
@@ -172,7 +172,7 @@ func (c *Client) gitlabPage(ctx context.Context, path string, page int, after ve
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, false, fmt.Errorf("notes de version de %s : GET %s : %s", gitlabPrefix+path, u, resp.Status)
+		return nil, false, fmt.Errorf("release notes of %s: GET %s: %s", gitlabPrefix+path, u, resp.Status)
 	}
 	var releases []struct {
 		TagName     string    `json:"tag_name"`

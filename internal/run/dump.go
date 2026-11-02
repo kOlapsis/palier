@@ -34,7 +34,7 @@ const pgTables = `SELECT table_schema || '.' || table_name || '=' || (xpath('/ro
 func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack, cp *Checkpoint, op plan.Operation) error {
 	svc := service(st, op.Service)
 	if svc == nil {
-		return fmt.Errorf("service %s introuvable", op.Service)
+		return fmt.Errorf("service %s not found", op.Service)
 	}
 	repo := svc.Image
 	if op.ToImage != "" {
@@ -63,7 +63,7 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	clients := dependencyOrder(st, clientsOf(st, svc.Name))
 	slices.Reverse(clients)
 	if len(clients) > 0 {
-		e.event(id, "arrêt de %s pendant l'export de %s", strings.Join(clients, ", "), svc.Name)
+		e.event(id, "stopping %s during the export of %s", strings.Join(clients, ", "), svc.Name)
 		if _, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"stop"}, clients...)...); err != nil {
 			return err
 		}
@@ -73,7 +73,7 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	}
 	before, err := m.summary(ctx)
 	if err != nil {
-		return fmt.Errorf("lecture de la base avant l'export : %w", err)
+		return fmt.Errorf("reading the database before the export: %w", err)
 	}
 	dumpPath := filepath.Join(e.DataDir, "dumps", fmt.Sprintf("run%d-%s.sql", id, svc.Name))
 	if err := os.MkdirAll(filepath.Dir(dumpPath), 0o700); err != nil {
@@ -89,13 +89,13 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	}
 	f.Close()
 	if err != nil {
-		return fmt.Errorf("export de %s : %w", svc.Name, err)
+		return fmt.Errorf("export of %s: %w", svc.Name, err)
 	}
 	size := int64(0)
 	if fi, err := os.Stat(dumpPath); err == nil {
 		size = fi.Size()
 	}
-	e.event(id, "export de %s terminé : %d octets, %s", svc.Name, size, summaryLine(before))
+	e.event(id, "export of %s done: %d bytes, %s", svc.Name, size, summaryLine(before))
 	if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "stop", svc.Name); err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	}
 	full := cp.Project.Name + "_" + newVolume
 	if e.Docker.Get(ctx, "/volumes/"+url.PathEscape(full), &struct{}{}) == nil {
-		return fmt.Errorf("le volume %s existe déjà : Palier n'écrit pas sur des données qu'il n'a pas créées", full)
+		return fmt.Errorf("volume %s already exists: Palier does not write over data it did not create", full)
 	}
 	cp.CreatedVolumes = append(cp.CreatedVolumes, full)
 	if err := e.save(id, cp); err != nil {
@@ -135,7 +135,7 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	if err := compose.Write(fs); err != nil {
 		return err
 	}
-	e.event(id, "%s : %s passe en %s:%s sur le nouveau volume %s monté sur %s ; l'ancien volume n'est plus monté", file, svc.Name, repo, op.ToTag, newVolume, newPath)
+	e.event(id, "%s: %s set to %s:%s on the new volume %s mounted on %s; the old volume is no longer mounted", file, svc.Name, repo, op.ToTag, newVolume, newPath)
 	if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "up", "-d", "--no-deps", svc.Name); err != nil {
 		return err
 	}
@@ -150,20 +150,20 @@ func (e *Engine) dumpRestore(ctx context.Context, id int64, st *inventory.Stack,
 	err = compose.RunIO(ctx, e.DockerHost, cp.Project, in, &out, m.exec(m.restore)...)
 	in.Close()
 	if err != nil {
-		return fmt.Errorf("réimport dans %s : %w", svc.Name, err)
+		return fmt.Errorf("reimport into %s: %w", svc.Name, err)
 	}
 	after, err := m.summary(ctx)
 	if err != nil {
-		return fmt.Errorf("lecture de la base après le réimport : %w", err)
+		return fmt.Errorf("reading the database after the reimport: %w", err)
 	}
 	if diff := compareSummaries(before, after); diff != "" {
-		return fmt.Errorf("la base réimportée diffère de l'export : %s", diff)
+		return fmt.Errorf("the reimported database differs from the export: %s", diff)
 	}
-	e.event(id, "réimport vérifié, identique à l'export : %s", summaryLine(after))
+	e.event(id, "reimport verified, identical to the export: %s", summaryLine(after))
 	os.Remove(dumpPath)
 	if len(clients) > 0 {
 		slices.Reverse(clients)
-		e.event(id, "démarrage de %s", strings.Join(clients, ", "))
+		e.event(id, "starting %s", strings.Join(clients, ", "))
 		if _, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"up", "-d", "--no-deps"}, clients...)...); err != nil {
 			return err
 		}
@@ -209,7 +209,7 @@ func (e *Engine) pull(ctx context.Context, repo, tag string) error {
 		return err
 	}
 	if err := e.Docker.Get(ctx, "/images/"+repo+":"+tag+"/json", &struct{}{}); err != nil {
-		return fmt.Errorf("%s:%s introuvable après le téléchargement : %w", repo, tag, err)
+		return fmt.Errorf("%s:%s not found after the pull: %w", repo, tag, err)
 	}
 	return nil
 }
@@ -223,7 +223,7 @@ func (e *Engine) dataPath(ctx context.Context, image string) (string, error) {
 		return "", err
 	}
 	if len(img.Config.Volumes) != 1 {
-		return "", fmt.Errorf("l'image %s déclare %d volumes, Palier attend un seul répertoire de données", image, len(img.Config.Volumes))
+		return "", fmt.Errorf("image %s declares %d volumes, Palier expects a single data directory", image, len(img.Config.Volumes))
 	}
 	for path := range img.Config.Volumes {
 		return path, nil
@@ -290,7 +290,7 @@ func (e *Engine) method(ctx context.Context, p compose.Project, service, engine 
 	case "mysql", "mariadb":
 		password := envValue(env, "MARIADB_ROOT_PASSWORD", "MYSQL_ROOT_PASSWORD")
 		if password == "" {
-			return nil, fmt.Errorf("%s n'a pas de mot de passe root dans son environnement : Palier ne peut pas l'exporter", service)
+			return nil, fmt.Errorf("%s has no root password in its environment: Palier cannot export it", service)
 		}
 		client, dumper := "mysql", "mysqldump"
 		if engine == "mariadb" {
@@ -304,7 +304,7 @@ func (e *Engine) method(ctx context.Context, p compose.Project, service, engine 
 		m.dump = func(context.Context) ([]string, error) {
 			dbs, err := sqlQuery("", databases)
 			if err != nil || len(dbs) == 0 {
-				return nil, fmt.Errorf("liste des bases de %s : %v", service, err)
+				return nil, fmt.Errorf("database list of %s: %v", service, err)
 			}
 			return append([]string{dumper, "-uroot", "--single-transaction", "--routines", "--events", "--triggers", "--databases"}, dbs...), nil
 		}
@@ -327,7 +327,7 @@ func (e *Engine) method(ctx context.Context, p compose.Project, service, engine 
 					for _, t := range tables {
 						n, err := sqlQuery("", "SELECT COUNT(*) FROM `"+db+"`.`"+t+"`")
 						if err != nil || len(n) == 0 {
-							return nil, fmt.Errorf("comptage de %s.%s : %v", db, t, err)
+							return nil, fmt.Errorf("counting %s.%s: %v", db, t, err)
 						}
 						out = append(out, t+"="+n[0])
 					}
@@ -335,7 +335,7 @@ func (e *Engine) method(ctx context.Context, p compose.Project, service, engine 
 				})
 		}
 	default:
-		return nil, fmt.Errorf("pas de méthode d'export et de réimport pour le moteur %q", engine)
+		return nil, fmt.Errorf("no export and reimport method for engine %q", engine)
 	}
 	return m, nil
 }
@@ -386,7 +386,7 @@ func (e *Engine) waitReady(ctx context.Context, p compose.Project, m *dbMethod) 
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("%s n'accepte pas de connexion après 5 min : %w", m.service, err)
+			return fmt.Errorf("%s does not accept connections after 5 min: %w", m.service, err)
 		}
 		select {
 		case <-ctx.Done():
@@ -415,23 +415,23 @@ func summaryLine(lines []string) string {
 			rows += n
 		}
 	}
-	return fmt.Sprintf("rôles %d, bases %d, tables %d, lignes %d, index %d, contraintes %d", roles, dbs, tables, rows, indexes, constraints)
+	return fmt.Sprintf("roles %d, databases %d, tables %d, rows %d, indexes %d, constraints %d", roles, dbs, tables, rows, indexes, constraints)
 }
 
 func compareSummaries(before, after []string) string {
 	var diffs []string
 	for _, l := range before {
 		if !slices.Contains(after, l) {
-			diffs = append(diffs, "manque "+l)
+			diffs = append(diffs, "missing "+l)
 		}
 	}
 	for _, l := range after {
 		if !slices.Contains(before, l) {
-			diffs = append(diffs, "en trop "+l)
+			diffs = append(diffs, "extra "+l)
 		}
 	}
 	if len(diffs) > 5 {
-		diffs = append(diffs[:5], fmt.Sprintf("et %d autres différences", len(diffs)-5))
+		diffs = append(diffs[:5], fmt.Sprintf("and %d more differences", len(diffs)-5))
 	}
 	return strings.Join(diffs, ", ")
 }
@@ -456,11 +456,11 @@ func (e *Engine) refreshCollations(ctx context.Context, id int64, cp *Checkpoint
 		return nil
 	}
 	for _, db := range strings.Fields(out.String()) {
-		e.event(id, "%s : la base %s a une version de collation périmée, REINDEX puis REFRESH COLLATION VERSION", svc.Name, db)
+		e.event(id, "%s: database %s has a stale collation version, REINDEX then REFRESH COLLATION VERSION", svc.Name, db)
 		quoted := `"` + strings.ReplaceAll(db, `"`, `""`) + `"`
 		for _, sql := range []string{"REINDEX DATABASE " + quoted, "ALTER DATABASE " + quoted + " REFRESH COLLATION VERSION"} {
 			if err := compose.RunIO(ctx, e.DockerHost, cp.Project, nil, &bytes.Buffer{}, "exec", "-T", svc.Name, "psql", "-v", "ON_ERROR_STOP=1", "-U", user, "-d", db, "-c", sql); err != nil {
-				return fmt.Errorf("%s sur %s : %w", sql, db, err)
+				return fmt.Errorf("%s on %s: %w", sql, db, err)
 			}
 		}
 	}

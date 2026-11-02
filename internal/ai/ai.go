@@ -45,9 +45,9 @@ Rules:
 - Palier applies every complete plan on its own, step by step: it copies the volumes before each step, verifies the services with Docker after it, and on a failure returns the whole stack to the last verified step. Judge each step for that setting, not for a person who would have to do it by hand.
 - risk is blocking only when the step needs an action that no operation of the schema performs (a manual_action with scope always that the operations do not cover); attention when the notes report a change the stack may feel (breaking change, configuration change, data migration, security fix); safe when they report nothing of the kind; unknown when there are no notes.
 - reversible is no only when restoring the Compose files, the previous images and the volumes copied before the step cannot undo it, for instance an effect outside the volumes of the stack; conditional when it depends on how the stack is used; yes otherwise.
-- "incomplete" lists, in French, only what prevents applying the plan: a target that cannot be reached with the available versions or the operations of the schema, or facts that contradict each other. Empty or missing notes are not a reason: they make the risk "unknown" or "attention".
+- "incomplete" lists, in English, only what prevents applying the plan: a target that cannot be reached with the available versions or the operations of the schema, or facts that contradict each other. Empty or missing notes are not a reason: they make the risk "unknown" or "attention".
 - Leave a parameter an operation or a fact does not use empty: "" for text, [] for lists, 0 for seconds. A step without a gate has the gate op "none".
-- "why" is one sentence in French.`
+- "why" is one sentence in English.`
 
 var (
 	str        = map[string]any{"type": "string"}
@@ -182,18 +182,18 @@ func Propose(ctx context.Context, key, model string, st *inventory.Stack) (*plan
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		answer, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("API Anthropic : %s : %s", resp.Status, bytes.TrimSpace(answer))
+		return nil, fmt.Errorf("Anthropic API: %s: %s", resp.Status, bytes.TrimSpace(answer))
 	}
 	text, stop, err := readStream(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 	if stop != "end_turn" {
-		return nil, fmt.Errorf("réponse de l'IA interrompue (%s)", stop)
+		return nil, fmt.Errorf("AI response cut off (%s)", stop)
 	}
 	var p plan.Plan
 	if err := json.Unmarshal([]byte(text), &p); err != nil {
-		return nil, fmt.Errorf("plan de l'IA illisible : %w", err)
+		return nil, fmt.Errorf("unreadable AI plan: %w", err)
 	}
 	return &p, nil
 }
@@ -231,7 +231,7 @@ func readStream(r io.Reader) (string, string, error) {
 				stop = ev.Delta.StopReason
 			}
 		case "error":
-			return "", "", fmt.Errorf("API Anthropic : %s : %s", ev.Error.Type, ev.Error.Message)
+			return "", "", fmt.Errorf("Anthropic API: %s: %s", ev.Error.Type, ev.Error.Message)
 		}
 	}
 	return text.String(), stop, sc.Err()

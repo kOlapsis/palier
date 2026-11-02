@@ -8,10 +8,10 @@ def load(path):
 before, now = load(sys.argv[1]), load(sys.argv[2])
 for key in ("immich/database", "immich/redis"):
     s = now.get(key, {})
-    print(key, s.get("image"), s.get("tag"), "→ version", s.get("version"), "d'après", s.get("version_source"),
-          "| disponibles", [r["tag"] for r in s.get("available") or []][-4:], "| erreur", s.get("detection_error") or "aucune")
+    print(key, s.get("image"), s.get("tag"), "→ version", s.get("version"), "from", s.get("version_source"),
+          "| available", [r["tag"] for r in s.get("available") or []][-4:], "| error", s.get("detection_error") or "none")
 changed = [k for k in now if k in before and k not in ("immich/database", "immich/redis")
            and (now[k].get("version"), [r["tag"] for r in now[k].get("available") or []]) != (before[k].get("version"), [r["tag"] for r in before[k].get("available") or []])]
-print("autres services comparés :", len([k for k in now if k in before]) - 2, "| version ou versions disponibles changées :", changed or "aucun")
-print("erreurs de détection :", [k + ": " + s["detection_error"] for k, s in now.items() if s.get("detection_error")] or "aucune")
+print("other services compared:", len([k for k in now if k in before]) - 2, "| version or available versions changed:", changed or "none")
+print("detection errors:", [k + ": " + s["detection_error"] for k, s in now.items() if s.get("detection_error")] or "none")
 EOF

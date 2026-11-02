@@ -60,16 +60,16 @@ func TestValidateRejects(t *testing.T) {
 		plan *Plan
 		want string
 	}{
-		"version absente":    {&Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.13.0"})}}, "pas une version disponible"},
-		"départ faux":        {&Plan{Steps: []Step{step(Change{"outline", "1.11.0", "1.12.0"})}}, "part de 1.11.0"},
-		"deux paliers":       {&Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.11.0"}, Change{"outline", "1.11.0", "1.12.0"})}}, "un seul palier"},
-		"majeure redis":      {&Plan{Steps: []Step{step(Change{"redis", "7.2.4", "8.2.1"})}}, "sa majeure ne change pas"},
-		"majeure postgres":   {&Plan{Steps: []Step{step(Change{"postgres", "16.4", "17.6"})}}, "sans db_dump_restore"},
-		"opération inconnue": {&Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Operations: []Operation{{Op: "shell", Service: "outline"}}}}}, "hors du vocabulaire"},
-		"risque inconnu":     {&Plan{Steps: []Step{{Risk: "low", Reversible: "yes"}}}, "niveau de risque"},
-		"citation absente":   {&Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Facts: []Fact{{Category: "breaking_change", Quote: "this sentence is not in the notes at all"}}}}}, "mot pour mot"},
-		"sans recreate":      {&Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Changes: []Change{{"redis", "7.2.4", "7.2.16"}}, Operations: []Operation{{Op: "set_image", Service: "redis", Image: "redis", Tag: "7.2.16"}}}}}, "aucun recreate"},
-		"autre image":        {&Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Changes: []Change{{"redis", "7.2.4", "7.2.16"}}, Operations: []Operation{{Op: "set_image", Service: "redis", Image: "busybox", Tag: "7.2.16"}, {Op: "recreate", Services: []string{"redis"}}}}}}, "change l'image"},
+		"missing version":   {&Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.13.0"})}}, "not a version available"},
+		"wrong start":       {&Plan{Steps: []Step{step(Change{"outline", "1.11.0", "1.12.0"})}}, "starts from 1.11.0"},
+		"two versions":      {&Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.11.0"}, Change{"outline", "1.11.0", "1.12.0"})}}, "one version per service"},
+		"major redis":       {&Plan{Steps: []Step{step(Change{"redis", "7.2.4", "8.2.1"})}}, "its major does not change"},
+		"major postgres":    {&Plan{Steps: []Step{step(Change{"postgres", "16.4", "17.6"})}}, "without db_dump_restore"},
+		"unknown operation": {&Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Operations: []Operation{{Op: "shell", Service: "outline"}}}}}, "outside the vocabulary"},
+		"unknown risk":      {&Plan{Steps: []Step{{Risk: "low", Reversible: "yes"}}}, "risk level"},
+		"missing quote":     {&Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Facts: []Fact{{Category: "breaking_change", Quote: "this sentence is not in the notes at all"}}}}}, "word for word"},
+		"no recreate":       {&Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Changes: []Change{{"redis", "7.2.4", "7.2.16"}}, Operations: []Operation{{Op: "set_image", Service: "redis", Image: "redis", Tag: "7.2.16"}}}}}, "no recreate"},
+		"autre image":       {&Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Changes: []Change{{"redis", "7.2.4", "7.2.16"}}, Operations: []Operation{{Op: "set_image", Service: "redis", Image: "busybox", Tag: "7.2.16"}, {Op: "recreate", Services: []string{"redis"}}}}}}, "changes the image"},
 	}
 	for name, c := range cases {
 		Validate(c.plan, outline())
@@ -80,7 +80,7 @@ func TestValidateRejects(t *testing.T) {
 }
 
 func TestFallbackKeepsDependencyMajors(t *testing.T) {
-	p := Fallback(outline(), "aucune note")
+	p := Fallback(outline(), "no notes")
 	got := map[string]string{}
 	for _, c := range p.Steps[0].Changes {
 		got[c.Service] = c.To
@@ -127,7 +127,7 @@ func TestIntervalsAtEachStep(t *testing.T) {
 	early := &Plan{Steps: []Step{pg, step(Change{"outline", "1.10.1", "1.12.0"})}}
 	early.Steps[1].Facts = []Fact{support}
 	Validate(early, outline())
-	if !strings.Contains(reasons(early), "à sa version de cette étape") {
+	if !strings.Contains(reasons(early), "at its version of this step") {
 		t.Fatalf("early major accepted:\n%s", reasons(early))
 	}
 	// postgres 18 after Outline 1.12, beyond what it supports: refused.
@@ -135,14 +135,14 @@ func TestIntervalsAtEachStep(t *testing.T) {
 	beyond := &Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.12.0"}), pg18}}
 	beyond.Steps[0].Facts = []Fact{support}
 	Validate(beyond, outline())
-	if !strings.Contains(reasons(beyond), "supporte postgres jusqu'à 17") {
+	if !strings.Contains(reasons(beyond), "supports postgres up to 17") {
 		t.Fatalf("postgres 18 accepted:\n%s", reasons(beyond))
 	}
 	// a minimum the dependency does not reach yet: refused.
 	minimum := &Plan{Steps: []Step{step(Change{"outline", "1.10.1", "1.11.0"})}}
 	minimum.Steps[0].Facts = []Fact{{Category: "min_dependency", Service: "outline", Version: "1.11.0", Dependency: "redis", MinVersion: "7.4", Quote: "supports PostgreSQL 14 to 17"}}
 	Validate(minimum, outline())
-	if !strings.Contains(reasons(minimum), "exige redis 7.4 au moins") {
+	if !strings.Contains(reasons(minimum), "requires redis 7.4 at least") {
 		t.Fatalf("minimum not checked:\n%s", reasons(minimum))
 	}
 }
@@ -163,7 +163,7 @@ func TestWithheldSaysWhy(t *testing.T) {
 	p := &Plan{Steps: []Step{step(Change{"postgres", "16.4", "16.10"})}}
 	Validate(p, st)
 	got := strings.Join(p.Withheld, "\n")
-	if !strings.Contains(got, "postgres 17.6, 18.1 existent mais ne sont pas proposés : aucune note de outline ne cite de version de postgres ; postgres reste en 16.") || !strings.Contains(got, "redis 8.2.1 existe") {
+	if !strings.Contains(got, "postgres 17.6, 18.1 exist but are not offered: no release note of outline cites a version of postgres; postgres stays on 16.") || !strings.Contains(got, "redis 8.2.1 exists") {
 		t.Fatalf("withheld:\n%s", got)
 	}
 }
@@ -181,7 +181,7 @@ func TestDumpRestoreChecked(t *testing.T) {
 		Changes:    []Change{{"postgres", "16.4", "18.1"}},
 		Operations: []Operation{{Op: "db_dump_restore", Service: "postgres", Engine: "oracle", ToTag: "18.1"}}}}}
 	Validate(mysql, outline())
-	if !strings.Contains(reasons(mysql), "pas de méthode") {
+	if !strings.Contains(reasons(mysql), "no export and reimport method") {
 		t.Fatal(reasons(mysql))
 	}
 }
@@ -200,7 +200,7 @@ func gitlabStep(from, to string) Step {
 func TestStopsAndGates(t *testing.T) {
 	direct := &Plan{Steps: []Step{gitlabStep("16.1.6-ce.0", "17.0.1-ce.0")}}
 	Validate(direct, gitlab())
-	for _, want := range []string{"palier obligatoire 16.3 (16.3.9-ce.0", "16.7 (16.7.10-ce.0", "16.11 (16.11.10-ce.0"} {
+	for _, want := range []string{"required stop 16.3 (16.3.9-ce.0", "16.7 (16.7.10-ce.0", "16.11 (16.11.10-ce.0"} {
 		if !strings.Contains(reasons(direct), want) {
 			t.Errorf("direct jump: %q missing in\n%s", want, reasons(direct))
 		}
@@ -213,7 +213,7 @@ func TestStopsAndGates(t *testing.T) {
 	ungated := &Plan{Steps: []Step{gitlabStep("16.1.6-ce.0", "16.3.9-ce.0")}}
 	ungated.Steps[0].Gate = &Operation{Op: "none"}
 	Validate(ungated, gitlab())
-	if !strings.Contains(reasons(ungated), "migrations de fond") {
+	if !strings.Contains(reasons(ungated), "background migrations") {
 		t.Fatal(reasons(ungated))
 	}
 }

@@ -54,7 +54,7 @@ func TestTokenGuardsEverything(t *testing.T) {
 
 func TestPagesRender(t *testing.T) {
 	st := &inventory.Stack{Name: "whoami", Services: []*inventory.Service{{Name: "whoami", Role: "application", Image: "docker.io/traefik/whoami", Tag: "v1.10.1", Version: "v1.10.1", Available: []inventory.Release{{Tag: "v1.12.0"}}}}}
-	p := &plan.Plan{Steps: []plan.Step{{Risk: "safe", Reversible: "yes", Why: "Une phrase.",
+	p := &plan.Plan{Steps: []plan.Step{{Risk: "safe", Reversible: "yes", Why: "A sentence.",
 		Changes:    []plan.Change{{Service: "whoami", From: "v1.10.1", To: "v1.12.0"}},
 		Operations: []plan.Operation{{Op: "set_image", Service: "whoami", Image: "traefik/whoami", Tag: "v1.12.0"}, {Op: "recreate", Services: []string{"whoami"}}},
 		Gate:       &plan.Operation{Op: "exec_check", Service: "whoami", CheckRef: "background_migrations"},
@@ -66,10 +66,10 @@ func TestPagesRender(t *testing.T) {
 		Plan:      func(string) (*plan.Record, error) { return &plan.Record{Stack: "whoami", Source: "ai", Plan: p}, nil },
 		Postponed: func(string) time.Time { return time.Time{} },
 		Run: func(int64) (*run.View, error) {
-			return &run.View{ID: 1, Stack: "whoami", Status: "running", Steps: []string{"gitlab 16.1.6 vers 16.3.9", "gitlab 16.3.9 vers 16.7.10"}, StepsDone: 1, Events: []run.Event{{Message: "étape 1"}}}, nil
+			return &run.View{ID: 1, Stack: "whoami", Status: "running", Steps: []string{"gitlab 16.1.6 to 16.3.9", "gitlab 16.3.9 to 16.7.10"}, StepsDone: 1, Events: []run.Event{{Message: "step 1"}}}, nil
 		},
 	})
-	for path, want := range map[string]string{"/runs/1?progress": `<li class="done">Étape 1 : gitlab 16.1.6 vers 16.3.9</li><li class="current">Étape 2`, "/": "revenue en arrière", "/stacks/whoami": "rename_env SERVER_PORT → IMMICH_PORT", "/runs/1": "étape 1", "/settings": "PALIER_AUTO"} {
+	for path, want := range map[string]string{"/runs/1?progress": `<li class="done">Step 1: gitlab 16.1.6 to 16.3.9</li><li class="current">Step 2`, "/": "rolled back", "/stacks/whoami": "rename_env SERVER_PORT → IMMICH_PORT", "/runs/1": "step 1", "/settings": "PALIER_AUTO"} {
 		r := httptest.NewRequest("GET", path, nil)
 		r.AddCookie(&http.Cookie{Name: cookieName, Value: "secret"})
 		w := httptest.NewRecorder()

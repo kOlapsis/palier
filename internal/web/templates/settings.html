@@ -1,23 +1,23 @@
 {{define "section"}}settings{{end}}
 {{define "content"}}
 <div class="head">
-<h1>Réglages</h1>
-<p class="meta">Lus dans l'environnement au démarrage. Pour en changer, modifiez la variable et redémarrez Palier.</p>
+<h1>Settings</h1>
+<p class="meta">Read from the environment at startup. To change one, edit the variable and restart Palier.</p>
 </div>
 <div class="panel">
 <dl class="settings">
 <dt>PALIER_DOCKER_HOST</dt><dd>{{.DockerHost}}</dd>
 <dt>PALIER_DATA_DIR</dt><dd>{{.DataDir}}</dd>
 <dt>PALIER_LISTEN</dt><dd>{{.Listen}}</dd>
-<dt>PALIER_AI_KEY</dt><dd>{{if .AIKey}}définie, modèle {{.AIModel}}{{else}}absente : plans calculés sur les versions seules{{end}}</dd>
+<dt>PALIER_AI_KEY</dt><dd>{{if .AIKey}}set, model {{.AIModel}}{{else}}not set: plans computed from versions only{{end}}</dd>
 <dt>PALIER_SCAN_INTERVAL</dt><dd>{{.ScanInterval}}</dd>
 <dt>PALIER_MATURATION</dt><dd>{{.Maturation}}</dd>
 <dt>PALIER_STABLE_SECONDS</dt><dd>{{.StableSeconds}}</dd>
 <dt>PALIER_AUTO</dt><dd>{{.Auto}}</dd>
-<dt>PALIER_WEBHOOK_URL</dt><dd>{{if .WebhookURL}}définie{{else}}absente{{end}}</dd>
-<dt>PALIER_GITHUB_TOKEN</dt><dd>{{if .GitHubToken}}défini{{else}}absent{{end}}</dd>
-<dt>PALIER_GITLAB_TOKEN</dt><dd>{{if .GitLabToken}}défini{{else}}absent{{end}}</dd>
-<dt>PALIER_REGISTRY_MIRROR</dt><dd>{{with .RegistryMirror}}{{.}}{{else}}absent{{end}}</dd>
+<dt>PALIER_WEBHOOK_URL</dt><dd>{{if .WebhookURL}}set{{else}}not set{{end}}</dd>
+<dt>PALIER_GITHUB_TOKEN</dt><dd>{{if .GitHubToken}}set{{else}}not set{{end}}</dd>
+<dt>PALIER_GITLAB_TOKEN</dt><dd>{{if .GitLabToken}}set{{else}}not set{{end}}</dd>
+<dt>PALIER_REGISTRY_MIRROR</dt><dd>{{with .RegistryMirror}}{{.}}{{else}}not set{{end}}</dd>
 <dt>DOCKER_CONFIG</dt><dd>{{.DockerConfig}}</dd>
 </dl>
 </div>

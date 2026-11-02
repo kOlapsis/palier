@@ -2,13 +2,13 @@
 {{define "content"}}
 <div class="head">
 <h1>Stacks</h1>
-<p class="meta">{{if .At.IsZero}}Première inspection en cours.{{else}}Dernière inspection {{since .At}}.{{end}}</p>
+<p class="meta">{{if .At.IsZero}}First scan in progress.{{else}}Last scan {{since .At}}.{{end}}</p>
 </div>
 {{with .Err}}<p class="notice bad">{{.}}</p>{{end}}
 {{if .Stacks}}
 <div class="panel">
 <table>
-<thead><tr><th>Stack</th><th>État</th><th>Services</th></tr></thead>
+<thead><tr><th>Stack</th><th>Status</th><th>Services</th></tr></thead>
 <tbody>
 {{range .Stacks}}{{$state := state .}}<tr>
 <td class="name"><a href="/stacks/{{.Name}}">{{.Name}}</a>{{with .WorkingDir}}<span class="sub mono">{{.}}</span>{{end}}</td>
@@ -18,6 +18,6 @@
 {{end}}</tbody>
 </table>
 </div>
-{{else if .At.IsZero}}<div class="panel empty">Première inspection en cours. La page se met à jour toute seule.</div>
-{{else}}<div class="panel empty">Aucun conteneur sur ce moteur Docker. Les stacks Compose apparaîtront ici dès qu'elles seront lancées.</div>{{end}}
+{{else if .At.IsZero}}<div class="panel empty">First scan in progress. The page updates by itself.</div>
+{{else}}<div class="panel empty">No containers on this Docker engine. Compose stacks will appear here as soon as they are started.</div>{{end}}
 {{end}}

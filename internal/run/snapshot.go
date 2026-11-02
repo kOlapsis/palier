@@ -46,7 +46,7 @@ func (e *Engine) snapshot(ctx context.Context, id int64, st *inventory.Stack, cp
 	ordered := dependencyOrder(st, names)
 	reversed := slices.Clone(ordered)
 	slices.Reverse(reversed)
-	e.event(id, "arrêt de %s pour copier leurs volumes", strings.Join(reversed, ", "))
+	e.event(id, "stopping %s to copy their volumes", strings.Join(reversed, ", "))
 	if _, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"stop"}, reversed...)...); err != nil {
 		return err
 	}
@@ -58,16 +58,16 @@ func (e *Engine) snapshot(ctx context.Context, id int64, st *inventory.Stack, cp
 			}
 			cp.Snapshots = append(cp.Snapshots, snap)
 			if err := e.copy(ctx, m.Type, m.Source, "volume", snap.Volume, false); err != nil {
-				return fmt.Errorf("copie de %s (%s) : %w", s.Name, m.Destination, err)
+				return fmt.Errorf("copying %s (%s): %w", s.Name, m.Destination, err)
 			}
-			e.event(id, "%s : %s copié dans le volume %s", s.Name, m.Destination, snap.Volume)
+			e.event(id, "%s: %s copied to volume %s", s.Name, m.Destination, snap.Volume)
 		}
 	}
 	cp.SnapshotsDone = true
 	if err := e.save(id, cp); err != nil {
 		return err
 	}
-	e.event(id, "démarrage de %s", strings.Join(ordered, ", "))
+	e.event(id, "starting %s", strings.Join(ordered, ", "))
 	_, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"start"}, ordered...)...)
 	return err
 }
@@ -114,7 +114,7 @@ func (e *Engine) copy(ctx context.Context, fromType, from, toType, to string, wi
 	}
 	if waited.StatusCode != 0 {
 		logs, _ := e.Docker.Logs(ctx, created.ID, 20)
-		return fmt.Errorf("la copie a échoué (code %d) : %s", waited.StatusCode, strings.TrimSpace(logs))
+		return fmt.Errorf("copy failed (code %d): %s", waited.StatusCode, strings.TrimSpace(logs))
 	}
 	return nil
 }
@@ -134,9 +134,9 @@ func (e *Engine) restoreSnapshots(ctx context.Context, id int64, cp *Checkpoint)
 	}
 	for _, s := range cp.Snapshots {
 		if err := e.copy(ctx, "volume", s.Volume, s.Mount.Type, s.Mount.Source, true); err != nil {
-			return fmt.Errorf("restauration de %s (%s) : %w", s.Service, s.Mount.Destination, err)
+			return fmt.Errorf("restoring %s (%s): %w", s.Service, s.Mount.Destination, err)
 		}
-		e.event(id, "%s : %s restauré depuis %s", s.Service, s.Mount.Destination, s.Volume)
+		e.event(id, "%s: %s restored from %s", s.Service, s.Mount.Destination, s.Volume)
 	}
 	return nil
 }
@@ -144,7 +144,7 @@ func (e *Engine) restoreSnapshots(ctx context.Context, id int64, cp *Checkpoint)
 func (e *Engine) dropSnapshots(ctx context.Context, id int64, cp *Checkpoint) {
 	for _, s := range cp.Snapshots {
 		if err := e.Docker.Delete(ctx, "/volumes/"+s.Volume); err != nil {
-			e.event(id, "volume de copie %s non supprimé : %v", s.Volume, err)
+			e.event(id, "copy volume %s was not removed: %v", s.Volume, err)
 		}
 	}
 }

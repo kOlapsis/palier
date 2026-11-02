@@ -232,11 +232,11 @@ func readDependsOn(files []string) (map[string][]string, error) {
 	for _, f := range files {
 		data, err := os.ReadFile(f)
 		if err != nil {
-			return deps, fmt.Errorf("lecture du fichier Compose : %w", err)
+			return deps, fmt.Errorf("reading Compose file: %w", err)
 		}
 		d, err := parseDependsOn(data)
 		if err != nil {
-			return deps, fmt.Errorf("%s : %w", f, err)
+			return deps, fmt.Errorf("%s: %w", f, err)
 		}
 		for s, list := range d {
 			deps[s] = append(deps[s], list...)
@@ -345,7 +345,7 @@ func resolve(ctx context.Context, s *Service, ref registry.Ref, tags []string, r
 		s.current, s.VersionSource, s.Version = v, "label", v.Tag
 		return nil
 	}
-	return fmt.Errorf("version en service inconnue : le tag %q n'est pas une version précise, aucun tag précis du registre n'a son digest, et ni le registre ni l'image ne donnent org.opencontainers.image.version", s.Tag)
+	return fmt.Errorf("running version unknown: tag %q is not a precise version, no precise registry tag has its digest, and neither the registry nor the image gives org.opencontainers.image.version", s.Tag)
 }
 
 // Detect fills the newer versions of every service, holding back those pushed less than maturation ago.
