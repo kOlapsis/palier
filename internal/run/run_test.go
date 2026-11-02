@@ -2,6 +2,7 @@ package run
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,5 +78,25 @@ func TestNewVolumeName(t *testing.T) {
 		if got := newVolumeName(c[0], c[1], c[2]); got != c[3] {
 			t.Errorf("newVolumeName(%q) = %q, want %q", c[0], got, c[3])
 		}
+	}
+}
+
+func TestDataMounts(t *testing.T) {
+	s := &inventory.Service{Mounts: []inventory.Mount{
+		{Type: "bind", Source: "/", Destination: "/rootfs"},
+		{Type: "bind", Source: "/var/run/docker.sock", Destination: "/var/run/docker.sock"},
+		{Type: "bind", Source: "/usr/share/zoneinfo", Destination: "/usr/share/zoneinfo"},
+		{Type: "bind", Source: "/srv/traefik/logs", Destination: "/var/log/traefik"},
+		{Type: "volume", Source: "gitlab_logs", Destination: "/var/log/gitlab"},
+		{Type: "bind", Source: "/runner", Destination: "/etc/gitlab-runner"},
+		{Type: "volume", Source: "tmp", Destination: "/tmp"},
+		{Type: "volume", Source: "gitlab_data", Destination: "/var/opt/gitlab"},
+	}}
+	var got []string
+	for _, m := range dataMounts(s) {
+		got = append(got, m.Source)
+	}
+	if want := []string{"/runner", "tmp", "gitlab_data"}; !slices.Equal(got, want) {
+		t.Errorf("dataMounts = %v, want %v", got, want)
 	}
 }

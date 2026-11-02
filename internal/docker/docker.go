@@ -148,8 +148,9 @@ type ContainerDetail struct {
 		}
 	}
 	State struct {
-		Status string
-		Health *struct{ Status string }
+		Status   string
+		ExitCode int
+		Health   *struct{ Status string }
 	}
 	Mounts []struct {
 		Type        string
