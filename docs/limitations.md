@@ -15,6 +15,7 @@
 - **Databases other than PostgreSQL, MySQL and MariaDB.** Their major versions stay blocked.
 - **Registry credentials in a `credsStore` or `credHelpers`.** Only the `auths` section of `config.json` is read.
 - **Containers outside Compose.** They are only observed.
+- **Services with a `build` section.** Their image is built on the machine and is not in any registry, so Palier does not update them, even when the base image of their Dockerfile has a newer version.
 - **Release notes outside GitHub and gitlab.com.** A self-hosted GitLab instance, Codeberg or another forge is not read; only the catalog entries then complete the notes.
 - **Versions without notes.** Without release notes, the plan has an "unknown" risk level: it is applied on its own, protected by verification and rollback, but nobody has read what changes.
 
