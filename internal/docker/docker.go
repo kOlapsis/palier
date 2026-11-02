@@ -28,12 +28,12 @@ func New(host string) (*Client, error) {
 	}
 	switch u.Scheme {
 	case "unix":
-		tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		tr := &http.Transport{ResponseHeaderTimeout: time.Minute, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", u.Path)
 		}}
-		return &Client{http: &http.Client{Transport: tr, Timeout: time.Minute}, base: "http://docker"}, nil
+		return &Client{http: &http.Client{Transport: tr, Timeout: 10 * time.Minute}, base: "http://docker"}, nil
 	case "tcp", "http":
-		return &Client{http: &http.Client{Timeout: time.Minute}, base: "http://" + u.Host}, nil
+		return &Client{http: &http.Client{Transport: &http.Transport{ResponseHeaderTimeout: time.Minute}, Timeout: 10 * time.Minute}, base: "http://" + u.Host}, nil
 	}
 	return nil, fmt.Errorf("unsupported Docker engine address: %s", host)
 }
