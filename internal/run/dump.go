@@ -243,9 +243,8 @@ type dbMethod struct {
 
 func (m *dbMethod) exec(cmd []string) []string {
 	args := []string{"exec", "-T"}
-	for _, e := range m.env {
-		name, _, _ := strings.Cut(e, "=")
-		args = append(args, "-e", name)
+	if m.env != nil {
+		args = append(args, "-e", "MYSQL_PWD")
 	}
 	return append(append(args, m.service), cmd...)
 }
