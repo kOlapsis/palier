@@ -37,7 +37,7 @@ The built-in catalog complements the notes with excerpts from the official docum
 
 | Application | What the entry provides |
 |---|---|
-| GitLab | Required upgrade stops, and a check that background migrations are finished between two stops |
+| GitLab | Required upgrade stops, and a check that background migrations are finished before the first step and between two stops; a migration whose class is not in the running GitLab can never finish and is ignored |
 | Nextcloud | One major version at a time, through the last patch release of each; supported databases |
 | authentik | Each `year.month` version in order, through its last patch release |
 | Mastodon | At least one version of each minor |

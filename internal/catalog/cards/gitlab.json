@@ -35,7 +35,7 @@
     "background_migrations": [
       "sh",
       "-c",
-      "test \"$(gitlab-psql -At -c 'SELECT count(*) FROM batched_background_migrations WHERE status NOT IN (3, 6)')\" = 0"
+      "rows=$(gitlab-psql -At -F ' ' -c \"SELECT job_class_name, table_name, CASE status WHEN 0 THEN 'paused' WHEN 1 THEN 'active' WHEN 4 THEN 'failed' WHEN 5 THEN 'finalizing' ELSE status::text END FROM batched_background_migrations WHERE status NOT IN (3, 6) ORDER BY id\") || exit 1\ncode=/opt/gitlab/embedded/service/gitlab-rails\necho \"$rows\" | {\n  pending=0\n  while read -r cls rest; do\n    [ -n \"$cls\" ] || continue\n    if grep -rqsFw \"class $cls\" $code/lib/gitlab/background_migration $code/ee/lib/ee/gitlab/background_migration $code/ee/lib/gitlab/background_migration; then\n      pending=$((pending + 1))\n      echo \"not finished: $cls $rest\" >&2\n    else\n      echo \"ignored, its class is not in the running GitLab: $cls $rest\"\n    fi\n  done\n  [ \"$pending\" = 0 ]\n}"
     ]
   },
   "bulk": [

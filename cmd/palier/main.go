@@ -172,7 +172,7 @@ func setup() (*app, error) {
 	a := &app{}
 	eng := &run.Engine{DB: db, Docker: dc, DockerHost: cfg.DockerHost, Registry: reg, Stable: time.Duration(cfg.StableSeconds) * time.Second, DataDir: cfg.DataDir}
 	eng.Finished = func(stack string, id int64, status, cause string) {
-		events := map[string]string{run.Done: "run_done", run.RolledBack: "run_rolled_back", run.Failed: "run_failed", run.Abandoned: "run_abandoned"}
+		events := map[string]string{run.Done: "run_done", run.RolledBack: "run_rolled_back", run.Failed: "run_failed", run.Abandoned: "run_abandoned", run.Stopped: "run_stopped"}
 		a.notify(map[string]any{"event": events[status], "stack": stack, "run": id, "status": status, "error": cause})
 	}
 	*a = app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken, cfg.GitLabToken), eng: eng}

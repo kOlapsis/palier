@@ -63,6 +63,7 @@ var stateNames = map[string]string{
 	run.Failed:     "failed",
 	run.RolledBack: "rolled back",
 	run.Abandoned:  "abandoned",
+	run.Stopped:    "stopped",
 }
 
 // plan returns the stored plan of a stack, or nil when a run finished after it was computed and it no longer describes the stack.
@@ -176,7 +177,7 @@ var labels = map[string]string{
 var tones = map[string]string{
 	"up to date": "ok", "done": "ok", "safe": "ok", "yes": "ok",
 	"plan ready": "accent", "running": "run", "computing plan": "run", "checking versions": "run",
-	"awaiting decision": "warn", "detection incomplete": "warn", "rolled back": "warn", "rolled_back": "warn", "attention": "warn", "conditional": "warn",
+	"awaiting decision": "warn", "detection incomplete": "warn", "rolled back": "warn", "stopped": "warn", "rolled_back": "warn", "attention": "warn", "conditional": "warn",
 	"incomplete plan": "bad", "failed": "bad", "blocking": "bad", "no": "bad",
 }
 

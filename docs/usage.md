@@ -22,7 +22,7 @@ The home page shows each stack with its status and the age of the last scan. Pal
 | awaiting decision | A plan exists, but Palier cannot apply it on its own: a step is blocking or irreversible, the stack is postponed, or `PALIER_AUTO` excludes it. The reason is given on the stack page. |
 | incomplete plan | The plan did not pass the checks. The reason is shown, and the plan is not applied. |
 | detection incomplete | The versions of a service could not be read from the registry. |
-| running, completed, rolled back, failed, abandoned | Result of the last run. |
+| running, completed, rolled back, failed, abandoned, stopped | Result of the last run. |
 | observed only | Container started outside Compose. Palier shows it but does not touch it. |
 
 ## The stack page
@@ -59,7 +59,8 @@ A run ends in one of these states:
 |---|---|
 | completed | All steps passed. |
 | rolled back | A step failed, or Palier was restarted during the run, and the whole stack went back to the last verified step. Steps verified before that stay applied, and in automatic mode, a new run starts from there at the next scan. |
-| abandoned | Nothing was changed: the stack had changed since the plan was computed, a backup hook failed, or the restore point was impossible. |
+| abandoned | Nothing was changed: the stack had changed since the plan was computed, a check of the catalog card (GitLab background migrations) did not pass yet, a backup hook failed, or the restore point was impossible. |
+| stopped | A step was applied and verified, but the check of the catalog card that must pass before the next step (GitLab background migrations) still failed after 2 hours. The stack stays on that step, and the next run changes nothing until the check passes. |
 | failed | Even the rollback failed. The details say what is left in the modified state. |
 
 ## Automatic apply
@@ -90,6 +91,7 @@ If `PALIER_WEBHOOK_URL` is set, Palier sends a JSON `POST` to it for each of the
 | `run_rolled_back` | A run was rolled back. |
 | `run_failed` | The rollback failed. |
 | `run_abandoned` | A run was abandoned before any change. |
+| `run_stopped` | A run stopped after a verified step, waiting for a check of the catalog card. |
 
 ```json
 {"event": "run_rolled_back", "stack": "outline", "run": 12, "status": "rolled_back",

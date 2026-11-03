@@ -32,9 +32,10 @@ const (
 	RolledBack = "rolled_back"
 	Failed     = "failed"
 	Abandoned  = "abandoned"
+	Stopped    = "stopped"
 )
 
-var results = map[string]string{Done: "completed", RolledBack: "rolled back", Failed: "failed", Abandoned: "abandoned"}
+var results = map[string]string{Done: "completed", RolledBack: "rolled back", Failed: "failed", Abandoned: "abandoned", Stopped: "stopped after a verified step"}
 
 // Engine applies plans on the local engine.
 type Engine struct {
@@ -120,7 +121,7 @@ func ProjectOf(st *inventory.Stack) compose.Project {
 	return compose.Project{Name: st.Name, WorkingDir: st.WorkingDir, ConfigFiles: st.ConfigFiles, EnvFiles: st.EnvFiles}
 }
 
-// Execute applies the plan of run id to st, then finishes the run done, rolled_back, failed or abandoned.
+// Execute applies the plan of run id to st, then finishes the run done, rolled_back, failed, abandoned or stopped.
 func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *plan.Plan, dryRun bool) {
 	for _, s := range st.Services {
 		running := s.Version
@@ -137,6 +138,12 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 	if dryRun {
 		e.dryRun(ctx, id, st, p)
 		return
+	}
+	if g := p.Steps[0].Gate; g != nil && g.Op == "exec_check" {
+		if err := e.runCheck(ctx, id, st, &Checkpoint{Project: ProjectOf(st)}, *g); err != nil {
+			e.finish(id, Abandoned, fmt.Errorf("%s does not pass on %s yet, nothing is applied: %w", g.CheckRef, g.Service, err))
+			return
+		}
 	}
 	for _, s := range st.Services {
 		if s.BackupHook == "" {
@@ -169,6 +176,17 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 	for i, step := range p.Steps {
 		e.event(id, "step %d of %d: %s", i+1, len(p.Steps), describe(step))
 		if err := e.step(ctx, id, st, cp, step); err != nil {
+			var expired *gateExpired
+			if errors.As(err, &expired) {
+				e.event(id, "step %d is applied and verified, but %v", i+1, err)
+				e.dropSnapshots(ctx, id, cp)
+				if i+1 == len(p.Steps) {
+					e.finish(id, Done, nil)
+				} else {
+					e.finish(id, Stopped, fmt.Errorf("stopped after step %d of %d: %w; the next steps wait for it", i+1, len(p.Steps), err))
+				}
+				return
+			}
 			e.event(id, "step %d failed: %v", i+1, err)
 			e.rollback(context.WithoutCancel(ctx), id, cp, err)
 			return
@@ -340,18 +358,27 @@ const (
 	gateTimeout  = 2 * time.Hour
 )
 
+type gateExpired struct {
+	op  plan.Operation
+	err error
+}
+
+func (g *gateExpired) Error() string {
+	return fmt.Sprintf("%s still failing on %s after %s: %v", g.op.CheckRef, g.op.Service, gateTimeout, g.err)
+}
+
 // gate runs the check command of the card until it succeeds.
 func (e *Engine) gate(ctx context.Context, id int64, st *inventory.Stack, cp *Checkpoint, g plan.Operation) error {
 	e.event(id, "waiting for %s on %s", g.CheckRef, g.Service)
 	deadline := time.Now().Add(gateTimeout)
 	for tries := 1; ; tries++ {
-		err := e.runCheck(ctx, st, cp, g)
+		err := e.runCheck(ctx, id, st, cp, g)
 		if err == nil {
 			e.event(id, "%s passed on %s after %d attempt(s)", g.CheckRef, g.Service, tries)
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("%s still failing on %s after %s: %w", g.CheckRef, g.Service, gateTimeout, err)
+			return &gateExpired{op: g, err: err}
 		}
 		select {
 		case <-ctx.Done():
@@ -361,7 +388,7 @@ func (e *Engine) gate(ctx context.Context, id int64, st *inventory.Stack, cp *Ch
 	}
 }
 
-func (e *Engine) runCheck(ctx context.Context, st *inventory.Stack, cp *Checkpoint, op plan.Operation) error {
+func (e *Engine) runCheck(ctx context.Context, id int64, st *inventory.Stack, cp *Checkpoint, op plan.Operation) error {
 	svc := service(st, op.Service)
 	if svc == nil {
 		return fmt.Errorf("service %s not found", op.Service)
@@ -370,7 +397,10 @@ func (e *Engine) runCheck(ctx context.Context, st *inventory.Stack, cp *Checkpoi
 	if card == nil || card.Checks[op.CheckRef] == nil {
 		return fmt.Errorf("no command %s in the card of %s", op.CheckRef, op.Service)
 	}
-	_, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"exec", "-T", op.Service}, card.Checks[op.CheckRef]...)...)
+	out, err := compose.Run(ctx, e.DockerHost, cp.Project, append([]string{"exec", "-T", op.Service}, card.Checks[op.CheckRef]...)...)
+	if out = strings.TrimSpace(out); err == nil && out != "" {
+		e.event(id, "%s on %s: %s", op.CheckRef, op.Service, out)
+	}
 	return err
 }
 
@@ -423,7 +453,7 @@ func (e *Engine) operation(ctx context.Context, id int64, st *inventory.Stack, c
 		return e.dumpRestore(ctx, id, st, cp, op)
 	case "exec_check":
 		e.event(id, "exec_check %s on %s", op.CheckRef, op.Service)
-		return e.runCheck(ctx, st, cp, op)
+		return e.runCheck(ctx, id, st, cp, op)
 	}
 	return fmt.Errorf("unsupported operation %s", op.Op)
 }
