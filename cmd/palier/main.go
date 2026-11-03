@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -506,6 +507,7 @@ func serve() error {
 		return snap
 	}
 	rescan := make(chan struct{}, 1)
+	var scanning atomic.Bool
 	start := func(st *inventory.Stack, author string, dryRun bool) (int64, error) {
 		id, p, err := a.begin(ctx, st, author, dryRun)
 		if err != nil {
@@ -528,7 +530,9 @@ func serve() error {
 		}
 		for {
 			began := time.Now()
+			scanning.Store(true)
 			stacks, err := a.scan(ctx, "")
+			scanning.Store(false)
 			next := web.Snapshot{Stacks: stacks, Began: began, At: time.Now()}
 			if err != nil {
 				next.Err = err.Error()
@@ -569,7 +573,10 @@ func serve() error {
 				slog.Info("automatic apply", "stack", st.Name, "run", id)
 				a.eng.Execute(ctx, id, st, p, false)
 				rescanned := time.Now()
-				if fresh, err := a.scan(ctx, ""); err == nil {
+				scanning.Store(true)
+				fresh, err := a.scan(ctx, "")
+				scanning.Store(false)
+				if err == nil {
 					mu.Lock()
 					snap = web.Snapshot{Stacks: fresh, Began: rescanned, At: time.Now()}
 					mu.Unlock()
@@ -622,8 +629,9 @@ func serve() error {
 			}
 			return ok, why
 		},
-		Run:  func(id int64) (*run.View, error) { return run.Load(ctx, a.db, id) },
-		Runs: func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 20) },
+		Run:      func(id int64) (*run.View, error) { return run.Load(ctx, a.db, id) },
+		Runs:     func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 20) },
+		Scanning: scanning.Load,
 		Rescan: func() {
 			select {
 			case rescan <- struct{}{}:

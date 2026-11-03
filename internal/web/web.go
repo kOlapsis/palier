@@ -51,6 +51,7 @@ type Deps struct {
 	Run       func(id int64) (*run.View, error)
 	Runs      func(stack string) ([]run.View, error)
 	Rescan    func()
+	Scanning  func() bool
 
 	Incidents    func() []notify.Incident
 	Channels     func() []notify.Channel
@@ -361,7 +362,7 @@ func New(deps Deps) http.Handler {
 	})
 }
 
-// registryHook asks for a scan when a registry announces a new tag, at most once a minute; it reads nothing from the request but its secret.
+// registryHook asks for a scan when a registry announces a new tag, at most once a minute and never while one runs; it reads nothing from the request but its secret.
 func registryHook(deps Deps) http.Handler {
 	var mu sync.Mutex
 	var last time.Time
@@ -373,7 +374,7 @@ func registryHook(deps Deps) http.Handler {
 		}
 		io.Copy(io.Discard, io.LimitReader(r.Body, 64<<10))
 		mu.Lock()
-		due := time.Since(last) >= time.Minute
+		due := time.Since(last) >= time.Minute && (deps.Scanning == nil || !deps.Scanning())
 		if due {
 			last = time.Now()
 		}

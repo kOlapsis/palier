@@ -108,7 +108,7 @@ A registry that announces each new tag can make Palier scan at once instead of a
 https://palier.example.com/hooks/registry/<secret>
 ```
 
-Docker Hub, GitLab, Harbor and Quay can call it. Palier reads nothing from the request but the secret in its address: it never trusts what the registry says, it only scans, at most once a minute, and checks the tags itself. A wrong secret, another method or another address all get the same 404. The address bypasses the OpenID Connect sign-in, since a registry cannot sign in.
+Docker Hub, GitLab, Harbor and Quay can call it. Palier reads nothing from the request but the secret in its address: it never trusts what the registry says, it only scans, at most once a minute and never while a scan already runs, and checks the tags itself. A wrong secret, another method or another address all get the same 404. The address bypasses the OpenID Connect sign-in, since a registry cannot sign in.
 
 ## Docker Hub mirror
 

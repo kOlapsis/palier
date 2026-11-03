@@ -143,13 +143,14 @@ func TestAPIStatus(t *testing.T) {
 
 func TestRegistryHook(t *testing.T) {
 	secret := strings.Repeat("a1", 16)
-	scans := 0
+	scans, running := 0, true
 	deps := Deps{
-		Current: func() Snapshot { return Snapshot{} },
-		Runs:    func(string) ([]run.View, error) { return nil, nil },
-		Plan:    func(string) (*plan.Record, error) { return nil, nil },
-		Rescan:  func() { scans++ },
-		Config:  config.Config{HookSecret: secret, OIDCIssuer: "https://idp.invalid", OIDCClientID: "palier", OIDCAdmins: []string{"admins"}},
+		Current:  func() Snapshot { return Snapshot{} },
+		Runs:     func(string) ([]run.View, error) { return nil, nil },
+		Plan:     func(string) (*plan.Record, error) { return nil, nil },
+		Rescan:   func() { scans++ },
+		Scanning: func() bool { return running },
+		Config:   config.Config{HookSecret: secret, OIDCIssuer: "https://idp.invalid", OIDCClientID: "palier", OIDCAdmins: []string{"admins"}},
 	}
 	h := New(deps)
 	do := func(method, path string) int {
@@ -157,6 +158,10 @@ func TestRegistryHook(t *testing.T) {
 		h.ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(`{"push_data":{"tag":"evil"}}`)))
 		return w.Code
 	}
+	if code := do("POST", "/hooks/registry/"+secret); code != 202 || scans != 0 {
+		t.Fatalf("while a scan runs: %d with %d scans", code, scans)
+	}
+	running = false
 	for _, c := range []struct {
 		method, path string
 		code, scans  int
