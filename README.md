@@ -105,7 +105,8 @@ volumes:
 
 ```sh
 DOCKER_GID=$(stat -c %g /var/run/docker.sock) docker compose up -d
-docker exec palier palier
+alias palier='docker exec -it palier palier'
+palier
 ```
 
 The state of every stack appears as soon as the containers are read, and the versions after the first scan.
@@ -135,18 +136,25 @@ The full list is in [docs/configuration.md](docs/configuration.md).
 
 ## Command line
 
-Palier runs in its container. You talk to it with `docker exec`:
+Palier runs in its container. Add this alias on the host, in your `~/.bashrc` or `~/.zshrc`:
 
 ```sh
-docker exec palier palier                       # state of every stack
-docker exec palier palier show gitlab           # services, advisories, upgrade path, plan and its sources
-docker exec -it palier palier apply gitlab      # shows the plan, asks, then follows the run live
-docker exec palier palier apply gitlab --dry-run
-docker exec palier palier runs                  # last runs
-docker exec palier palier log 14 -f             # log of a run
-docker exec palier palier ignore gitlab gitlab 18.11.4-ce.0
-docker exec palier palier postpone gitlab 2026-12-01
-docker exec palier palier scan                  # scan now
+alias palier='docker exec -it palier palier'
+```
+
+The `-it` gives the command a terminal: colors, and the confirmation of `apply`. Then:
+
+```sh
+palier                       # state of every stack
+palier show gitlab           # services, advisories, upgrade path, plan and its sources
+palier apply gitlab          # shows the plan, asks, then follows the run live
+palier apply gitlab --dry-run
+palier runs                  # last runs
+palier log 14 -f             # log of a run
+palier ignore gitlab gitlab 18.11.4-ce.0
+palier postpone gitlab 2026-12-01   # no automatic apply before this date
+palier scan                  # scan now
+palier help                  # every command
 ```
 
 ```
@@ -158,7 +166,7 @@ gitlab     stopped            18.5.3-ce.0  18.11.4-ce.0  2 steps; run 15: stoppe
 traefik    up to date         v3.5.2
 ```
 
-Every command takes `--json`. `apply` asks for confirmation in a terminal; `--yes` skips it, `--detach` returns as soon as the run starts. The run goes on in Palier if you close the terminal.
+Every command takes `--json`. `apply` asks for confirmation in a terminal; `--yes` skips it, `--detach` returns as soon as the run starts. The run goes on in Palier if you close the terminal. In a script or a cron job, call `docker exec palier palier …` without `-it`.
 
 The web interface is optional: set `PALIER_LISTEN=:8080`, publish the port, and sign in with the token from `docker exec palier palier token`.
 

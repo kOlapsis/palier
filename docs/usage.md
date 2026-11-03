@@ -12,7 +12,7 @@ A large version jump can take a long time. GitLab, with 13 required stops and th
 
 ## The stack list
 
-`docker exec palier palier` (or the home page of the web interface) shows each stack with its status, its running version, the target of its plan, what needs attention, and the age of the last scan. Palier scans all stacks at startup, then every hour (`PALIER_SCAN_INTERVAL`), and also right after each run or decision.
+`palier` (or the home page of the web interface) shows each stack with its status, its running version, the target of its plan, what needs attention, and the age of the last scan. Palier scans all stacks at startup, then every hour (`PALIER_SCAN_INTERVAL`), and also right after each run or decision.
 
 | Status | What it means |
 |---|---|
@@ -109,24 +109,33 @@ Dry runs do not send a webhook.
 
 Palier runs as `palier serve` in its container. The command line talks to it through the `palier.sock` socket of the data directory, so it answers at once, from the last scan, and a run it starts goes on in Palier even if the terminal closes.
 
+On the host, an alias makes it a plain command, with colors and the confirmation of `apply`, which both need the terminal that `-it` gives:
+
 ```sh
-docker exec palier palier                         # state of every stack
-docker exec palier palier show outline            # services, advisories, upgrade path, plan and its sources
-docker exec -it palier palier apply outline       # shows the plan, asks for confirmation, follows the run
-docker exec palier palier apply outline --yes     # without confirmation, for scripts
-docker exec palier palier apply outline --detach  # returns as soon as the run starts
-docker exec palier palier apply outline --dry-run
-docker exec palier palier runs [stack]            # last runs
-docker exec palier palier log 14 -f               # log of a run, followed while it runs
-docker exec palier palier ignore outline postgres 18.6
-docker exec palier palier postpone outline 2026-12-01
-docker exec palier palier scan                    # scan now and show the state
+alias palier='docker exec -it palier palier'
 ```
+
+```sh
+palier                         # state of every stack
+palier show outline            # services, advisories, upgrade path, plan and its sources
+palier apply outline           # shows the plan, asks for confirmation, follows the run
+palier apply outline --yes     # without confirmation, for scripts
+palier apply outline --detach  # returns as soon as the run starts
+palier apply outline --dry-run
+palier runs [stack]            # last runs
+palier log 14 -f               # log of a run, followed while it runs
+palier ignore outline postgres 18.6
+palier postpone outline 2026-12-01
+palier scan                    # scan now and show the state
+palier help                    # every command
+```
+
+In a script or a cron job, call `docker exec palier palier …` without `-it`.
 
 - Without a terminal, `apply` refuses to run without `--yes`.
 - Every command takes `--json`. `apply --json` prints the finished run.
 - The exit code is 1 when a run does not end "completed", or on any error, and 2 on an unknown command.
-- Colors only appear in a terminal (`docker exec -t`), and `NO_COLOR` turns them off. Release notes, image names and logs are printed without their control characters.
+- Colors only appear in a terminal (`docker exec -t`, which the alias gives), and `NO_COLOR` turns them off. Release notes, image names and logs are printed without their control characters.
 
 Two commands work without the running Palier, in the process that runs them, and print JSON: `palier scan --once` (one scan of every stack) and `palier plan <stack> --once` (the plan of a stack, computed again if needed).
 

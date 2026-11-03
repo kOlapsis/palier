@@ -49,3 +49,29 @@ func TestDescribeOp(t *testing.T) {
 		}
 	}
 }
+
+func TestColoredUsageKeepsTheText(t *testing.T) {
+	plain := (&cli{}).usage()
+	colored := (&cli{color: true}).usage()
+	if plain != usage || colored == usage {
+		t.Fatal("usage changed without color, or not colored with it")
+	}
+	strip := func(s string) string {
+		var b strings.Builder
+		esc := false
+		for _, r := range s {
+			switch {
+			case r == '\x1b':
+				esc = true
+			case esc:
+				esc = r != 'm'
+			default:
+				b.WriteRune(r)
+			}
+		}
+		return b.String()
+	}
+	if strip(colored) != usage {
+		t.Errorf("colored usage differs from the plain one:\n%s", strip(colored))
+	}
+}

@@ -68,7 +68,7 @@ func main() {
 		}
 		return
 	case cmd == "help" || cmd == "-h" || cmd == "--help":
-		fmt.Print(usage)
+		printUsage(os.Stdout)
 		return
 	case cmd == "token" && len(args) == 0:
 		err = printToken()
@@ -111,7 +111,7 @@ func main() {
 	}
 	switch {
 	case errors.Is(err, errUsage):
-		fmt.Fprint(os.Stderr, usage)
+		printUsage(os.Stderr)
 		os.Exit(2)
 	case errors.Is(err, errSilent):
 		os.Exit(1)

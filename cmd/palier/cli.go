@@ -142,6 +142,29 @@ func (c *cli) run(cmd string, args []string) error {
 
 var errUsage = errors.New("usage")
 
+func printUsage(f *os.File) {
+	c := &cli{color: terminal(f) && os.Getenv("NO_COLOR") == "", out: f}
+	fmt.Fprint(f, c.usage())
+}
+
+// usage returns the help with the title and sections in bold and the commands in color.
+func (c *cli) usage() string {
+	lines := strings.Split(usage, "\n")
+	for i, l := range lines {
+		switch {
+		case i == 0 || strings.HasSuffix(l, ":"):
+			lines[i] = c.bold(l)
+		case strings.HasPrefix(l, "  palier"):
+			cmd, desc, found := strings.Cut(strings.TrimPrefix(l, "  "), "   ")
+			lines[i] = "  " + c.paint("accent", cmd)
+			if found {
+				lines[i] += "   " + desc
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (c *cli) status() error {
 	var st web.Status
 	if err := c.call(http.MethodGet, "/status", nil, &st); err != nil {

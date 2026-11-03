@@ -97,8 +97,11 @@ A GitHub token with no particular permission is enough: Palier only reads public
 
 ## Check that it runs
 
+Add this alias on the host, in your `~/.bashrc` or `~/.zshrc`, then call `palier`:
+
 ```sh
-docker exec palier palier
+alias palier='docker exec -it palier palier'
+palier
 ```
 
 The stacks appear as soon as the containers are read, marked "checking versions" until the first scan ends. It takes a few minutes; the [Usage](usage.md#first-start) page describes what happens in the meantime.
