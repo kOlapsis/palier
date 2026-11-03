@@ -4,6 +4,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -26,6 +28,10 @@ type Config struct {
 	GitLabToken    string
 	RegistryMirror string
 	DockerConfig   string
+	OIDCIssuer     string
+	OIDCClientID   string
+	OIDCSecret     string
+	OIDCAdmins     []string
 }
 
 // Load reads the environment through getenv and applies the defaults.
@@ -48,6 +54,14 @@ func Load(getenv func(string) string) (Config, error) {
 		GitLabToken:    get("PALIER_GITLAB_TOKEN", ""),
 		RegistryMirror: get("PALIER_REGISTRY_MIRROR", ""),
 		DockerConfig:   get("DOCKER_CONFIG", filepath.Join(get("HOME", "/"), ".docker")),
+		OIDCIssuer:     get("PALIER_OIDC_ISSUER", ""),
+		OIDCClientID:   get("PALIER_OIDC_CLIENT_ID", ""),
+		OIDCSecret:     get("PALIER_OIDC_CLIENT_SECRET", ""),
+	}
+	for _, a := range strings.Split(get("PALIER_OIDC_ADMINS", ""), ",") {
+		if a = strings.TrimSpace(a); a != "" {
+			c.OIDCAdmins = append(c.OIDCAdmins, a)
+		}
 	}
 	var errs []error
 	duration := func(name, def string) time.Duration {
@@ -69,5 +83,21 @@ func Load(getenv func(string) string) (Config, error) {
 	default:
 		errs = append(errs, fmt.Errorf("PALIER_AUTO: %q, expected all, minor, patch or off", c.Auto))
 	}
+	if c.OIDCIssuer != "" {
+		if u, err := url.Parse(c.OIDCIssuer); err != nil || u.Host == "" || u.Scheme != "https" && !(u.Scheme == "http" && localHost(u.Hostname())) {
+			errs = append(errs, fmt.Errorf("PALIER_OIDC_ISSUER: %q, expected an https address (http only on a local network)", c.OIDCIssuer))
+		}
+		if c.OIDCClientID == "" {
+			errs = append(errs, errors.New("PALIER_OIDC_CLIENT_ID: required with PALIER_OIDC_ISSUER"))
+		}
+		if len(c.OIDCAdmins) == 0 {
+			errs = append(errs, errors.New("PALIER_OIDC_ADMINS: required with PALIER_OIDC_ISSUER, otherwise nobody could sign in"))
+		}
+	}
 	return c, errors.Join(errs...)
+}
+
+func localHost(host string) bool {
+	ip := net.ParseIP(host)
+	return host == "localhost" || ip != nil && (ip.IsLoopback() || ip.IsPrivate())
 }

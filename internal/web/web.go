@@ -276,12 +276,13 @@ func isStop(image, tag string) bool {
 	return false
 }
 
-// New returns the handler of the interface, which refuses requests that change something when they come from another site.
+// New returns the handler of the interface, behind OIDC sign-in when it is configured, refusing changes that come from another site.
 func New(deps Deps) http.Handler {
 	s := &server{author: "interface", deps: deps, mux: http.NewServeMux(), pages: map[string]*template.Template{}}
 	funcs := template.FuncMap{
-		"state": s.state,
-		"since": Since,
+		"state":   s.state,
+		"since":   Since,
+		"signout": func() bool { return deps.Config.OIDCIssuer != "" },
 		"label": func(v string) string {
 			if l, ok := labels[v]; ok {
 				return l
@@ -303,7 +304,7 @@ func New(deps Deps) http.Handler {
 			return t.Format("Jan 2, 2006 3:04:05 PM") + " UTC"
 		},
 	}
-	for _, p := range []string{"index.html", "stack.html", "run.html", "settings.html"} {
+	for _, p := range []string{"index.html", "stack.html", "run.html", "settings.html", "gate.html"} {
 		s.pages[p] = template.Must(template.New("").Funcs(funcs).ParseFS(templates, "templates/layout.html", "templates/"+p))
 	}
 	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -318,7 +319,13 @@ func New(deps Deps) http.Handler {
 	s.mux.HandleFunc("GET /settings", func(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusOK, "settings.html", s.deps.Config)
 	})
-	return http.NewCrossOriginProtection().Handler(s.mux)
+	var h http.Handler = s.mux
+	if deps.Config.OIDCIssuer != "" {
+		h = newGate(deps.Config, func(w http.ResponseWriter, status int, title, message string) {
+			s.render(w, status, "gate.html", map[string]string{"Title": title, "Message": message})
+		}).wrap(h)
+	}
+	return http.NewCrossOriginProtection().Handler(h)
 }
 
 func (s *server) find(name string) (*inventory.Stack, time.Time) {
@@ -385,7 +392,7 @@ func back(w http.ResponseWriter, r *http.Request, err error) {
 
 func (s *server) apply(dryRun bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := s.deps.Apply(r.PathValue("name"), s.author, dryRun)
+		id, err := s.deps.Apply(r.PathValue("name"), s.who(r), dryRun)
 		if err != nil {
 			back(w, r, err)
 			return
@@ -396,11 +403,14 @@ func (s *server) apply(dryRun bool) http.HandlerFunc {
 
 func (s *server) decide(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		back(w, r, s.record(r.PathValue("name"), kind, r.FormValue("service"), r.FormValue("version"), r.FormValue("until")))
+		back(w, r, s.record(s.who(r), r.PathValue("name"), kind, r.FormValue("service"), r.FormValue("version"), r.FormValue("until")))
 	}
 }
 
-func (s *server) record(stack, kind, service, version, until string) error {
+// who is the author of a decision: the person signed in, or the interface itself.
+func (s *server) who(r *http.Request) string { return cmp.Or(who(r), s.author) }
+
+func (s *server) record(author, stack, kind, service, version, until string) error {
 	switch {
 	case kind == "ignore" && (service == "" || version == ""):
 		return errors.New("service and version to ignore are missing")
@@ -409,7 +419,7 @@ func (s *server) record(stack, kind, service, version, until string) error {
 			return errors.New("invalid postpone date, expected YYYY-MM-DD")
 		}
 	}
-	return s.deps.Decide(stack, s.author, kind, service, version, until)
+	return s.deps.Decide(stack, author, kind, service, version, until)
 }
 
 func (s *server) run(w http.ResponseWriter, r *http.Request) {

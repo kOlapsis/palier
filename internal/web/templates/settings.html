@@ -19,6 +19,8 @@
 <dt>PALIER_GITLAB_TOKEN</dt><dd>{{if .GitLabToken}}set{{else}}not set{{end}}</dd>
 <dt>PALIER_REGISTRY_MIRROR</dt><dd>{{with .RegistryMirror}}{{.}}{{else}}not set{{end}}</dd>
 <dt>DOCKER_CONFIG</dt><dd>{{.DockerConfig}}</dd>
+<dt>PALIER_OIDC_ISSUER</dt><dd>{{with .OIDCIssuer}}{{.}}, client {{$.OIDCClientID}}{{else}}not set: no sign-in{{end}}</dd>
+<dt>PALIER_OIDC_ADMINS</dt><dd>{{with .OIDCAdmins}}{{join .}}{{else}}not set{{end}}</dd>
 </dl>
 </div>
 {{end}}

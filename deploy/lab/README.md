@@ -52,7 +52,7 @@ The first `up` takes a while: it downloads the Debian image, installs Docker, bu
 | `versions.yml` | The versions the stacks start from, and why each one was chosen. |
 | `provision.yml`, `tasks/`, `templates/` | The machine on libvirt (`lab_state=present` or `absent`). |
 | `site.yml`, `roles/` | Provisioning of the machine: `docker` (engine and compose plugin), `palier_stack` (Palier, webhook-tester), `lab_apps` (the stacks under `/apps`). |
-| `compose.lab.yaml` | Override of `deploy/compose.yaml`: builds the image from the working copy, publishes the ports on the machine address, mounts `/apps` at the same path, and turns the web interface on (`PALIER_LISTEN`). `compose.yaml` is never changed. |
+| `compose.lab.yaml` | Override of `deploy/compose.yaml`: builds the image from the working copy, publishes the ports on the machine address, mounts `/apps` at the same path, turns the web interface on (`PALIER_LISTEN`) behind the OIDC test provider, and starts that provider. `compose.yaml` is never changed. |
 | `host-setup.yml` | What needs root, run once. |
 
 ## Addresses and credentials
@@ -61,7 +61,8 @@ The machine is `10.10.50.10`, on the NAT network `palier-lab` (host side `10.10.
 
 | Service | Address | Credentials |
 |---|---|---|
-| Palier | http://10.10.50.10:8080 | none; or `deploy/lab/lab ssh sudo docker exec -it palier-palier-1 palier` |
+| Palier | http://10.10.50.10:8080 | sign-in on the test provider below, any user name, claims `{"groups": ["palier-admins"]}`; or `deploy/lab/lab ssh sudo docker exec -it palier-palier-1 palier` |
+| OIDC test provider | http://10.10.50.10:8090/palier | none; `mock-oauth2-server` signs in whoever fills its form, with the claims typed there |
 | webhook-tester | http://10.10.50.10:8081 | none; the webhooks arrive in session `00000000-0000-4000-8000-000000000001` |
 | nginx | http://10.10.50.10:8088 | none |
 | whoami | http://10.10.50.10:8089 | none |

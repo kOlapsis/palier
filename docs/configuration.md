@@ -20,6 +20,36 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_GITLAB_TOKEN` | empty | Reads GitLab release notes (gitlab.com) without the anonymous limit, and those of private projects. |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror (`mirror.gcr.io`, for example), used for reads by digest. |
 | `DOCKER_CONFIG` | `$HOME/.docker` | Folder of the `config.json` that holds the credentials of private registries. |
+| `PALIER_OIDC_ISSUER` | empty | OpenID Connect provider that signs people in to the web interface. Empty, the web interface has no sign-in. |
+| `PALIER_OIDC_CLIENT_ID`, `PALIER_OIDC_CLIENT_SECRET` | empty | Client registered at the provider. The secret can stay empty for a public client. |
+| `PALIER_OIDC_ADMINS` | empty | Who may use Palier, separated by commas: groups or roles, emails, or `@domain`. Required with `PALIER_OIDC_ISSUER`. |
+
+## Sign-in with OpenID Connect
+
+Only admins enter the web interface. Anyone else who signs in at the provider gets a page that says they need to be an admin to access Palier. Each decision taken in the web interface is signed with the email of the person, or their name.
+
+At the provider, create a web application (confidential client) with this redirect address, the public address of Palier followed by `/auth/callback`:
+
+```
+https://palier.example.com/auth/callback
+```
+
+Then set the four variables. Palier reads everything else from the discovery document of the issuer: the endpoints, the scopes it supports (it asks for `groups` when the provider offers it), the client authentication method. PKCE, `state` and `nonce` protect every sign-in, and a session lasts 12 hours.
+
+An entry of `PALIER_OIDC_ADMINS` is compared with:
+
+- the `groups` and `roles` claims of the ID token or of the userinfo endpoint, for a group or role name (a leading `/`, as Keycloak writes full paths, is ignored);
+- the verified email, for an email;
+- the domain of the verified email, for `@domain`.
+
+| Provider | `PALIER_OIDC_ISSUER` | `PALIER_OIDC_ADMINS` |
+|---|---|---|
+| authentik | `https://auth.example.com/application/o/<application slug>/` | a group name, sent in the `profile` scope |
+| Keycloak | `https://keycloak.example.com/realms/<realm>` | a group, with a "Group Membership" mapper on the client, or an email |
+| Google | `https://accounts.google.com` | emails, or `@your-workspace-domain` |
+| Microsoft Entra ID | `https://login.microsoftonline.com/<tenant id>/v2.0` | the object ID of a group (Token configuration, "Add groups claim"), or the value of an app role |
+
+Behind a reverse proxy, Palier builds its redirect address from the `Host` and `X-Forwarded-Proto` headers (or `X-Forwarded-Host`). The issuer must be in `https`, except on `localhost` or a private address.
 
 ## Private registries
 

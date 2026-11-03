@@ -47,7 +47,7 @@ The plan also says which versions it rules out and why, for example a database m
 | `palier ignore <stack> <service> <version>` | Ignore *service version* | Removes this version from the proposed versions. The plan is recomputed without it. |
 | `palier postpone <stack> <YYYY-MM-DD>` | Postpone | Prevents automatic apply for this stack until that date. |
 
-Each decision is recorded with its author (`cli`, `interface` or `auto`) and its date.
+Each decision is recorded with its author (`cli`, `auto`, the email of the person signed in to the web interface, or `interface` without sign-in) and its date.
 
 ## Follow a run
 

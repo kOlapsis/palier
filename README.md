@@ -130,6 +130,7 @@ Three things to get right:
 | `PALIER_GITHUB_TOKEN`, `PALIER_GITLAB_TOKEN` | empty | Notes and security advisories without the anonymous limit |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror |
 | `PALIER_LISTEN` | empty | Address of the web interface, off when empty (`:8080` to turn it on) |
+| `PALIER_OIDC_ISSUER`, `PALIER_OIDC_CLIENT_ID`, `PALIER_OIDC_CLIENT_SECRET`, `PALIER_OIDC_ADMINS` | empty | Sign-in to the web interface with authentik, Keycloak, Google, Microsoft…, admins only |
 
 The full list is in [docs/configuration.md](docs/configuration.md).
 
@@ -167,12 +168,12 @@ traefik    up to date         v3.5.2
 
 Every command takes `--json`. `apply` asks for confirmation in a terminal; `--yes` skips it, `--detach` returns as soon as the run starts. The run goes on in Palier if you close the terminal. In a script or a cron job, call `docker exec palier palier …` without `-it`.
 
-The web interface is optional: set `PALIER_LISTEN=:8080` and publish the port. It has no sign-in, so keep it on `127.0.0.1` or behind a reverse proxy that authenticates.
+The web interface is optional: set `PALIER_LISTEN=:8080` and publish the port. With `PALIER_OIDC_*`, only the admins of your identity provider get in ([details](docs/configuration.md#sign-in-with-openid-connect)); without it, keep it on `127.0.0.1` or behind a reverse proxy that authenticates.
 
 ## Limitations
 
 - One Palier per Docker machine: no agent, no remote machine.
-- No accounts, roles or sign-in: the web interface relies on where it listens or on an authenticating reverse proxy.
+- No accounts or roles: the web interface lets in the admins of an OpenID Connect provider.
 - The webhook is the only alert.
 - Databases other than PostgreSQL, MySQL and MariaDB stay blocked on their major version.
 - Notes outside GitHub and gitlab.com are not read.

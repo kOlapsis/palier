@@ -7,6 +7,10 @@ services:
       dockerfile: deploy/Dockerfile
     environment:
       PALIER_LISTEN: ":8080"
+      PALIER_OIDC_ISSUER: ${LAB_OIDC_ISSUER:?}
+      PALIER_OIDC_CLIENT_ID: palier
+      PALIER_OIDC_CLIENT_SECRET: lab-secret
+      PALIER_OIDC_ADMINS: palier-admins
       DOCKER_CONFIG: /etc/palier/docker
       PALIER_AI_KEY: ${PALIER_AI_KEY:-}
       PALIER_GITLAB_TOKEN: ${PALIER_GITLAB_TOKEN:-}
@@ -25,3 +29,11 @@ services:
       AUTO_CREATE_SESSIONS: "true"
     ports:
       - "${LAB_WEBHOOK_TESTER_PORT:?}:8080"
+
+  oidc:
+    image: ghcr.io/navikt/mock-oauth2-server:6.1.4
+    restart: unless-stopped
+    environment:
+      JSON_CONFIG: '{"interactiveLogin": true}'
+    ports:
+      - "${LAB_OIDC_PORT:?}:8080"
