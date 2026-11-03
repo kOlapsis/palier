@@ -1,6 +1,6 @@
 
 # Versions read from the registry's OCI annotation and from tags with a named prefix, compared with the previous scan.
-$PALIER exec -T palier /palier scan 2>/dev/null >/tmp/scan-now.json
+$PALIER exec -T palier palier scan --once 2>/dev/null >/tmp/scan-now.json
 python3 - /tmp/scan-gcr.json /tmp/scan-now.json <<'EOF'
 import json, sys
 def load(path):

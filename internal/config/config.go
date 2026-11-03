@@ -43,7 +43,7 @@ func Load(getenv func(string) string) (Config, error) {
 	c := Config{
 		DockerHost:     get("PALIER_DOCKER_HOST", "unix:///var/run/docker.sock"),
 		DataDir:        get("PALIER_DATA_DIR", "/var/lib/palier"),
-		Listen:         get("PALIER_LISTEN", ":8080"),
+		Listen:         get("PALIER_LISTEN", ""),
 		Token:          get("PALIER_TOKEN", ""),
 		AIKey:          get("PALIER_AI_KEY", ""),
 		AIModel:        get("PALIER_AI_MODEL", "claude-sonnet-5-5"),

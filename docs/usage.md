@@ -4,15 +4,15 @@
 
 At first start, Palier works alone for a few minutes before everything is visible:
 
-1. **The scan.** It reads all containers, the tags of each image in the registry, the release notes and the security advisories. Allow one to two minutes for about ten stacks. The home page shows "First scan in progress".
+1. **The scan.** It reads all containers, the tags of each image in the registry, the release notes and the security advisories. Allow one to two minutes for about ten stacks. `palier` shows the stacks right away, marked "checking versions".
 2. **The plans.** For each stack that has a newer version, the AI computes a plan. This takes from a few seconds to two minutes per stack. In the meantime, the stack shows "computing plan".
-3. **The updates.** Each plan that Palier can apply on its own starts right away, one stack after the other. The stack goes to "running", and its page shows the steps being checked off as they finish.
+3. **The updates.** Each plan that Palier can apply on its own starts right away, one stack after the other. The stack goes to "running", and `palier log <run> -f` shows each phase as it happens.
 
 A large version jump can take a long time. GitLab, with 13 required stops and their background migrations, takes about two hours. The logs (`docker logs -f palier`) show at any moment what Palier is doing.
 
 ## The stack list
 
-The home page shows each stack with its status and the age of the last scan. Palier scans all stacks at startup, then every hour (`PALIER_SCAN_INTERVAL`), and also right after each run or decision.
+`docker exec palier palier` (or the home page of the web interface) shows each stack with its status, its running version, the target of its plan, what needs attention, and the age of the last scan. Palier scans all stacks at startup, then every hour (`PALIER_SCAN_INTERVAL`), and also right after each run or decision.
 
 | Status | What it means |
 |---|---|
@@ -27,7 +27,7 @@ The home page shows each stack with its status and the age of the last scan. Pal
 
 ## The stack page
 
-It shows each service with its role (application or dependency), its running version, its dependencies and the available versions. A version that is too recent appears as "maturing" until it reaches the age set by `PALIER_MATURATION` (72 hours by default), unless it fixes a vulnerability in the running version. Each known vulnerability of the running version is flagged under the service, with its severity and a link to the advisory.
+`palier show <stack>` (or the stack page of the web interface) shows each service with its role (application or dependency), its running version, its dependencies and the available versions. A version that is too recent appears as "maturing" until it reaches the age set by `PALIER_MATURATION` (72 hours by default), unless it fixes a vulnerability in the running version. Each known vulnerability of the running version is flagged under the service, with its severity and a link to the advisory.
 
 Below the services comes the plan, step by step. Each step shows:
 
@@ -40,18 +40,18 @@ The plan also says which versions it rules out and why, for example a database m
 
 ## Decisions
 
-| Button | Effect |
-|---|---|
-| Dry run | Checks that each target image exists in the registry and describes what Palier would do, without changing anything. |
-| Apply plan | Starts the run right away, without waiting for automatic apply. The button does not appear if the plan is incomplete. |
-| Ignore *service version* | Removes this version from the proposed versions. The plan is recomputed without it. |
-| Postpone | Prevents automatic apply for this stack until the chosen date. |
+| Command | Web button | Effect |
+|---|---|---|
+| `palier apply <stack> --dry-run` | Dry run | Checks that each target image exists in the registry and describes what Palier would do, without changing anything. |
+| `palier apply <stack>` | Apply plan | Scans the stack again, then starts the run right away, without waiting for automatic apply. Refused if the plan is incomplete. |
+| `palier ignore <stack> <service> <version>` | Ignore *service version* | Removes this version from the proposed versions. The plan is recomputed without it. |
+| `palier postpone <stack> <YYYY-MM-DD>` | Postpone | Prevents automatic apply for this stack until that date. |
 
-Each decision is recorded with its author (`interface`, `cli` or `auto`) and its date.
+Each decision is recorded with its author (`cli`, `interface` or `auto`) and its date.
 
 ## Follow a run
 
-The `/runs/{id}` page refreshes by itself. It shows the result at the top, the steps of the plan (verified, running, failed or upcoming), then each phase of the run. During a run, the stack page also shows these steps. On failure, it gives the cause, the details of the rollback and an excerpt of the logs of the service that failed.
+`palier apply` follows the run it starts until it ends; `palier log <run> -f` follows any run. In the web interface, the `/runs/{id}` page refreshes by itself. It shows the result at the top, the steps of the plan (verified, running, failed or upcoming), then each phase of the run. During a run, the stack page also shows these steps. On failure, it gives the cause, the details of the rollback and an excerpt of the logs of the service that failed.
 
 A run ends in one of these states:
 
@@ -74,9 +74,9 @@ A plan waits for your decision only in these cases:
 - a step is irreversible: even restoring the volumes would not undo it;
 - the stack is postponed.
 
-The "attention" level says what changes, it does not block. `PALIER_AUTO=minor` excludes major versions, `PALIER_AUTO=patch` keeps only patch releases, and `PALIER_AUTO=off` turns automatic apply off: every plan then waits for a click.
+The "attention" level says what changes, it does not block. `PALIER_AUTO=minor` excludes major versions, `PALIER_AUTO=patch` keeps only patch releases, and `PALIER_AUTO=off` turns automatic apply off: every plan then waits for `palier apply`.
 
-On the stack page, a line under the plan says whether automatic apply will take it, or why it rules it out.
+Under the plan, `palier show` and the stack page say whether automatic apply will take it, or why it rules it out.
 
 A plan is kept as long as its inputs do not change: Compose files, versions, release notes, model and Palier version. Identical inputs therefore always get the same plan and the same judgment, without a new AI call.
 
@@ -107,15 +107,27 @@ Dry runs do not send a webhook.
 
 ## The command line
 
-The same operations exist on the command line, through the same code. They write JSON to standard output and their logs to standard error.
+Palier runs as `palier serve` in its container. The command line talks to it through the `palier.sock` socket of the data directory, so it answers at once, from the last scan, and a run it starts goes on in Palier even if the terminal closes.
 
 ```sh
-docker exec palier /palier scan                  # one scan of all stacks
-docker exec palier /palier plan outline          # the plan of a stack
-docker exec palier /palier apply outline --dry-run
-docker exec palier /palier apply outline         # applies, exit code 1 if the run does not end "completed"
-docker exec palier /palier runs                  # the last 50 runs
-docker exec palier /palier token                 # the interface access token
+docker exec palier palier                         # state of every stack
+docker exec palier palier show outline            # services, advisories, upgrade path, plan and its sources
+docker exec -it palier palier apply outline       # shows the plan, asks for confirmation, follows the run
+docker exec palier palier apply outline --yes     # without confirmation, for scripts
+docker exec palier palier apply outline --detach  # returns as soon as the run starts
+docker exec palier palier apply outline --dry-run
+docker exec palier palier runs [stack]            # last runs
+docker exec palier palier log 14 -f               # log of a run, followed while it runs
+docker exec palier palier ignore outline postgres 18.6
+docker exec palier palier postpone outline 2026-12-01
+docker exec palier palier scan                    # scan now and show the state
 ```
 
-With no argument, `palier` runs `serve`, that is, the interface and the regular scans.
+- Without a terminal, `apply` refuses to run without `--yes`.
+- Every command takes `--json`. `apply --json` prints the finished run.
+- The exit code is 1 when a run does not end "completed", or on any error, and 2 on an unknown command.
+- Colors only appear in a terminal (`docker exec -t`), and `NO_COLOR` turns them off. Release notes, image names and logs are printed without their control characters.
+
+Two commands work without the running Palier, in the process that runs them, and print JSON: `palier scan --once` (one scan of every stack) and `palier plan <stack> --once` (the plan of a stack, computed again if needed).
+
+`palier token` prints the token of the web interface, which is off unless `PALIER_LISTEN` is set.

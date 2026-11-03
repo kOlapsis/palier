@@ -2,7 +2,7 @@
 coll() { docker exec pgcoll-postgres-1 psql -U lab -d lab -At -c "SELECT current_setting('server_version') || '; datcollversion ' || datcollversion || '; libc ' || pg_database_collation_actual_version(oid) || '; words ' || (SELECT count(*) FROM words) FROM pg_database WHERE datname = 'lab'" 2>&1 | tr '\n' ' '; }
 (cd /apps/pgcoll && docker compose down -v >/dev/null 2>&1 && sed -i 's|image: docker.io/library/postgres:.*|image: docker.io/library/postgres:16.4|' compose.yaml && docker compose up -d >/dev/null 2>&1)
 until docker exec pgcoll-postgres-1 psql -U lab -d lab -h 127.0.0.1 -c 'SELECT count(*) FROM words' >/dev/null 2>&1; do sleep 2; done
-docker exec palier-palier-1 /palier plan pgcoll >/dev/null 2>&1
+docker exec palier-palier-1 palier plan pgcoll --once >/dev/null 2>&1
 fake_step_image pgcoll 0
 echo "before: $(coll)"
 apply_and_report pgcoll

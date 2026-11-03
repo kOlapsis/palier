@@ -20,8 +20,9 @@ FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/docker-compose /usr/local/bin/docker-compose
 COPY --from=build --chown=65532:65532 /out/data /var/lib/palier
-COPY --from=build /out/palier /palier
+COPY --from=build /out/palier /usr/local/bin/palier
 USER 65532:65532
 ENV PATH=/usr/local/bin HOME=/var/lib/palier
 EXPOSE 8080
-ENTRYPOINT ["/palier"]
+ENTRYPOINT ["palier"]
+CMD ["serve"]

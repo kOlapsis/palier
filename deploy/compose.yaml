@@ -6,14 +6,12 @@ services:
     restart: unless-stopped
     group_add:
       - ${DOCKER_GID:?}
-    ports:
-      - "127.0.0.1:8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - palier-data:/var/lib/palier
     read_only: true
     cap_drop: [ALL]
-    # /palier holds these as file capabilities, which no-new-privileges would cancel.
+    # The palier binary holds these as file capabilities, which no-new-privileges would cancel.
     cap_add: [CHOWN, DAC_OVERRIDE]
 
 volumes:

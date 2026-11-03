@@ -10,7 +10,7 @@ previous=$(sql "SELECT coalesce(max(id), 0) FROM runs")
 	echo "$(date -u +%T) export cut: $dump from $size to $((size / 2)) bytes"
 ) &
 start=$(date +%s)
-$PALIER exec -T palier /palier apply outline </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("run", v["id"], v["status"], v.get("error", "")[:400]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:200]) for e in v["events"]]' || true
+$PALIER exec -T palier palier apply outline --yes --json </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("run", v["id"], v["status"], v.get("error", "")[:400]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:200]) for e in v["events"]]' || true
 wait
 echo "duration: $(( $(date +%s) - start )) s"
 echo "after: $(pg_counts outline-postgres-1) ; montages : $(mounts_of outline-postgres-1)"

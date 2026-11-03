@@ -3,7 +3,7 @@ before_image=$(docker inspect outline-postgres-1 --format '{{.Config.Image}}')
 echo "before: $(pg_counts outline-postgres-1) ; montages : $(mounts_of outline-postgres-1)"
 outline_state
 start=$(date +%s)
-$PALIER exec -T palier /palier apply outline </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("run", v["id"], v["status"], v.get("error", "")[:400]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:220]) for e in v["events"]]' || true
+$PALIER exec -T palier palier apply outline --yes --json </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("run", v["id"], v["status"], v.get("error", "")[:400]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:220]) for e in v["events"]]' || true
 echo "duration: $(( $(date +%s) - start )) s"
 echo "after: $(pg_counts outline-postgres-1) ; montages : $(mounts_of outline-postgres-1)"
 outline_state

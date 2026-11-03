@@ -1,7 +1,7 @@
 # Palier is killed while it verifies whoami, then started again.
 echo "before: $(whoami_image)"
 previous=$(sql "SELECT coalesce(max(id), 0) FROM runs")
-$PALIER exec -d palier /palier apply whoami
+$PALIER exec -T palier palier apply whoami --yes --detach
 until sql "SELECT message FROM run_events WHERE run_id > $previous" | grep -q '^verifying'; do sleep 1; done
 echo "during verification: $(whoami_image)"
 docker kill palier-palier-1 >/dev/null

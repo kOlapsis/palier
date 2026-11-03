@@ -5,7 +5,7 @@ echo "plan: whoami to $target, replaced by v1.99.0"
 sql "UPDATE plans SET body = replace(body, '\"$target\"', '\"v1.99.0\"') WHERE stack = 'whoami'"
 echo "before: $(whoami_image)"
 start=$(date +%s)
-$PALIER exec -T palier /palier apply whoami </dev/null || true
+$PALIER exec -T palier palier apply whoami --yes --json </dev/null || true
 echo "duration: $(( $(date +%s) - start )) s"
 echo "after: $(whoami_image)"
 grep image: /apps/whoami/compose.yaml

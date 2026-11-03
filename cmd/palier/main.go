@@ -10,11 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -31,34 +33,56 @@ import (
 	"github.com/kolapsis/palier/internal/web"
 )
 
-const usage = "usage: palier [serve | scan | plan <stack> | apply <stack> [--dry-run] | runs | token]"
-
 func main() {
 	args := os.Args[1:]
-	cmd := "serve"
+	cmd := "status"
 	if len(args) > 0 {
 		cmd, args = args[0], args[1:]
 	}
-	logOut := os.Stdout
-	if cmd != "serve" {
-		logOut = os.Stderr
+	logOut := os.Stderr
+	if cmd == "serve" {
+		logOut = os.Stdout
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(logOut, nil)))
+	var flags []string
+	var pos []string
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			flags = append(flags, a)
+		} else {
+			pos = append(pos, a)
+		}
+	}
+	has := func(names ...string) bool {
+		return slices.ContainsFunc(names, func(n string) bool { return slices.Contains(flags, n) })
+	}
+	known := func(names ...string) bool {
+		return !slices.ContainsFunc(flags, func(f string) bool { return !slices.Contains(names, f) })
+	}
 	var err error
 	switch {
 	case cmd == "serve" && len(args) == 0:
-		err = serve()
-	case cmd == "scan" && len(args) == 0:
+		if err = serve(); err != nil {
+			slog.Error("fatal error", "err", err)
+			os.Exit(1)
+		}
+		return
+	case cmd == "help" || cmd == "-h" || cmd == "--help":
+		fmt.Print(usage)
+		return
+	case cmd == "token" && len(args) == 0:
+		err = printToken()
+	case cmd == "scan" && has("--once") && known("--once", "--json") && len(pos) == 0:
 		err = withApp(func(ctx context.Context, a *app) error {
-			stacks, err := a.scan(ctx)
+			stacks, err := a.scan(ctx, "")
 			if err != nil {
 				return err
 			}
 			return printJSON(stacks)
 		})
-	case cmd == "plan" && len(args) == 1:
+	case cmd == "plan" && has("--once") && known("--once", "--json") && len(pos) == 1:
 		err = withApp(func(ctx context.Context, a *app) error {
-			st, err := a.stack(ctx, args[0])
+			st, err := a.stack(ctx, pos[0])
 			if err != nil {
 				return err
 			}
@@ -68,45 +92,31 @@ func main() {
 			}
 			return printJSON(rec)
 		})
-	case cmd == "apply" && (len(args) == 1 || len(args) == 2 && args[1] == "--dry-run"):
-		err = withApp(func(ctx context.Context, a *app) error {
-			st, err := a.stack(ctx, args[0])
-			if err != nil {
-				return err
-			}
-			id, p, err := a.begin(ctx, st, "cli", len(args) == 2)
-			if err != nil {
-				return err
-			}
-			a.eng.Execute(ctx, id, st, p, len(args) == 2)
-			v, err := run.Load(ctx, a.db, id)
-			if err != nil {
-				return err
-			}
-			if err := printJSON(v); err != nil {
-				return err
-			}
-			if v.Status != run.Done {
-				return fmt.Errorf("run %d: %s", id, v.Status)
-			}
-			return nil
-		})
-	case cmd == "token" && len(args) == 0:
-		err = printToken()
-	case cmd == "runs" && len(args) == 0:
-		err = withApp(func(ctx context.Context, a *app) error {
-			runs, err := run.List(ctx, a.db, "", 50)
-			if err != nil {
-				return err
-			}
-			return printJSON(runs)
-		})
 	default:
-		fmt.Fprintln(os.Stderr, usage)
-		os.Exit(2)
+		var cfg config.Config
+		if cfg, err = config.Load(os.Getenv); err != nil {
+			break
+		}
+		c := newCLI(cfg, has("--json"))
+		switch {
+		case cmd == "apply" && len(pos) == 1 && known("--json", "--dry-run", "--yes", "-y", "--detach"):
+			err = c.apply(pos[0], has("--dry-run"), has("--yes", "-y"), has("--detach"))
+		case cmd == "log" && len(pos) == 1 && known("--json", "-f", "--follow"):
+			err = c.log(pos[0], has("-f", "--follow"))
+		case known("--json"):
+			err = c.run(cmd, pos)
+		default:
+			err = errUsage
+		}
 	}
-	if err != nil {
-		slog.Error("fatal error", "err", err)
+	switch {
+	case errors.Is(err, errUsage):
+		fmt.Fprint(os.Stderr, usage)
+		os.Exit(2)
+	case errors.Is(err, errSilent):
+		os.Exit(1)
+	case err != nil:
+		fmt.Fprintln(os.Stderr, "palier: "+err.Error())
 		os.Exit(1)
 	}
 }
@@ -190,10 +200,14 @@ func withApp(f func(context.Context, *app) error) error {
 	return f(ctx, a)
 }
 
-func (a *app) scan(ctx context.Context) ([]*inventory.Stack, error) {
+// scan reads every stack, or only the Compose stack only when it is set, and finds their newer versions.
+func (a *app) scan(ctx context.Context, only string) ([]*inventory.Stack, error) {
 	stacks, err := inventory.Scan(ctx, a.dc)
 	if err != nil {
 		return nil, err
+	}
+	if only != "" {
+		stacks = slices.DeleteFunc(stacks, func(st *inventory.Stack) bool { return st.Name != only || st.Observed })
 	}
 	inventory.Detect(ctx, stacks, a.reg, a.nc, a.cfg.Maturation)
 	rows, err := a.db.QueryContext(ctx, `SELECT stack, service, version FROM decisions WHERE kind = 'ignore'`)
@@ -220,16 +234,14 @@ func (a *app) scan(ctx context.Context) ([]*inventory.Stack, error) {
 }
 
 func (a *app) stack(ctx context.Context, name string) (*inventory.Stack, error) {
-	stacks, err := a.scan(ctx)
+	stacks, err := a.scan(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	for _, st := range stacks {
-		if st.Name == name && !st.Observed {
-			return st, nil
-		}
+	if len(stacks) == 0 {
+		return nil, fmt.Errorf("no Compose stack %q", name)
 	}
-	return nil, fmt.Errorf("no Compose stack %q", name)
+	return stacks[0], nil
 }
 
 // build identifies this binary, so that a new version of the rules recomputes the stored plans.
@@ -466,13 +478,6 @@ func serve() error {
 		return err
 	}
 	defer a.db.Close()
-	generated, err := a.cfg.EnsureToken()
-	if err != nil {
-		return err
-	}
-	if generated {
-		slog.Info("access token created", "file", filepath.Join(a.cfg.DataDir, "token"))
-	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -510,8 +515,8 @@ func serve() error {
 		}
 		for {
 			began := time.Now()
-			stacks, err := a.scan(ctx)
-			next := web.Snapshot{Stacks: stacks, At: time.Now()}
+			stacks, err := a.scan(ctx, "")
+			next := web.Snapshot{Stacks: stacks, Began: began, At: time.Now()}
 			if err != nil {
 				next.Err = err.Error()
 				slog.Error("scan", "err", err)
@@ -550,9 +555,10 @@ func serve() error {
 				}
 				slog.Info("automatic apply", "stack", st.Name, "run", id)
 				a.eng.Execute(ctx, id, st, p, false)
-				if fresh, err := a.scan(ctx); err == nil {
+				rescanned := time.Now()
+				if fresh, err := a.scan(ctx, ""); err == nil {
 					mu.Lock()
-					snap = web.Snapshot{Stacks: fresh, At: time.Now()}
+					snap = web.Snapshot{Stacks: fresh, Began: rescanned, At: time.Now()}
 					mu.Unlock()
 					for _, now := range fresh {
 						if now.Name == st.Name && !now.Observed {
@@ -573,20 +579,15 @@ func serve() error {
 	deps := web.Deps{
 		Current: current,
 		Plan:    func(stack string) (*plan.Record, error) { return a.storedPlan(ctx, stack) },
-		Apply: func(stack string, dryRun bool) (int64, error) {
-			snap := current()
-			if snap.At.IsZero() {
-				return 0, fmt.Errorf("the first scan is still checking versions, try again when it ends")
+		Apply: func(stack, author string, dryRun bool) (int64, error) {
+			st, err := a.stack(ctx, stack)
+			if err != nil {
+				return 0, err
 			}
-			for _, st := range snap.Stacks {
-				if st.Name == stack && !st.Observed {
-					return start(st, "interface", dryRun)
-				}
-			}
-			return 0, fmt.Errorf("no Compose stack %q", stack)
+			return start(st, author, dryRun)
 		},
-		Decide: func(stack, kind, service, version, until string) error {
-			if err := a.decide(ctx, stack, kind, service, version, until, "interface"); err != nil {
+		Decide: func(stack, author, kind, service, version, until string) error {
+			if err := a.decide(ctx, stack, kind, service, version, until, author); err != nil {
 				return err
 			}
 			select {
@@ -598,19 +599,50 @@ func serve() error {
 		Postponed: func(stack string) time.Time { return a.postponed(ctx, stack) },
 		Automatic: func(stack string, p *plan.Plan) (bool, string) {
 			ok, why := plan.Automatic(p, a.cfg.Auto)
+			if until := a.postponed(ctx, stack); ok && time.Now().Before(until) {
+				ok, why = false, "postponed until "+until.Format("2006-01-02")
+			}
 			if ok {
 				ok, why = a.notRetried(ctx, stack, p)
 			}
 			return ok, why
 		},
-		Run:    func(id int64) (*run.View, error) { return run.Load(ctx, a.db, id) },
-		Runs:   func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 10) },
+		Run:  func(id int64) (*run.View, error) { return run.Load(ctx, a.db, id) },
+		Runs: func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 20) },
+		Rescan: func() {
+			select {
+			case rescan <- struct{}{}:
+			default:
+			}
+		},
 		Config: a.cfg,
 	}
-	srv := &http.Server{Addr: a.cfg.Listen, Handler: web.New(a.cfg.Token, deps), ReadHeaderTimeout: 10 * time.Second}
-	errc := make(chan error, 1)
-	go func() { errc <- srv.ListenAndServe() }()
-	slog.Info("palier started", "listen", a.cfg.Listen, "data_dir", a.cfg.DataDir, "ai", a.cfg.AIKey != "", "auto", a.cfg.Auto)
+	sock := socketPath(a.cfg)
+	os.Remove(sock)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		return err
+	}
+	if err := os.Chmod(sock, 0o600); err != nil {
+		return err
+	}
+	servers := []*http.Server{{Handler: web.API(deps), ReadHeaderTimeout: 10 * time.Second}}
+	errc := make(chan error, 2)
+	go func() { errc <- servers[0].Serve(ln) }()
+	if a.cfg.Listen != "" {
+		generated, err := a.cfg.EnsureToken()
+		if err != nil {
+			return err
+		}
+		if generated {
+			slog.Info("access token created", "file", filepath.Join(a.cfg.DataDir, "token"))
+		}
+		deps.Config = a.cfg
+		srv := &http.Server{Addr: a.cfg.Listen, Handler: web.New(a.cfg.Token, deps), ReadHeaderTimeout: 10 * time.Second}
+		servers = append(servers, srv)
+		go func() { errc <- srv.ListenAndServe() }()
+	}
+	slog.Info("palier started", "socket", sock, "web", a.cfg.Listen, "data_dir", a.cfg.DataDir, "ai", a.cfg.AIKey != "", "auto", a.cfg.Auto)
 	select {
 	case err := <-errc:
 		return err
@@ -619,8 +651,12 @@ func serve() error {
 	slog.Info("shutdown requested")
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(shutdown); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	for _, srv := range servers {
+		if err := srv.Shutdown(shutdown); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
 	}
 	return nil
 }
+
+func socketPath(cfg config.Config) string { return filepath.Join(cfg.DataDir, "palier.sock") }

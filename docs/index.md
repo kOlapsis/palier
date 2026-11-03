@@ -16,7 +16,7 @@ For each stack that has a newer version, it reads the release notes of every ski
 
 ## Where to start
 
-1. [Installation](installation.md): start the container and open the interface.
+1. [Installation](installation.md): start the container and check that it runs.
 2. [Usage](usage.md): read a plan, apply it, set automatic apply.
 3. [Configuration](configuration.md): environment variables and labels.
 4. [How it works](how-it-works.md): what Palier does at each stage.

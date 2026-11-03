@@ -34,6 +34,7 @@ const cookieName = "palier_token"
 // Snapshot is the result of the last inspection.
 type Snapshot struct {
 	Stacks []*inventory.Stack
+	Began  time.Time
 	At     time.Time
 	Err    string
 }
@@ -42,20 +43,22 @@ type Snapshot struct {
 type Deps struct {
 	Current   func() Snapshot
 	Plan      func(stack string) (*plan.Record, error)
-	Apply     func(stack string, dryRun bool) (int64, error)
-	Decide    func(stack, kind, service, version, until string) error
+	Apply     func(stack, author string, dryRun bool) (int64, error)
+	Decide    func(stack, author, kind, service, version, until string) error
 	Postponed func(stack string) time.Time
 	Automatic func(stack string, p *plan.Plan) (bool, string)
 	Run       func(id int64) (*run.View, error)
 	Runs      func(stack string) ([]run.View, error)
+	Rescan    func()
 	Config    config.Config
 }
 
 type server struct {
-	token string
-	deps  Deps
-	mux   *http.ServeMux
-	pages map[string]*template.Template
+	author string
+	token  string
+	deps   Deps
+	mux    *http.ServeMux
+	pages  map[string]*template.Template
 }
 
 var stateNames = map[string]string{
@@ -122,7 +125,8 @@ func (s *server) state(st *inventory.Stack) string {
 	return "up to date"
 }
 
-func since(t time.Time) string {
+// Since says how long ago t was, in words.
+func Since(t time.Time) string {
 	if t.IsZero() {
 		return "never"
 	}
@@ -143,19 +147,21 @@ func severityRank(s string) int {
 	return 4
 }
 
-func worstFirst(list []notes.Advisory) []notes.Advisory {
+// WorstFirst returns the advisories sorted from the most to the least severe.
+func WorstFirst(list []notes.Advisory) []notes.Advisory {
 	out := slices.Clone(list)
 	slices.SortStableFunc(out, func(a, b notes.Advisory) int { return cmp.Compare(severityRank(a.Severity), severityRank(b.Severity)) })
 	return out
 }
 
-func severities(list []notes.Advisory) string {
+// Severities sums up advisories by severity, such as "3 security advisories: 1 critical, 2 high".
+func Severities(list []notes.Advisory) string {
 	counts := map[string]int{}
 	for _, a := range list {
 		counts[cmp.Or(a.Severity, "unknown")]++
 	}
 	var parts []string
-	for _, a := range worstFirst(list) {
+	for _, a := range WorstFirst(list) {
 		s := cmp.Or(a.Severity, "unknown")
 		if counts[s] > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", counts[s], s))
@@ -174,6 +180,9 @@ var labels = map[string]string{
 	"ai": "AI", "versions": "versions only",
 }
 
+// Tone returns the color family of a state: ok, accent, run, warn, bad, or "".
+func Tone(state string) string { return tones[state] }
+
 var tones = map[string]string{
 	"up to date": "ok", "done": "ok", "safe": "ok", "yes": "ok",
 	"plan ready": "accent", "running": "run", "computing plan": "run", "checking versions": "run",
@@ -183,9 +192,9 @@ var tones = map[string]string{
 
 // Crumb is one version on the path of a service, from the running version to its target.
 type Crumb struct {
-	Tag  string
-	Stop bool
-	Last bool
+	Tag  string `json:"tag"`
+	Stop bool   `json:"stop,omitempty"`
+	Last bool   `json:"last,omitempty"`
 }
 
 // crumbs returns the versions a service goes through: the running one, each target of the plan, the mandatory stops of its card marked.
@@ -273,10 +282,10 @@ func isStop(image, tag string) bool {
 
 // New returns the handler of the interface, protected by token everywhere but on /login.
 func New(token string, deps Deps) http.Handler {
-	s := &server{token: token, deps: deps, mux: http.NewServeMux(), pages: map[string]*template.Template{}}
+	s := &server{author: "interface", token: token, deps: deps, mux: http.NewServeMux(), pages: map[string]*template.Template{}}
 	funcs := template.FuncMap{
 		"state": s.state,
-		"since": since,
+		"since": Since,
 		"label": func(v string) string {
 			if l, ok := labels[v]; ok {
 				return l
@@ -288,8 +297,8 @@ func New(token string, deps Deps) http.Handler {
 		"crumbs":     crumbs,
 		"hasStop":    hasStop,
 		"inc":        func(i int) int { return i + 1 },
-		"worstFirst": worstFirst,
-		"severities": severities,
+		"worstFirst": WorstFirst,
+		"severities": Severities,
 		"when": func(v string) string {
 			t, err := time.Parse(time.RFC3339, v)
 			if err != nil {
@@ -334,20 +343,42 @@ func (s *server) stack(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := map[string]any{"Stack": st, "At": at, "Error": r.URL.Query().Get("error")}
+	v := s.view(st, at)
+	if e := r.URL.Query().Get("error"); e != "" {
+		v.Error = e
+	}
+	s.render(w, http.StatusOK, "stack.html", v)
+}
+
+// StackView is everything known about one stack: its services, their paths, its plan and its runs.
+type StackView struct {
+	Stack     *inventory.Stack   `json:"stack"`
+	At        time.Time          `json:"at"`
+	State     string             `json:"state"`
+	Paths     map[string][]Crumb `json:"paths"`
+	Record    *plan.Record       `json:"record"`
+	Auto      bool               `json:"auto"`
+	AutoWhy   string             `json:"auto_why,omitempty"`
+	Postponed string             `json:"postponed,omitempty"`
+	Runs      []run.View         `json:"runs"`
+	Error     string             `json:"error,omitempty"`
+}
+
+func (s *server) view(st *inventory.Stack, at time.Time) StackView {
+	v := StackView{Stack: st, At: at, State: s.state(st), Paths: map[string][]Crumb{}}
 	if rec, err := s.plan(st.Name); err != nil {
-		data["Error"] = err.Error()
-	} else {
-		data["Record"] = rec
-		if rec != nil {
-			data["Auto"], data["AutoWhy"] = s.automatic(st.Name, rec.Plan)
-		}
+		v.Error = err.Error()
+	} else if v.Record = rec; rec != nil {
+		v.Auto, v.AutoWhy = s.automatic(st.Name, rec.Plan)
+	}
+	for _, svc := range st.Services {
+		v.Paths[svc.Name] = crumbs(svc, v.Record)
 	}
 	if until := s.deps.Postponed(st.Name); time.Now().Before(until) {
-		data["Postponed"] = until.Format("2006-01-02")
+		v.Postponed = until.Format("2006-01-02")
 	}
-	data["Runs"], _ = s.deps.Runs(st.Name)
-	s.render(w, http.StatusOK, "stack.html", data)
+	v.Runs, _ = s.deps.Runs(st.Name)
+	return v
 }
 
 func back(w http.ResponseWriter, r *http.Request, err error) {
@@ -360,7 +391,7 @@ func back(w http.ResponseWriter, r *http.Request, err error) {
 
 func (s *server) apply(dryRun bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := s.deps.Apply(r.PathValue("name"), dryRun)
+		id, err := s.deps.Apply(r.PathValue("name"), s.author, dryRun)
 		if err != nil {
 			back(w, r, err)
 			return
@@ -371,21 +402,20 @@ func (s *server) apply(dryRun bool) http.HandlerFunc {
 
 func (s *server) decide(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		service, version, until := r.FormValue("service"), r.FormValue("version"), r.FormValue("until")
-		var err error
-		switch {
-		case kind == "ignore" && (service == "" || version == ""):
-			err = errors.New("service and version to ignore are missing")
-		case kind == "postpone":
-			if _, e := time.Parse("2006-01-02", until); e != nil {
-				err = errors.New("invalid postpone date")
-			}
-		}
-		if err == nil {
-			err = s.deps.Decide(r.PathValue("name"), kind, service, version, until)
-		}
-		back(w, r, err)
+		back(w, r, s.record(r.PathValue("name"), kind, r.FormValue("service"), r.FormValue("version"), r.FormValue("until")))
 	}
+}
+
+func (s *server) record(stack, kind, service, version, until string) error {
+	switch {
+	case kind == "ignore" && (service == "" || version == ""):
+		return errors.New("service and version to ignore are missing")
+	case kind == "postpone":
+		if _, err := time.Parse("2006-01-02", until); err != nil {
+			return errors.New("invalid postpone date, expected YYYY-MM-DD")
+		}
+	}
+	return s.deps.Decide(stack, s.author, kind, service, version, until)
 }
 
 func (s *server) run(w http.ResponseWriter, r *http.Request) {

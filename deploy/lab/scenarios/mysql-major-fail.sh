@@ -3,7 +3,7 @@ f=/apps/mysql/compose.yaml
 sed -i -e 's|image: docker.io/library/mysql:.*|image: docker.io/library/mysql:8.4.2|' -e 's|- data-26:/var/lib/mysql$|- data:/var/lib/mysql|' -e '/^  data-26: {}$/d' "$f"
 (cd /apps/mysql && docker compose up -d --wait >/dev/null 2>&1); docker volume rm mysql_data-26 >/dev/null 2>&1 || true
 until docker exec -e MYSQL_PWD=palier-lab-password mysql-mysql-1 mysql -uroot -h 127.0.0.1 -e 'SELECT 1' >/dev/null 2>&1; do sleep 2; done
-docker exec palier-palier-1 /palier plan mysql >/dev/null 2>&1
+docker exec palier-palier-1 palier plan mysql --once >/dev/null 2>&1
 count() { docker exec -e MYSQL_PWD=palier-lab-password mysql-mysql-1 mysql -uroot -N -B -e "SELECT CONCAT(VERSION(), '; orders ', COUNT(*)) FROM shop.orders" 2>&1; }
 docker exec -e MYSQL_PWD=palier-lab-password mysql-mysql-1 mysql -uroot -e "INSERT INTO shop.customers (name) VALUES ('Hedy-$(date +%s)'); INSERT INTO shop.orders (customer_id, total) SELECT MAX(id), 42.00 FROM shop.customers"
 echo "before (one order added outside the seed): $(count)"

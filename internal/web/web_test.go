@@ -114,10 +114,36 @@ func TestPlanOlderThanLastRunIsHidden(t *testing.T) {
 
 func TestSeverities(t *testing.T) {
 	list := []notes.Advisory{{ID: "a", Severity: "medium"}, {ID: "b", Severity: "high"}, {ID: "c", Severity: "critical"}, {ID: "d", Severity: "high"}, {ID: "e"}}
-	if got, want := severities(list), "5 security advisories: 1 critical, 2 high, 1 medium, 1 unknown"; got != want {
+	if got, want := Severities(list), "5 security advisories: 1 critical, 2 high, 1 medium, 1 unknown"; got != want {
 		t.Errorf("severities = %q, want %q", got, want)
 	}
-	if got := worstFirst(list); got[0].ID != "c" || got[1].ID != "b" || got[2].ID != "d" || got[4].ID != "e" {
+	if got := WorstFirst(list); got[0].ID != "c" || got[1].ID != "b" || got[2].ID != "d" || got[4].ID != "e" {
 		t.Errorf("worstFirst order = %v", got)
+	}
+}
+
+func TestAPIStatus(t *testing.T) {
+	gitlab := &inventory.Stack{Name: "gitlab", Services: []*inventory.Service{
+		{Name: "gitlab", Role: "application", Image: "docker.io/gitlab/gitlab-ce", Tag: "18.5.3-ce.0", Version: "18.5.3-ce.0", Available: []inventory.Release{{Tag: "18.8.4-ce.0"}},
+			Advisories: []notes.Advisory{{Severity: "high"}, {Severity: "critical"}}},
+		{Name: "runner", Role: "dependency", Tag: "latest", DetectionError: "401"},
+	}}
+	p := &plan.Plan{Steps: []plan.Step{{Changes: []plan.Change{{Service: "gitlab", From: "18.5.3-ce.0", To: "18.8.4-ce.0"}}}}}
+	h := API(Deps{
+		Current:   func() Snapshot { return Snapshot{Stacks: []*inventory.Stack{gitlab}, At: time.Now()} },
+		Runs:      func(string) ([]run.View, error) { return []run.View{{ID: 15, Status: "stopped", Error: "stopped after step 1 of 3: background_migrations still failing\nmore"}}, nil },
+		Plan:      func(string) (*plan.Record, error) { return &plan.Record{Stack: "gitlab", Plan: p, Created: time.Now().Add(-time.Hour)}, nil },
+		Postponed: func(string) time.Time { return time.Time{} },
+	})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/status", nil))
+	want := `"stacks":[{"name":"gitlab","state":"stopped","running":"18.5.3-ce.0","target":"18.8.4-ce.0","note":"versions of runner unknown; 2 security advisories, 1 critical; 1 step; run 15: stopped after step 1 of 3: background_migrations still failing"}]`
+	if w.Code != 200 || !strings.Contains(w.Body.String(), want) {
+		t.Errorf("%d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/stacks/nope", nil))
+	if w.Code != 400 || !strings.Contains(w.Body.String(), `"error":"no stack \"nope\""`) {
+		t.Errorf("%d %s", w.Code, w.Body.String())
 	}
 }

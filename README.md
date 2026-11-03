@@ -71,7 +71,7 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 
 By default (`PALIER_AUTO=all`), Palier applies any complete plan on its own, major versions included, one stack after the other. It asks for a decision only for what it cannot do alone: a blocking step, an irreversible step or an incomplete plan.
 
-Prefer to stay in control? `minor` excludes major versions, `patch` keeps only patch releases, `off` makes you approve everything in the interface.
+Prefer to stay in control? `minor` excludes major versions, `patch` keeps only patch releases, `off` makes you approve everything with `palier apply`.
 
 ## Quick start
 
@@ -82,12 +82,10 @@ name: palier
 
 services:
   palier:
-    image: ghcr.io/kolapsis/palier:0.1.0
+    image: ghcr.io/kolapsis/palier:0.2.0
     restart: unless-stopped
     group_add:
       - ${DOCKER_GID:?}
-    ports:
-      - "127.0.0.1:8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - palier-data:/var/lib/palier
@@ -107,10 +105,10 @@ volumes:
 
 ```sh
 DOCKER_GID=$(stat -c %g /var/run/docker.sock) docker compose up -d
-docker exec palier /palier token
+docker exec palier palier
 ```
 
-Open http://127.0.0.1:8080 and paste the token. The stack list appears after the first scan.
+The state of every stack appears as soon as the containers are read, and the versions after the first scan.
 
 Three things to get right:
 
@@ -130,28 +128,44 @@ Three things to get right:
 | `PALIER_WEBHOOK_URL` | empty | JSON on every plan ready, run end, rollback or failure |
 | `PALIER_GITHUB_TOKEN`, `PALIER_GITLAB_TOKEN` | empty | Notes and security advisories without the anonymous limit |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror |
-| `PALIER_TOKEN` | generated at first start | Access to the interface |
+| `PALIER_LISTEN` | empty | Address of the web interface, off when empty (`:8080` to turn it on) |
+| `PALIER_TOKEN` | generated at first start | Access to the web interface |
 
 The full list is in [docs/configuration.md](docs/configuration.md).
 
 ## Command line
 
-The web interface and the command line use the same code:
+Palier runs in its container. You talk to it with `docker exec`:
 
 ```sh
-palier serve                   # web interface and scans (default)
-palier scan                    # inventory and available versions
-palier plan <stack>            # compute and print the plan
-palier apply <stack> --dry-run # show what would be done
-palier apply <stack>           # apply
-palier runs                    # run history
-palier token                   # print the interface token
+docker exec palier palier                       # state of every stack
+docker exec palier palier show gitlab           # services, advisories, upgrade path, plan and its sources
+docker exec -it palier palier apply gitlab      # shows the plan, asks, then follows the run live
+docker exec palier palier apply gitlab --dry-run
+docker exec palier palier runs                  # last runs
+docker exec palier palier log 14 -f             # log of a run
+docker exec palier palier ignore gitlab gitlab 18.11.4-ce.0
+docker exec palier palier postpone gitlab 2026-12-01
+docker exec palier palier scan                  # scan now
 ```
+
+```
+Last scan 4 min ago.
+
+STACK      STATE              RUNNING      TARGET        NOTE
+authentik  awaiting decision  2025.8.3     2026.8.5      13 security advisories, 1 critical; 6 steps
+gitlab     stopped            18.5.3-ce.0  18.11.4-ce.0  2 steps; run 15: stopped after step 1 of 3: background_migrations still failing…
+traefik    up to date         v3.5.2
+```
+
+Every command takes `--json`. `apply` asks for confirmation in a terminal; `--yes` skips it, `--detach` returns as soon as the run starts. The run goes on in Palier if you close the terminal.
+
+The web interface is optional: set `PALIER_LISTEN=:8080`, publish the port, and sign in with the token from `docker exec palier palier token`.
 
 ## Limitations
 
 - One Palier per Docker machine: no agent, no remote machine.
-- A single token for the interface: no accounts or roles.
+- A single token for the web interface: no accounts or roles.
 - The webhook is the only alert.
 - Databases other than PostgreSQL, MySQL and MariaDB stay blocked on their major version.
 - Notes outside GitHub and gitlab.com are not read.

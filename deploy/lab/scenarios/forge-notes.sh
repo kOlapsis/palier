@@ -26,9 +26,9 @@ for st in json.load(sys.stdin):
 }
 echo "== scan with the lab token"
 sql "DELETE FROM releases WHERE repo LIKE 'gitlab.com/%'"
-$PALIER exec -T palier /palier scan 2>/dev/null | crafty
+$PALIER exec -T palier palier scan --once 2>/dev/null | crafty
 echo "== scan with an invalid token (the notes then come from the cache)"
-$PALIER exec -T -e PALIER_GITLAB_TOKEN=invalid palier /palier scan 2>/dev/null | crafty
+$PALIER exec -T -e PALIER_GITLAB_TOKEN=invalid palier palier scan --once 2>/dev/null | crafty
 
 echo "== a republished Docker Hub tag: traefik/whoami:v1.9.0 locally holds the content of v1.8.7"
 docker pull -q traefik/whoami:v1.8.7 >/dev/null
@@ -40,8 +40,8 @@ docker compose -f /apps/hubrepub/compose.yaml create >/dev/null 2>&1
 echo "== mirror: a server that logs requests and answers 404, to see what Palier asks it"
 pkill -f 'http.server 5999' 2>/dev/null || true
 mkdir -p /tmp/mirror && cd /tmp/mirror && (python3 -m http.server 5999 >/tmp/mirror.log 2>&1 &) && sleep 1
-$PALIER exec -T -e PALIER_REGISTRY_MIRROR=http://10.10.50.10:5999 palier /palier scan 2>/dev/null >/tmp/scan-logger.json
-$PALIER exec -T palier /palier scan 2>/dev/null >/tmp/scan-gcr.json
+$PALIER exec -T -e PALIER_REGISTRY_MIRROR=http://10.10.50.10:5999 palier palier scan --once 2>/dev/null >/tmp/scan-logger.json
+$PALIER exec -T palier palier scan --once 2>/dev/null >/tmp/scan-gcr.json
 pkill -f 'http.server 5999' || true
 echo "requests received by the fake mirror: $(grep -c '/v2/' /tmp/mirror.log)"
 grep -o '"GET /v2/[^"]*" [0-9]*' /tmp/mirror.log | sed 's/sha256:\(.\{12\}\)[^ ]*/sha256:\1…/' | sort | uniq -c | head

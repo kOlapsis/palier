@@ -5,7 +5,7 @@ Palier runs in a container on the machine whose stacks it updates.
 ## The image
 
 ```
-ghcr.io/kolapsis/palier:0.1.0
+ghcr.io/kolapsis/palier:0.2.0
 ```
 
 It is published for `linux/amd64` and `linux/arm64`. It contains only the `palier` binary, the `docker compose` binary and the root certificates, and runs as a non-root user.
@@ -15,7 +15,7 @@ It is published for `linux/amd64` and `linux/arm64`. It contains only the `palie
 Each release image is built by the `release` workflow of this repository, signed with Sigstore, and carries its build provenance and SBOM. Check the signature with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/):
 
 ```sh
-cosign verify ghcr.io/kolapsis/palier:0.1.0 \
+cosign verify ghcr.io/kolapsis/palier:0.2.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity https://github.com/kOlapsis/palier/.github/workflows/release.yml@refs/tags/v0.1.0
 ```
@@ -23,7 +23,7 @@ cosign verify ghcr.io/kolapsis/palier:0.1.0 \
 And the build provenance with the GitHub CLI:
 
 ```sh
-gh attestation verify oci://ghcr.io/kolapsis/palier:0.1.0 --owner kOlapsis
+gh attestation verify oci://ghcr.io/kolapsis/palier:0.2.0 --owner kOlapsis
 ```
 
 To build it yourself instead: `docker build -t palier:local -f deploy/Dockerfile .`
@@ -34,7 +34,6 @@ To build it yourself instead: `docker build -t palier:local -f deploy/Dockerfile
 docker run -d --name palier --restart unless-stopped \
   --group-add "$(stat -c %g /var/run/docker.sock)" \
   --read-only --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE \
-  -p 127.0.0.1:8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v palier-data:/var/lib/palier \
   -v /srv/stacks:/srv/stacks \
@@ -42,7 +41,7 @@ docker run -d --name palier --restart unless-stopped \
   -e DOCKER_CONFIG=/etc/palier-docker \
   -e PALIER_AI_KEY=sk-ant-... \
   -e PALIER_GITHUB_TOKEN=ghp_... \
-  ghcr.io/kolapsis/palier:0.1.0
+  ghcr.io/kolapsis/palier:0.2.0
 ```
 
 ## Run with Compose
@@ -52,12 +51,10 @@ name: palier
 
 services:
   palier:
-    image: ghcr.io/kolapsis/palier:0.1.0
+    image: ghcr.io/kolapsis/palier:0.2.0
     restart: unless-stopped
     group_add:
       - ${DOCKER_GID:?}
-    ports:
-      - "127.0.0.1:8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - palier-data:/var/lib/palier
@@ -98,17 +95,23 @@ A GitHub token with no particular permission is enough: Palier only reads public
 
 **`CHOWN` and `DAC_OVERRIDE`.** Palier rewrites Compose files while keeping their owner, group and mode. These two capabilities allow that, and everything else is dropped. Do not add `no-new-privileges`: it would cancel these capabilities, which the binary carries as file capabilities.
 
-## Open the interface
-
-The interface listens on port 8080. It is protected by a token, created at first start in the data directory:
+## Check that it runs
 
 ```sh
-docker exec palier /palier token
+docker exec palier palier
 ```
 
-Open `http://127.0.0.1:8080`, paste the token, and the stack list appears after the first scan. To choose the token yourself, set `PALIER_TOKEN`.
+The stacks appear as soon as the containers are read, marked "checking versions" until the first scan ends. It takes a few minutes; the [Usage](usage.md#first-start) page describes what happens in the meantime.
 
-The first start takes a few minutes, and the page updates by itself. The [Usage](usage.md#first-start) page describes what happens in the meantime.
+## Turn on the web interface
+
+The web interface is off by default. To use it, set `PALIER_LISTEN=:8080` and publish the port, for example `-p 127.0.0.1:8080:8080`. It is protected by a token, created at first start in the data directory:
+
+```sh
+docker exec palier palier token
+```
+
+Open `http://127.0.0.1:8080` and paste the token. To choose the token yourself, set `PALIER_TOKEN`.
 
 !!! note "Without an AI key"
     Palier works without `PALIER_AI_KEY`, but loses most of its value. It detects versions and proposes plans computed from versions alone, with an "unknown" risk level. These plans are applied on their own like the others, protected by the rollback, but nobody has read what changes, and required steps and dependencies are not taken into account.

@@ -34,7 +34,7 @@ apply_and_report() {
 		docker logs palier-next 2>/dev/null | python3 -c 'import json,sys; t=sys.stdin.read(); v=json.loads(t[t.index("{\n"):]); print("run", v["id"], v["status"], (v.get("error") or "")[:400]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:200]) for e in v["events"]]' || docker logs --tail 5 palier-next
 		return
 	fi
-	$PALIER exec -T palier /palier apply "$1" </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("run", v["id"], v["status"], (v.get("error") or "")[:400]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:200]) for e in v["events"]]' || true
+	$PALIER exec -T palier palier apply "$1" --yes --json </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("run", v["id"], v["status"], (v.get("error") or "")[:400]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:200]) for e in v["events"]]' || true
 }
 fake_step_image() {
 	step=$(sql "SELECT json_extract(body, '$.steps[$2].changes[0].service') || ' ' || json_extract(body, '$.steps[$2].changes[0].to') FROM plans WHERE stack = '$1'")

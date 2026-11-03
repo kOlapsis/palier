@@ -3,7 +3,7 @@ f=/apps/mariadb/compose.yaml
 sed -i -e 's|image: docker.io/library/mariadb:.*|image: docker.io/library/mariadb:10.11.9|' -e 's|- data-13:/var/lib/mysql$|- data:/var/lib/mysql|' -e '/^  data-13: {}$/d' "$f"
 (cd /apps/mariadb && docker compose up -d --wait >/dev/null 2>&1); docker volume rm mariadb_data-13 >/dev/null 2>&1 || true
 until docker exec -e MYSQL_PWD=palier-lab-password mariadb-mariadb-1 mariadb -uroot -h 127.0.0.1 -e 'SELECT 1' >/dev/null 2>&1; do sleep 2; done
-docker exec palier-palier-1 /palier plan mariadb >/dev/null 2>&1
+docker exec palier-palier-1 palier plan mariadb --once >/dev/null 2>&1
 count() { docker exec -e MYSQL_PWD=palier-lab-password mariadb-mariadb-1 mariadb -uroot -N -B -e "SELECT CONCAT(VERSION(), '; orders ', COUNT(*)) FROM shop.orders" 2>&1; }
 docker exec -e MYSQL_PWD=palier-lab-password mariadb-mariadb-1 mariadb -uroot -e "INSERT INTO shop.customers (name) VALUES ('Barbara-$(date +%s)'); INSERT INTO shop.orders (customer_id, total) SELECT MAX(id), 42.00 FROM shop.customers"
 echo "before (one order added outside the seed): $(count)"
