@@ -16,8 +16,9 @@ import (
 
 // Levels of a problem.
 const (
-	Alert = "alert"
-	Info  = "info"
+	Alert  = "alert"
+	Info   = "info"
+	Notice = "notice"
 )
 
 // Kinds of message.
@@ -128,7 +129,12 @@ func (n *Notifier) Sync(ctx context.Context, problems []Problem) error {
 	seen := map[string]bool{}
 	for _, p := range problems {
 		seen[p.Key] = true
-		if slices.ContainsFunc(open, func(i Incident) bool { return i.Key == p.Key }) {
+		if i := slices.IndexFunc(open, func(i Incident) bool { return i.Key == p.Key }); i >= 0 {
+			if open[i].Level != p.Level {
+				if _, err := n.db.ExecContext(ctx, `UPDATE incidents SET level = ? WHERE key = ? AND resolved = ''`, p.Level, p.Key); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if p.Flaky {
@@ -141,7 +147,9 @@ func (n *Notifier) Sync(ctx context.Context, problems []Problem) error {
 			p.Key, p.Stack, p.Level, p.Title, p.Detail, now()); err != nil {
 			return err
 		}
-		n.queue(ctx, n.message(Opened, p.Level, p.Stack, p.Title, p.Detail, p.Action, p.Path, now()))
+		if p.Level != Notice {
+			n.queue(ctx, n.message(Opened, p.Level, p.Stack, p.Title, p.Detail, p.Action, p.Path, now()))
+		}
 	}
 	for key := range n.pending {
 		if !seen[key] {
@@ -155,7 +163,9 @@ func (n *Notifier) Sync(ctx context.Context, problems []Problem) error {
 		if _, err := n.db.ExecContext(ctx, `UPDATE incidents SET resolved = ? WHERE key = ? AND resolved = ''`, now(), i.Key); err != nil {
 			return err
 		}
-		n.queue(ctx, n.message(Resolved, i.Level, i.Stack, i.Title, i.Detail, "", "", i.Opened))
+		if i.Level != Notice {
+			n.queue(ctx, n.message(Resolved, i.Level, i.Stack, i.Title, i.Detail, "", "", i.Opened))
+		}
 	}
 	return nil
 }

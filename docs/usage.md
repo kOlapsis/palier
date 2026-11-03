@@ -87,10 +87,11 @@ Palier works on its own, so it only writes when there is something to know, and 
 | Level | When | Examples |
 |---|---|---|
 | Alert | Palier can no longer vouch for a stack. | A rollback failed. Palier cannot read the Docker engine. A critical or high security advisory touches a running version and Palier cannot fix it on its own. |
-| Information | An update did not go through, but the stack runs. | An update rolled back, not started (backup hook, migrations still running) or stopped after a verified step. A plan waits for a decision. The versions of a service cannot be read (seen in two scans in a row, so that a passing request limit does not write). |
+| Information | An update did not go through, but the stack runs. | An update rolled back, not started (backup hook, migrations still running) or stopped after a verified step. A plan waits for a decision. |
+| Notice | Shown, never emailed. | The versions of a service cannot be read (seen in two scans in a row). They appear in the weekly report while they last. |
 | Weekly report | On Monday from 8:00, and only when something happened since the last one. | The stacks updated, with their versions before and after; the updates that did not go through, grouped by stack; the problems opened, resolved and still open. |
 
-`PALIER_EMAIL_LEVEL=alert` keeps the alerts and the weekly report only. A message that cannot be sent is tried again 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours later, without ever holding up a run. Problems are recorded even without a channel: `palier` lists the open ones above the stacks, and the home page of the web interface shows them too.
+`PALIER_EMAIL_LEVEL=alert` keeps the alerts and the weekly report only. A message that cannot be sent is tried again 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours later, without ever holding up a run. Problems are recorded even without a channel. `palier` names the open alerts above the stacks and counts the other problems (`palier notify` lists them all); the home page of the web interface shows the alerts in one line and each problem under the status of its stack.
 
 ```sh
 palier notify          # channels, last message sent or its error, open problems

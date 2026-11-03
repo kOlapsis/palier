@@ -164,3 +164,20 @@ func TestLocal(t *testing.T) {
 		}
 	}
 }
+
+func TestNoticeIsNeverSent(t *testing.T) {
+	ctx := context.Background()
+	n, f := setup(t, Info)
+	n.Sync(ctx, []Problem{{Key: "a", Level: Info, Title: "versions unknown"}})
+	n.Deliver(ctx)
+	n.Sync(ctx, []Problem{{Key: "a", Level: Notice, Title: "versions unknown"}})
+	n.Sync(ctx, nil)
+	n.Sync(ctx, []Problem{{Key: "b", Level: Notice, Title: "other"}})
+	n.Deliver(ctx)
+	if got := subjects(f); got != "versions unknown" {
+		t.Fatalf("sent: %s", got)
+	}
+	if open, _ := n.Incidents(ctx, true); len(open) != 1 || open[0].Level != Notice {
+		t.Errorf("open: %+v", open)
+	}
+}

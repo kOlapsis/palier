@@ -132,6 +132,41 @@ func (s *server) state(st *inventory.Stack) string {
 	return "up to date"
 }
 
+// Problems is what the open incidents give the stack list: the first alerts, how many others, and two incidents per stack.
+type Problems struct {
+	Alerts    []notify.Incident
+	More      int
+	Others    int
+	ByStack   map[string][]notify.Incident
+	MoreStack map[string]int
+}
+
+// Summarize groups the open incidents for a list of stacks that stays readable however many there are.
+func Summarize(list []notify.Incident) Problems {
+	p := Problems{ByStack: map[string][]notify.Incident{}, MoreStack: map[string]int{}}
+	for _, i := range list {
+		if i.Level == notify.Alert {
+			if len(p.Alerts) < 3 {
+				p.Alerts = append(p.Alerts, i)
+			} else {
+				p.More++
+			}
+		} else {
+			p.Others++
+		}
+		if i.Stack == "" {
+			continue
+		}
+		i.Title = strings.TrimPrefix(i.Title, i.Stack+": ")
+		if len(p.ByStack[i.Stack]) < 2 {
+			p.ByStack[i.Stack] = append(p.ByStack[i.Stack], i)
+		} else {
+			p.MoreStack[i.Stack]++
+		}
+	}
+	return p
+}
+
 // Since says how long ago t was, in words.
 func Since(t time.Time) string {
 	if t.IsZero() {
@@ -321,8 +356,8 @@ func New(deps Deps) http.Handler {
 	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusOK, "index.html", struct {
 			Snapshot
-			Incidents []notify.Incident
-		}{s.deps.Current(), s.incidents()})
+			Problems
+		}{s.deps.Current(), Summarize(s.incidents())})
 	})
 	s.mux.HandleFunc("GET /stacks/{name}", s.stack)
 	s.mux.HandleFunc("POST /stacks/{name}/apply", s.apply(false))

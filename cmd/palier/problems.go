@@ -96,7 +96,7 @@ func problems(snap web.Snapshot, last map[string]run.View, plans map[string]*pla
 				}
 			}
 			if s.DetectionError != "" {
-				out = append(out, notify.Problem{Key: st.Name + "/" + s.Name + ":detection", Stack: st.Name, Level: notify.Info, Title: st.Name + ": versions of " + s.Name + " unknown",
+				out = append(out, notify.Problem{Key: st.Name + "/" + s.Name + ":detection", Stack: st.Name, Level: notify.Notice, Title: st.Name + ": versions of " + s.Name + " unknown",
 					Detail: s.DetectionError, Action: "Palier cannot update this service until it reads its registry again. Credentials and request limits are the usual causes.", Path: page, Flaky: true})
 			}
 		}

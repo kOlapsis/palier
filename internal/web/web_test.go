@@ -11,6 +11,7 @@ import (
 	"github.com/kolapsis/palier/internal/config"
 	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/notes"
+	"github.com/kolapsis/palier/internal/notify"
 	"github.com/kolapsis/palier/internal/plan"
 	"github.com/kolapsis/palier/internal/run"
 )
@@ -183,5 +184,23 @@ func TestRegistryHook(t *testing.T) {
 		return w.Code
 	})(); code != 404 {
 		t.Errorf("without a secret: %d", code)
+	}
+}
+
+func TestSummarize(t *testing.T) {
+	var list []notify.Incident
+	for _, st := range []string{"help", "supabase", "a", "b"} {
+		list = append(list, notify.Incident{Stack: st, Level: "alert", Title: st + ": 1 critical advisory"})
+	}
+	for range 3 {
+		list = append(list, notify.Incident{Stack: "grafana", Level: "notice", Title: "grafana: versions of loki unknown"})
+	}
+	list = append(list, notify.Incident{Level: "alert", Title: "Palier cannot read the Docker engine"})
+	p := Summarize(list)
+	if len(p.Alerts) != 3 || p.More != 2 || p.Others != 3 {
+		t.Fatalf("%+v", p)
+	}
+	if g := p.ByStack["grafana"]; len(g) != 2 || g[0].Title != "versions of loki unknown" || p.MoreStack["grafana"] != 1 {
+		t.Errorf("grafana: %+v, more %d", g, p.MoreStack["grafana"])
 	}
 }

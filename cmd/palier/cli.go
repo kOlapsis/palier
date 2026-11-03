@@ -203,7 +203,13 @@ func (c *cli) status() error {
 	if st.Error != "" {
 		c.line(c.paint("bad", clean(st.Error)))
 	}
-	c.incidents(st.Incidents)
+	sum := web.Summarize(st.Incidents)
+	for _, a := range sum.Alerts {
+		c.line(c.paint("bad", c.bold("alert: ")+clean(a.Title)))
+	}
+	if more := sum.More + sum.Others; more > 0 {
+		c.line(c.dim(fmt.Sprintf("%d other open problem%s: palier notify", more, plural(more))))
+	}
 	if len(st.Stacks) == 0 {
 		c.line("No container on this Docker engine yet.")
 		return nil

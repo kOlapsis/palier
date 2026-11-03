@@ -5,7 +5,7 @@
 <p class="meta">{{if .At.IsZero}}First scan in progress.{{else}}Last scan {{since .At}}.{{end}}</p>
 </div>
 {{with .Err}}<p class="notice bad">{{.}}</p>{{end}}
-{{range .Incidents}}<p class="notice {{if eq .Level "alert"}}bad{{else}}warn{{end}}"><strong>{{if eq .Level "alert"}}Alert{{else}}Information{{end}}:</strong> {{.Title}}<span class="muted">, since {{when .Opened}}</span></p>{{end}}
+{{with .Alerts}}<p class="notice bad"><strong>Alert{{if or (gt (len .) 1) $.More}}s{{end}}:</strong> {{range $i, $a := .}}{{if $i}} · {{end}}{{if $a.Stack}}<a href="/stacks/{{$a.Stack}}">{{$a.Title}}</a>{{else}}{{$a.Title}}{{end}}{{end}}{{with $.More}} · and {{.}} more{{end}}</p>{{end}}
 {{if .Stacks}}
 <div class="panel">
 <table>
@@ -13,7 +13,7 @@
 <tbody>
 {{range .Stacks}}{{$state := state .}}<tr>
 <td class="name"><a href="/stacks/{{.Name}}">{{.Name}}</a>{{with .WorkingDir}}<span class="sub mono">{{.}}</span>{{end}}</td>
-<td><span class="pill {{tone $state}}">{{$state}}</span></td>
+<td><span class="pill {{tone $state}}">{{$state}}</span>{{range index $.ByStack .Name}}<span class="sub problem level-{{.Level}}">{{.Title}}</span>{{end}}{{with index $.MoreStack .Name}}<span class="sub">and {{.}} more</span>{{end}}</td>
 <td>{{range $i, $s := .Services}}{{if $i}}, {{end}}{{$s.Name}}{{end}}</td>
 </tr>
 {{end}}</tbody>
