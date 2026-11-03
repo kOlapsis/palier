@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kolapsis/palier/internal/config"
 	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/notes"
 	"github.com/kolapsis/palier/internal/plan"
@@ -137,5 +138,45 @@ func TestAPIStatus(t *testing.T) {
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/stacks/nope", nil))
 	if w.Code != 400 || !strings.Contains(w.Body.String(), `"error":"no stack \"nope\""`) {
 		t.Errorf("%d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRegistryHook(t *testing.T) {
+	secret := strings.Repeat("a1", 16)
+	scans := 0
+	deps := Deps{
+		Current: func() Snapshot { return Snapshot{} },
+		Runs:    func(string) ([]run.View, error) { return nil, nil },
+		Plan:    func(string) (*plan.Record, error) { return nil, nil },
+		Rescan:  func() { scans++ },
+		Config:  config.Config{HookSecret: secret, OIDCIssuer: "https://idp.invalid", OIDCClientID: "palier", OIDCAdmins: []string{"admins"}},
+	}
+	h := New(deps)
+	do := func(method, path string) int {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(`{"push_data":{"tag":"evil"}}`)))
+		return w.Code
+	}
+	for _, c := range []struct {
+		method, path string
+		code, scans  int
+	}{
+		{"POST", "/hooks/registry/" + secret, 202, 1},
+		{"POST", "/hooks/registry/" + secret, 202, 1},
+		{"POST", "/hooks/registry/" + secret[:31], 404, 1},
+		{"POST", "/hooks/registry/", 404, 1},
+		{"GET", "/hooks/registry/" + secret, 404, 1},
+	} {
+		if code := do(c.method, c.path); code != c.code || scans != c.scans {
+			t.Errorf("%s %s: %d with %d scans, want %d with %d", c.method, c.path, code, scans, c.code, c.scans)
+		}
+	}
+	deps.Config.HookSecret = ""
+	if code := (func() int {
+		w := httptest.NewRecorder()
+		New(deps).ServeHTTP(w, httptest.NewRequest("POST", "/hooks/registry/", nil))
+		return w.Code
+	})(); code != 404 {
+		t.Errorf("without a secret: %d", code)
 	}
 }

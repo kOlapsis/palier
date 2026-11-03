@@ -1,8 +1,10 @@
 package registry
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -44,5 +46,49 @@ func TestCredentials(t *testing.T) {
 	}
 	if auths, err := LoadAuths(t.TempDir()); err != nil || auths != nil {
 		t.Fatalf("no config: %v %v", auths, err)
+	}
+}
+
+func TestCredentialHelpers(t *testing.T) {
+	bin := t.TempDir()
+	write := func(name, script string) {
+		if err := os.WriteFile(filepath.Join(bin, "docker-credential-"+name), []byte("#!/bin/sh\n"+script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("fake", `read server; echo "{\"ServerURL\":\"$server\",\"Username\":\"user-$server\",\"Secret\":\"pw\"}"`)
+	write("token", `echo '{"Username":"<token>","Secret":"refresh"}'`)
+	write("missing", `echo "credentials not found in native keychain"; exit 1`)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"auths":{"ghcr.io":{"auth":"Z2g6cHc="}},
+		"credHelpers":{"123456789012.dkr.ecr.eu-west-3.amazonaws.com":"fake","https://index.docker.io/v1/":"fake","quay.io":"token","gone.io":"absent"},
+		"credsStore":"missing"}`), 0o600)
+	auths, err := LoadAuths(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := New(nil, auths, "")
+	decode := func(s string) string { b, _ := base64.StdEncoding.DecodeString(s); return string(b) }
+	if got := decode(c.credentials("123456789012.dkr.ecr.eu-west-3.amazonaws.com")); got != "user-123456789012.dkr.ecr.eu-west-3.amazonaws.com:pw" {
+		t.Errorf("ecr: %q", got)
+	}
+	if got := decode(c.credentials("docker.io")); got != "user-https://index.docker.io/v1/:pw" {
+		t.Errorf("docker hub: %q", got)
+	}
+	if c.credentials("ghcr.io") != "Z2g6cHc=" {
+		t.Error("auths must win over the helpers")
+	}
+	for _, domain := range []string{"quay.io", "gone.io", "registry.example.com"} {
+		if got := c.credentials(domain); got != "" {
+			t.Errorf("%s: %q, want no credentials", domain, got)
+		}
+	}
+	if _, err := runHelper("absent", "gone.io"); err == nil || !strings.Contains(err.Error(), "mount it") {
+		t.Errorf("missing helper: %v", err)
+	}
+	os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"credHelpers":{"x.io":"../../bin/sh"}}`), 0o600)
+	if _, err := LoadAuths(dir); err == nil {
+		t.Error("a helper name with a path was accepted")
 	}
 }

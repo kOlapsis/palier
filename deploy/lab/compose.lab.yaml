@@ -16,6 +16,9 @@ services:
       PALIER_SMTP_FROM: palier@lab.test
       PALIER_EMAIL_TO: benjamin@lab.test
       PALIER_PUBLIC_URL: ${LAB_PUBLIC_URL:?}
+      PALIER_REGISTRY_WEBHOOK_SECRET: 0b5d6f1c9a7e4d2b8f3a6c1e9d7b5a3f2e8c4a6b1d9f7e3c5a2b8d6f4e1c9a7b
+      DOCKER_index_docker_io_USR: ${LAB_DOCKERHUB_USR:-}
+      DOCKER_index_docker_io_PSW: ${LAB_DOCKERHUB_PSW:-}
       DOCKER_CONFIG: /etc/palier/docker
       PALIER_AI_KEY: ${PALIER_AI_KEY:-}
       PALIER_GITLAB_TOKEN: ${PALIER_GITLAB_TOKEN:-}
@@ -26,6 +29,7 @@ services:
     volumes:
       - /apps:/apps
       - /opt/palier/docker:/etc/palier/docker:ro
+      - /opt/palier/bin/docker-credential-env:/usr/local/bin/docker-credential-env:ro
 
   webhook-tester:
     image: ghcr.io/tarampampam/webhook-tester:2

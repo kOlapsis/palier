@@ -50,3 +50,11 @@ func TestOIDC(t *testing.T) {
 		}
 	}
 }
+
+func TestHookSecret(t *testing.T) {
+	for secret, ok := range map[string]bool{strings.Repeat("ab", 16): true, "short": false, strings.Repeat("a", 31) + "/": false} {
+		if _, err := Load(env(map[string]string{"PALIER_REGISTRY_WEBHOOK_SECRET": secret})); (err == nil) != ok {
+			t.Errorf("%q: %v", secret, err)
+		}
+	}
+}

@@ -33,6 +33,21 @@
     mode: "0600"
   no_log: true
 
+- name: Download the credential helper docker-credential-env
+  ansible.builtin.get_url:
+    url: https://github.com/isometry/docker-credential-env/releases/download/v1.7.0/docker-credential-env_1.7.0_linux_amd64.zip
+    checksum: sha256:https://github.com/isometry/docker-credential-env/releases/download/v1.7.0/docker-credential-env_1.7.0_SHA256SUMS
+    dest: "{{ palier_dir }}/docker-credential-env.zip"
+    mode: "0644"
+
+- name: Unpack the credential helper
+  ansible.builtin.shell: |
+    mkdir -p {{ palier_dir }}/bin
+    python3 -c 'import zipfile, sys; zipfile.ZipFile(sys.argv[1]).extract("docker-credential-env", sys.argv[2])' {{ palier_dir }}/docker-credential-env.zip {{ palier_dir }}/bin
+    chmod 0755 {{ palier_dir }}/bin/docker-credential-env
+  args:
+    creates: "{{ palier_dir }}/bin/docker-credential-env"
+
 - name: Create the Docker configuration directory of Palier
   ansible.builtin.file:
     path: "{{ palier_dir }}/docker"

@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -61,25 +63,35 @@ func (r Ref) Name() string { return r.Domain + "/" + r.Repo }
 type Client struct {
 	http   *http.Client
 	db     *sql.DB
-	auths  map[string]string
+	auths  *Auths
 	mirror string
 	mu     sync.Mutex
 	authz  map[string]string
+	helped map[string]helped
 	hub    string
 	dated  map[string]time.Time
 }
 
-// New returns a registry client whose date cache lives in db; auths maps a registry address to its base64 "user:password", as in config.json, and mirror, when set, serves the Docker Hub reads by digest.
-func New(db *sql.DB, auths map[string]string, mirror string) *Client {
+// New returns a registry client whose date cache lives in db, with the credentials of auths, and mirror, when set, serving the Docker Hub reads by digest.
+func New(db *sql.DB, auths *Auths, mirror string) *Client {
 	mirror = strings.TrimSuffix(mirror, "/")
 	if mirror != "" && !strings.Contains(mirror, "://") {
 		mirror = "https://" + mirror
 	}
-	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, dated: map[string]time.Time{}}
+	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}}
 }
 
-// LoadAuths reads the "auths" section of config.json in the Docker configuration directory dir.
-func LoadAuths(dir string) (map[string]string, error) {
+// Auths are the credentials of config.json: its auths section, and the credential helpers of credHelpers and credsStore.
+type Auths struct {
+	Basic   map[string]string
+	Helpers map[string]string
+	Store   string
+}
+
+var helperName = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+// LoadAuths reads config.json in the Docker configuration directory dir, or returns nil when there is none.
+func LoadAuths(dir string) (*Auths, error) {
 	b, err := os.ReadFile(filepath.Join(dir, "config.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -88,31 +100,107 @@ func LoadAuths(dir string) (map[string]string, error) {
 		return nil, err
 	}
 	var cfg struct {
-		Auths map[string]struct{ Auth string }
+		Auths       map[string]struct{ Auth string }
+		CredHelpers map[string]string `json:"credHelpers"`
+		CredsStore  string            `json:"credsStore"`
 	}
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return nil, fmt.Errorf("%s: %w", filepath.Join(dir, "config.json"), err)
 	}
-	auths := map[string]string{}
-	for host, a := range cfg.Auths {
-		if a.Auth != "" {
-			auths[host] = a.Auth
+	a := &Auths{Basic: map[string]string{}, Helpers: map[string]string{}, Store: cfg.CredsStore}
+	for host, v := range cfg.Auths {
+		if v.Auth != "" {
+			a.Basic[host] = v.Auth
 		}
 	}
-	return auths, nil
+	for host, h := range cfg.CredHelpers {
+		if !helperName.MatchString(h) {
+			return nil, fmt.Errorf("%s: credential helper %q of %s is not a helper name", filepath.Join(dir, "config.json"), h, host)
+		}
+		a.Helpers[host] = h
+	}
+	if a.Store != "" && !helperName.MatchString(a.Store) {
+		return nil, fmt.Errorf("%s: credsStore %q is not a helper name", filepath.Join(dir, "config.json"), a.Store)
+	}
+	return a, nil
 }
 
+// credentials returns the base64 "user:password" for domain: from auths, else from its credential helper, else from credsStore.
 func (c *Client) credentials(domain string) string {
+	if c.auths == nil {
+		return ""
+	}
 	keys := []string{domain, "https://" + domain}
 	if domain == "docker.io" {
 		keys = []string{"https://index.docker.io/v1/", "index.docker.io", "docker.io", "registry-1.docker.io"}
 	}
 	for _, k := range keys {
-		if a := c.auths[k]; a != "" {
+		if a := c.auths.Basic[k]; a != "" {
 			return a
 		}
 	}
+	for _, k := range keys {
+		if h := c.auths.Helpers[k]; h != "" {
+			return c.helper(h, k)
+		}
+	}
+	if c.auths.Store != "" {
+		return c.helper(c.auths.Store, keys[0])
+	}
 	return ""
+}
+
+type helped struct {
+	auth  string
+	until time.Time
+}
+
+// helper asks the credential helper docker-credential-name for server, and keeps the answer ten minutes, a failure one.
+func (c *Client) helper(name, server string) string {
+	key := name + " " + server
+	c.mu.Lock()
+	h, ok := c.helped[key]
+	c.mu.Unlock()
+	if ok && time.Now().Before(h.until) {
+		return h.auth
+	}
+	auth, err := runHelper(name, server)
+	h = helped{auth: auth, until: time.Now().Add(10 * time.Minute)}
+	if err != nil {
+		h.until = time.Now().Add(time.Minute)
+		slog.Warn("credential helper", "helper", "docker-credential-"+name, "registry", server, "err", err)
+	}
+	c.mu.Lock()
+	c.helped[key] = h
+	c.mu.Unlock()
+	return auth
+}
+
+func runHelper(name, server string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker-credential-"+name, "get")
+	cmd.Stdin = strings.NewReader(server)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if errors.Is(err, exec.ErrNotFound) {
+		return "", fmt.Errorf("docker-credential-%s is not in the PATH of Palier (/usr/local/bin): mount it into the container", name)
+	}
+	if err != nil {
+		return "", fmt.Errorf("%w: %.300s", err, strings.TrimSpace(string(out)+" "+stderr.String()))
+	}
+	var r struct{ Username, Secret string }
+	if err := json.Unmarshal(out, &r); err != nil {
+		return "", fmt.Errorf("unreadable answer: %w", err)
+	}
+	switch {
+	case r.Username == "<token>":
+		return "", errors.New("it gives an identity token, which Palier does not support: use a helper that gives a user and a password")
+	case r.Secret == "":
+		return "", errors.New("it gives no secret")
+	}
+	return base64.StdEncoding.EncodeToString([]byte(r.Username + ":" + r.Secret)), nil
 }
 
 // UsesCredentials reports whether requests to domain carry credentials.

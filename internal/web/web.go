@@ -4,16 +4,19 @@ package web
 import (
 	"bytes"
 	"cmp"
+	"crypto/subtle"
 	"embed"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kolapsis/palier/internal/catalog"
@@ -347,7 +350,40 @@ func New(deps Deps) http.Handler {
 			s.render(w, status, "gate.html", map[string]string{"Title": title, "Message": message})
 		}).wrap(h)
 	}
-	return http.NewCrossOriginProtection().Handler(h)
+	protected := http.NewCrossOriginProtection().Handler(h)
+	hook := registryHook(deps)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/hooks/registry/") {
+			hook.ServeHTTP(w, r)
+			return
+		}
+		protected.ServeHTTP(w, r)
+	})
+}
+
+// registryHook asks for a scan when a registry announces a new tag, at most once a minute; it reads nothing from the request but its secret.
+func registryHook(deps Deps) http.Handler {
+	var mu sync.Mutex
+	var last time.Time
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secret := strings.TrimPrefix(r.URL.Path, "/hooks/registry/")
+		if deps.Config.HookSecret == "" || r.Method != http.MethodPost || subtle.ConstantTimeCompare([]byte(secret), []byte(deps.Config.HookSecret)) != 1 {
+			http.NotFound(w, r)
+			return
+		}
+		io.Copy(io.Discard, io.LimitReader(r.Body, 64<<10))
+		mu.Lock()
+		due := time.Since(last) >= time.Minute
+		if due {
+			last = time.Now()
+		}
+		mu.Unlock()
+		if due && deps.Rescan != nil {
+			slog.Info("registry webhook: scan requested", "from", r.RemoteAddr)
+			deps.Rescan()
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
 }
 
 func (s *server) find(name string) (*inventory.Stack, time.Time) {

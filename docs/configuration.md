@@ -25,6 +25,7 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_SMTP_FROM` | the user, when it is an email | Sender of the emails. |
 | `PALIER_EMAIL_TO` | empty | Recipients, separated by commas. Required with `PALIER_SMTP_HOST`. |
 | `PALIER_EMAIL_LEVEL` | `info` | `alert`: only alerts and the weekly report. `info`: also the updates that did not go through. See [notifications](usage.md#notifications). |
+| `PALIER_REGISTRY_WEBHOOK_SECRET` | empty | Secret of the address registries call to announce a new tag. See [registry webhooks](#registry-webhooks). |
 | `PALIER_PUBLIC_URL` | empty | Address of the web interface, such as `https://palier.example.com`, for the links of the emails. Without it, the emails give the command to run. |
 | `TZ` | UTC | Time zone of the dates of the emails and of the weekly report, such as `Europe/Paris`. |
 | `PALIER_OIDC_ISSUER` | empty | OpenID Connect provider that signs people in to the web interface. Empty, the web interface has no sign-in. |
@@ -60,7 +61,7 @@ Behind a reverse proxy, Palier builds its redirect address from the `Host` and `
 
 ## Private registries
 
-Palier reads the `auths` section of the Docker `config.json`, in the usual format. Mount this file in the container and point `DOCKER_CONFIG` at its folder:
+Palier reads the Docker `config.json`, in the usual format: its `auths` section, and the credential helpers of `credHelpers` and `credsStore`. Mount this file in the container and point `DOCKER_CONFIG` at its folder:
 
 ```sh
 -v /root/.docker/config.json:/etc/palier-docker/config.json:ro \
@@ -69,7 +70,45 @@ Palier reads the `auths` section of the Docker `config.json`, in the usual forma
 
 Docker Hub credentials are also used for the Docker Hub API, which gives the publication date of tags, a hundred at a time: with them, the request limit is higher than with anonymous access.
 
-Credentials stored in a `credsStore` or `credHelpers` (ECR, GAR, ACR) are not read.
+### Credential helpers
+
+A credential helper is a program, `docker-credential-<name>`, that Palier and `docker compose` call as Docker does: the image tags and the pulls of an update then use the same credentials. The image of Palier holds no helper: mount the one you need in `/usr/local/bin`, and give it its variables. It must be a standalone binary, since the image has no shell.
+
+```yaml
+    volumes:
+      - /usr/local/bin/docker-credential-ecr-login:/usr/local/bin/docker-credential-ecr-login:ro
+    environment:
+      AWS_ACCESS_KEY_ID: ...
+      AWS_SECRET_ACCESS_KEY: ...
+      AWS_REGION: eu-west-3
+```
+
+with, in `config.json`:
+
+```json
+{ "credHelpers": { "123456789012.dkr.ecr.eu-west-3.amazonaws.com": "ecr-login" } }
+```
+
+| Registry | Credentials |
+|---|---|
+| AWS ECR | `docker-credential-ecr-login` with the `AWS_*` variables, or `docker-credential-env`, which also exchanges AWS keys for an ECR token. ECR Public needs none. |
+| Google Artifact Registry, GCR | In `auths`, the user `_json_key` with the JSON key of a service account as password (`docker login -u _json_key --password-stdin europe-docker.pkg.dev < key.json`), or `docker-credential-gcr`. |
+| Azure Container Registry | In `auths`, the client ID and secret of a service principal (`docker login myregistry.azurecr.io -u <client id> -p <secret>`), or `docker-credential-acr-env`. |
+| Any registry | `docker-credential-env` reads the user and password from `DOCKER_<host>_USR` and `DOCKER_<host>_PSW`, for example `DOCKER_index_docker_io_USR` for Docker Hub. |
+
+An entry of `auths` wins over a helper. A helper answer is kept ten minutes, a failure one minute, and a failure is logged without its secret. Helpers that give an identity token instead of a user and a password are not supported, and the desktop stores (`desktop`, `osxkeychain`, `wincred`, `pass`, `secretservice`) do not work inside a container.
+
+Proven on the bench: `docker-credential-env` for Docker Hub, for the tag reads of Palier and the pulls of `docker compose`. ECR, Artifact Registry and ACR follow the same mechanism but were not tried against a real account.
+
+## Registry webhooks
+
+A registry that announces each new tag can make Palier scan at once instead of at the next interval. Set `PALIER_REGISTRY_WEBHOOK_SECRET` to at least 32 random characters (`openssl rand -hex 32`), turn the web interface on, and give the registry this address:
+
+```
+https://palier.example.com/hooks/registry/<secret>
+```
+
+Docker Hub, GitLab, Harbor and Quay can call it. Palier reads nothing from the request but the secret in its address: it never trusts what the registry says, it only scans, at most once a minute, and checks the tags itself. A wrong secret, another method or another address all get the same 404. The address bypasses the OpenID Connect sign-in, since a registry cannot sign in.
 
 ## Docker Hub mirror
 

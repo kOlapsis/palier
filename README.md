@@ -180,7 +180,6 @@ The web interface is optional: set `PALIER_LISTEN=:8080` and publish the port. W
 - Email and the webhook are the only channels.
 - Databases other than PostgreSQL, MySQL and MariaDB stay blocked on their major version.
 - Notes outside GitHub and gitlab.com are not read.
-- Registry credentials in a `credsStore` or `credHelpers` are not read.
 - Containers started outside Compose are only observed.
 - No cleanup of old images, no update of Palier itself.
 

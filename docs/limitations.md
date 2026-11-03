@@ -13,7 +13,7 @@
 ## Unsupported cases
 
 - **Databases other than PostgreSQL, MySQL and MariaDB.** Their major versions stay blocked.
-- **Registry credentials in a `credsStore` or `credHelpers`.** Only the `auths` section of `config.json` is read.
+- **Credential helpers that give an identity token**, and the desktop credential stores, which do not run in a container.
 - **Containers outside Compose.** They are only observed.
 - **Volumes not copied.** Bulk data of known applications, mounts of applications without a catalog card above 20 GiB, and copies that would leave the Docker disk short of space are not restored by a rollback.
 - **Services with a `build` section.** Their image is built on the machine and is not in any registry, so Palier does not update them, even when the base image of their Dockerfile has a newer version.

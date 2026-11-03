@@ -40,6 +40,7 @@ type Config struct {
 	EmailTo        []string
 	EmailLevel     string
 	PublicURL      string
+	HookSecret     string
 }
 
 // Load reads the environment through getenv and applies the defaults.
@@ -73,6 +74,7 @@ func Load(getenv func(string) string) (Config, error) {
 		EmailTo:        list(get("PALIER_EMAIL_TO", "")),
 		EmailLevel:     get("PALIER_EMAIL_LEVEL", "info"),
 		PublicURL:      strings.TrimSuffix(get("PALIER_PUBLIC_URL", ""), "/"),
+		HookSecret:     get("PALIER_REGISTRY_WEBHOOK_SECRET", ""),
 	}
 	var errs []error
 	duration := func(name, def string) time.Duration {
@@ -117,6 +119,9 @@ func Load(getenv func(string) string) (Config, error) {
 		if u, err := url.Parse(c.PublicURL); err != nil || u.Host == "" || u.Scheme != "https" && u.Scheme != "http" {
 			errs = append(errs, fmt.Errorf("PALIER_PUBLIC_URL: %q, expected an address such as https://palier.example.com", c.PublicURL))
 		}
+	}
+	if c.HookSecret != "" && (len(c.HookSecret) < 32 || strings.ContainsAny(c.HookSecret, "/?#%")) {
+		errs = append(errs, errors.New("PALIER_REGISTRY_WEBHOOK_SECRET: at least 32 characters, without / ? # or %, for example the output of openssl rand -hex 32"))
 	}
 	if c.OIDCIssuer != "" {
 		if u, err := url.Parse(c.OIDCIssuer); err != nil || u.Host == "" || u.Scheme != "https" && !(u.Scheme == "http" && localHost(u.Hostname())) {

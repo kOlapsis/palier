@@ -160,6 +160,14 @@ func setup() (*app, error) {
 		return nil, err
 	}
 	reg := registry.New(db, auths, cfg.RegistryMirror)
+	if auths != nil {
+		for host, h := range auths.Helpers {
+			slog.Info("credential helper", "registry", host, "helper", "docker-credential-"+h)
+		}
+		if auths.Store != "" {
+			slog.Info("credential store", "helper", "docker-credential-"+auths.Store)
+		}
+	}
 	for _, domain := range []string{"docker.io", "ghcr.io"} {
 		if reg.UsesCredentials(domain) {
 			slog.Info("registry credentials loaded", "registry", domain, "docker_config", cfg.DockerConfig)
