@@ -130,7 +130,6 @@ Three things to get right:
 | `PALIER_GITHUB_TOKEN`, `PALIER_GITLAB_TOKEN` | empty | Notes and security advisories without the anonymous limit |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror |
 | `PALIER_LISTEN` | empty | Address of the web interface, off when empty (`:8080` to turn it on) |
-| `PALIER_TOKEN` | generated at first start | Access to the web interface |
 
 The full list is in [docs/configuration.md](docs/configuration.md).
 
@@ -168,12 +167,12 @@ traefik    up to date         v3.5.2
 
 Every command takes `--json`. `apply` asks for confirmation in a terminal; `--yes` skips it, `--detach` returns as soon as the run starts. The run goes on in Palier if you close the terminal. In a script or a cron job, call `docker exec palier palier …` without `-it`.
 
-The web interface is optional: set `PALIER_LISTEN=:8080`, publish the port, and sign in with the token from `docker exec palier palier token`.
+The web interface is optional: set `PALIER_LISTEN=:8080` and publish the port. It has no sign-in, so keep it on `127.0.0.1` or behind a reverse proxy that authenticates.
 
 ## Limitations
 
 - One Palier per Docker machine: no agent, no remote machine.
-- A single token for the web interface: no accounts or roles.
+- No accounts, roles or sign-in: the web interface relies on where it listens or on an authenticating reverse proxy.
 - The webhook is the only alert.
 - Databases other than PostgreSQL, MySQL and MariaDB stay blocked on their major version.
 - Notes outside GitHub and gitlab.com are not read.

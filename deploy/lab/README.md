@@ -52,7 +52,7 @@ The first `up` takes a while: it downloads the Debian image, installs Docker, bu
 | `versions.yml` | The versions the stacks start from, and why each one was chosen. |
 | `provision.yml`, `tasks/`, `templates/` | The machine on libvirt (`lab_state=present` or `absent`). |
 | `site.yml`, `roles/` | Provisioning of the machine: `docker` (engine and compose plugin), `palier_stack` (Palier, webhook-tester), `lab_apps` (the stacks under `/apps`). |
-| `compose.lab.yaml` | Override of `deploy/compose.yaml`: builds the image from the working copy, publishes the ports on the machine address, mounts `/apps` at the same path, and gives Palier the token of the bench. `compose.yaml` is never changed. |
+| `compose.lab.yaml` | Override of `deploy/compose.yaml`: builds the image from the working copy, publishes the ports on the machine address, mounts `/apps` at the same path, and turns the web interface on (`PALIER_LISTEN`). `compose.yaml` is never changed. |
 | `host-setup.yml` | What needs root, run once. |
 
 ## Addresses and credentials
@@ -61,7 +61,7 @@ The machine is `10.10.50.10`, on the NAT network `palier-lab` (host side `10.10.
 
 | Service | Address | Credentials |
 |---|---|---|
-| Palier | http://10.10.50.10:8080 | the token below |
+| Palier | http://10.10.50.10:8080 | none; or `deploy/lab/lab ssh sudo docker exec -it palier-palier-1 palier` |
 | webhook-tester | http://10.10.50.10:8081 | none; the webhooks arrive in session `00000000-0000-4000-8000-000000000001` |
 | nginx | http://10.10.50.10:8088 | none |
 | whoami | http://10.10.50.10:8089 | none |
@@ -70,15 +70,9 @@ The machine is `10.10.50.10`, on the NAT network `palier-lab` (host side `10.10.
 | Immich | http://10.10.50.10:2283 | `admin@palier.lab` / `palier-lab-password` |
 | Vaultwarden | http://10.10.50.10:8222 | none; create an account from the web vault (the admin page is off) |
 
-The access token of Palier is generated at the first `up` and kept on the machine:
-
-```sh
-deploy/lab/lab ssh sudo docker exec palier-palier-1 palier token
-```
-
 The `lab` script reads its variables from the environment and from `deploy/lab/lab.env` when that file exists (one `NAME=value` per line, ignored by git and never copied to the machine): `LAB_SSH_KEY`, `LAB_ANTHROPIC_API_KEY`, which becomes `PALIER_AI_KEY`, and the registry credentials `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, `REGISTRY_ADDRESS`, `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`. `up` writes the credentials into `/opt/palier/docker/config.json` on the machine, which Palier reads through `DOCKER_CONFIG`.
 
-On the machine, Palier lives in `/opt/palier`: `src/` is the copy of the working tree, `compose.env` holds the values the override reads (ports, group of the Docker socket, token). To drive it by hand:
+On the machine, Palier lives in `/opt/palier`: `src/` is the copy of the working tree, `compose.env` holds the values the override reads (ports, group of the Docker socket, keys). To drive it by hand:
 
 ```sh
 deploy/lab/lab ssh

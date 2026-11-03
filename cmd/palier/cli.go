@@ -41,7 +41,6 @@ Usage:
   palier postpone <stack> <YYYY-MM-DD>     no automatic apply before this date
   palier scan                              scan now and show the state
   palier serve                             run Palier (the container does it)
-  palier token                             token of the web interface (PALIER_LISTEN)
 
 Every command takes --json for scripts.
 Scripting without the running Palier:

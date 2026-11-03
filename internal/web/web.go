@@ -4,7 +4,6 @@ package web
 import (
 	"bytes"
 	"cmp"
-	"crypto/subtle"
 	"embed"
 	"errors"
 	"fmt"
@@ -28,8 +27,6 @@ import (
 
 //go:embed templates
 var templates embed.FS
-
-const cookieName = "palier_token"
 
 // Snapshot is the result of the last inspection.
 type Snapshot struct {
@@ -55,7 +52,6 @@ type Deps struct {
 
 type server struct {
 	author string
-	token  string
 	deps   Deps
 	mux    *http.ServeMux
 	pages  map[string]*template.Template
@@ -280,9 +276,9 @@ func isStop(image, tag string) bool {
 	return false
 }
 
-// New returns the handler of the interface, protected by token everywhere but on /login.
-func New(token string, deps Deps) http.Handler {
-	s := &server{author: "interface", token: token, deps: deps, mux: http.NewServeMux(), pages: map[string]*template.Template{}}
+// New returns the handler of the interface, which refuses requests that change something when they come from another site.
+func New(deps Deps) http.Handler {
+	s := &server{author: "interface", deps: deps, mux: http.NewServeMux(), pages: map[string]*template.Template{}}
 	funcs := template.FuncMap{
 		"state": s.state,
 		"since": Since,
@@ -307,11 +303,9 @@ func New(token string, deps Deps) http.Handler {
 			return t.Format("Jan 2, 2006 3:04:05 PM") + " UTC"
 		},
 	}
-	for _, p := range []string{"index.html", "login.html", "stack.html", "run.html", "settings.html"} {
+	for _, p := range []string{"index.html", "stack.html", "run.html", "settings.html"} {
 		s.pages[p] = template.Must(template.New("").Funcs(funcs).ParseFS(templates, "templates/layout.html", "templates/"+p))
 	}
-	s.mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) { s.render(w, http.StatusOK, "login.html", nil) })
-	s.mux.HandleFunc("POST /login", s.login)
 	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusOK, "index.html", s.deps.Current())
 	})
@@ -324,7 +318,7 @@ func New(token string, deps Deps) http.Handler {
 	s.mux.HandleFunc("GET /settings", func(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusOK, "settings.html", s.deps.Config)
 	})
-	return s
+	return http.NewCrossOriginProtection().Handler(s.mux)
 }
 
 func (s *server) find(name string) (*inventory.Stack, time.Time) {
@@ -430,31 +424,6 @@ func (s *server) run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, http.StatusOK, "run.html", v)
-}
-
-func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/login" {
-		c, err := r.Cookie(cookieName)
-		if err != nil || !s.valid(c.Value) {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
-			return
-		}
-	}
-	s.mux.ServeHTTP(w, r)
-}
-
-func (s *server) valid(token string) bool {
-	return subtle.ConstantTimeCompare([]byte(token), []byte(s.token)) == 1
-}
-
-func (s *server) login(w http.ResponseWriter, r *http.Request) {
-	token := r.FormValue("token")
-	if !s.valid(token) {
-		s.render(w, http.StatusUnauthorized, "login.html", map[string]string{"Error": "Incorrect token."})
-		return
-	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", MaxAge: 30 * 24 * 3600, HttpOnly: true, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https", SameSite: http.SameSiteStrictMode})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *server) render(w http.ResponseWriter, status int, page string, data any) {

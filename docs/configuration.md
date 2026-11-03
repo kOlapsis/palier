@@ -7,9 +7,8 @@ All configuration goes through environment variables. The `/settings` page of th
 | Variable | Default | Purpose |
 |---|---|---|
 | `PALIER_DOCKER_HOST` | `unix:///var/run/docker.sock` | Docker engine. |
-| `PALIER_DATA_DIR` | `/var/lib/palier` | SQLite database, token, database exports, and the `palier.sock` socket the command line talks to. |
+| `PALIER_DATA_DIR` | `/var/lib/palier` | SQLite database, database exports, and the `palier.sock` socket the command line talks to. |
 | `PALIER_LISTEN` | empty | Listen address of the web interface, such as `:8080`. Empty, the web interface is off and only the command line is available. |
-| `PALIER_TOKEN` | generated when the web interface starts | Access token for the web interface. Without a value, it is written to `token` in the data directory. |
 | `PALIER_AI_KEY` | empty | Anthropic API key. Without a key, plans are computed from versions alone. |
 | `PALIER_AI_MODEL` | `claude-sonnet-5-5` | Model used for plans. |
 | `PALIER_SCAN_INTERVAL` | `1h` | Interval between two scans (Go duration: `30m`, `2h`…). |

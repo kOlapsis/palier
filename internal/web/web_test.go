@@ -3,7 +3,6 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -15,41 +14,31 @@ import (
 	"github.com/kolapsis/palier/internal/run"
 )
 
-func TestTokenGuardsEverything(t *testing.T) {
-	h := New("secret", Deps{
+func TestCrossSiteChangesRefused(t *testing.T) {
+	applied := 0
+	h := New(Deps{
 		Current: func() Snapshot { return Snapshot{} },
 		Runs:    func(string) ([]run.View, error) { return nil, nil },
 		Plan:    func(string) (*plan.Record, error) { return nil, nil },
+		Apply:   func(string, string, bool) (int64, error) { applied++; return 1, nil },
 	})
-	do := func(method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, path, strings.NewReader(body))
-		if body != "" {
-			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		}
-		if cookie != nil {
-			r.AddCookie(cookie)
+	do := func(method, path, site string) int {
+		r := httptest.NewRequest(method, path, nil)
+		if site != "" {
+			r.Header.Set("Sec-Fetch-Site", site)
 		}
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
-		return w
+		return w.Code
 	}
-
-	if w := do("GET", "/", "", nil); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
-		t.Fatalf("anonymous /: %d %s", w.Code, w.Header().Get("Location"))
+	if code := do("GET", "/", ""); code != http.StatusOK {
+		t.Fatalf("GET /: %d", code)
 	}
-	if w := do("GET", "/anything", "", &http.Cookie{Name: cookieName, Value: "wrong"}); w.Code != http.StatusSeeOther {
-		t.Fatalf("wrong cookie: %d", w.Code)
+	if code := do("POST", "/stacks/whoami/apply", "cross-site"); code != http.StatusForbidden || applied != 0 {
+		t.Fatalf("cross-site apply: %d, applied %d", code, applied)
 	}
-	if w := do("POST", "/login", url.Values{"token": {"wrong"}}.Encode(), nil); w.Code != http.StatusUnauthorized {
-		t.Fatalf("wrong token: %d", w.Code)
-	}
-	w := do("POST", "/login", url.Values{"token": {"secret"}}.Encode(), nil)
-	cookies := w.Result().Cookies()
-	if w.Code != http.StatusSeeOther || len(cookies) != 1 || !cookies[0].HttpOnly {
-		t.Fatalf("good token: %d %v", w.Code, cookies)
-	}
-	if w := do("GET", "/", "", cookies[0]); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Stacks") {
-		t.Fatalf("authorized /: %d", w.Code)
+	if code := do("POST", "/stacks/whoami/apply", "same-origin"); code != http.StatusSeeOther || applied != 1 {
+		t.Fatalf("same-origin apply: %d, applied %d", code, applied)
 	}
 }
 
@@ -61,7 +50,7 @@ func TestPagesRender(t *testing.T) {
 		Gate:       &plan.Operation{Op: "exec_check", Service: "whoami", CheckRef: "background_migrations"},
 		Facts:      []plan.Fact{{Category: "security_fix", Service: "whoami", Version: "v1.12.0", Quote: "<script>alert(1)</script> a quote", SourceURL: "https://github.com/traefik/whoami/releases"}}},
 		{Risk: "attention", Reversible: "yes", Operations: []plan.Operation{{Op: "compose_edit", Service: "whoami", Edits: []plan.Edit{{Action: "rename_env", Name: "SERVER_PORT", NewName: "IMMICH_PORT"}}}}}}}
-	h := New("secret", Deps{
+	h := New(Deps{
 		Current:   func() Snapshot { return Snapshot{Stacks: []*inventory.Stack{st}} },
 		Runs:      func(string) ([]run.View, error) { return []run.View{{ID: 1, Status: "rolled_back"}}, nil },
 		Plan:      func(string) (*plan.Record, error) { return &plan.Record{Stack: "whoami", Source: "ai", Plan: p}, nil },
@@ -72,7 +61,6 @@ func TestPagesRender(t *testing.T) {
 	})
 	for path, want := range map[string]string{"/runs/1?progress": `<li class="done">Step 1: gitlab 16.1.6 to 16.3.9</li><li class="current">Step 2`, "/": "rolled back", "/stacks/whoami": "rename_env SERVER_PORT → IMMICH_PORT", "/runs/1": "step 1", "/settings": "PALIER_AUTO"} {
 		r := httptest.NewRequest("GET", path, nil)
-		r.AddCookie(&http.Cookie{Name: cookieName, Value: "secret"})
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), want) {
@@ -130,9 +118,13 @@ func TestAPIStatus(t *testing.T) {
 	}}
 	p := &plan.Plan{Steps: []plan.Step{{Changes: []plan.Change{{Service: "gitlab", From: "18.5.3-ce.0", To: "18.8.4-ce.0"}}}}}
 	h := API(Deps{
-		Current:   func() Snapshot { return Snapshot{Stacks: []*inventory.Stack{gitlab}, At: time.Now()} },
-		Runs:      func(string) ([]run.View, error) { return []run.View{{ID: 15, Status: "stopped", Error: "stopped after step 1 of 3: background_migrations still failing\nmore"}}, nil },
-		Plan:      func(string) (*plan.Record, error) { return &plan.Record{Stack: "gitlab", Plan: p, Created: time.Now().Add(-time.Hour)}, nil },
+		Current: func() Snapshot { return Snapshot{Stacks: []*inventory.Stack{gitlab}, At: time.Now()} },
+		Runs: func(string) ([]run.View, error) {
+			return []run.View{{ID: 15, Status: "stopped", Error: "stopped after step 1 of 3: background_migrations still failing\nmore"}}, nil
+		},
+		Plan: func(string) (*plan.Record, error) {
+			return &plan.Record{Stack: "gitlab", Plan: p, Created: time.Now().Add(-time.Hour)}, nil
+		},
 		Postponed: func(string) time.Time { return time.Time{} },
 	})
 	w := httptest.NewRecorder()

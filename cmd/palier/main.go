@@ -70,8 +70,6 @@ func main() {
 	case cmd == "help" || cmd == "-h" || cmd == "--help":
 		printUsage(os.Stdout)
 		return
-	case cmd == "token" && len(args) == 0:
-		err = printToken()
 	case cmd == "scan" && has("--once") && known("--once", "--json") && len(pos) == 0:
 		err = withApp(func(ctx context.Context, a *app) error {
 			stacks, err := a.scan(ctx, "")
@@ -119,21 +117,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, "palier: "+err.Error())
 		os.Exit(1)
 	}
-}
-
-func printToken() error {
-	cfg, err := config.Load(os.Getenv)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
-		return err
-	}
-	if _, err := cfg.EnsureToken(); err != nil {
-		return err
-	}
-	fmt.Println(cfg.Token)
-	return nil
 }
 
 func printJSON(v any) error {
@@ -630,15 +613,7 @@ func serve() error {
 	errc := make(chan error, 2)
 	go func() { errc <- servers[0].Serve(ln) }()
 	if a.cfg.Listen != "" {
-		generated, err := a.cfg.EnsureToken()
-		if err != nil {
-			return err
-		}
-		if generated {
-			slog.Info("access token created", "file", filepath.Join(a.cfg.DataDir, "token"))
-		}
-		deps.Config = a.cfg
-		srv := &http.Server{Addr: a.cfg.Listen, Handler: web.New(a.cfg.Token, deps), ReadHeaderTimeout: 10 * time.Second}
+		srv := &http.Server{Addr: a.cfg.Listen, Handler: web.New(deps), ReadHeaderTimeout: 10 * time.Second}
 		servers = append(servers, srv)
 		go func() { errc <- srv.ListenAndServe() }()
 	}

@@ -139,4 +139,4 @@ In a script or a cron job, call `docker exec palier palier …` without `-it`.
 
 Two commands work without the running Palier, in the process that runs them, and print JSON: `palier scan --once` (one scan of every stack) and `palier plan <stack> --once` (the plan of a stack, computed again if needed).
 
-`palier token` prints the token of the web interface, which is off unless `PALIER_LISTEN` is set.
+The web interface is off unless `PALIER_LISTEN` is set.

@@ -2,11 +2,8 @@
 package config
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,7 +15,6 @@ type Config struct {
 	DockerHost     string
 	DataDir        string
 	Listen         string
-	Token          string
 	AIKey          string
 	AIModel        string
 	ScanInterval   time.Duration
@@ -44,7 +40,6 @@ func Load(getenv func(string) string) (Config, error) {
 		DockerHost:     get("PALIER_DOCKER_HOST", "unix:///var/run/docker.sock"),
 		DataDir:        get("PALIER_DATA_DIR", "/var/lib/palier"),
 		Listen:         get("PALIER_LISTEN", ""),
-		Token:          get("PALIER_TOKEN", ""),
 		AIKey:          get("PALIER_AI_KEY", ""),
 		AIModel:        get("PALIER_AI_MODEL", "claude-sonnet-5-5"),
 		Auto:           get("PALIER_AUTO", "all"),
@@ -75,26 +70,4 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, fmt.Errorf("PALIER_AUTO: %q, expected all, minor, patch or off", c.Auto))
 	}
 	return c, errors.Join(errs...)
-}
-
-// EnsureToken keeps PALIER_TOKEN when set, otherwise reads the token file of the data directory, creating it on first start.
-func (c *Config) EnsureToken() (generated bool, err error) {
-	if c.Token != "" {
-		return false, nil
-	}
-	path := filepath.Join(c.DataDir, "token")
-	b, err := os.ReadFile(path)
-	if err == nil && strings.TrimSpace(string(b)) != "" {
-		c.Token = strings.TrimSpace(string(b))
-		return false, nil
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return false, err
-	}
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return false, err
-	}
-	c.Token = hex.EncodeToString(raw)
-	return true, os.WriteFile(path, []byte(c.Token+"\n"), 0o600)
 }

@@ -7,7 +7,6 @@ services:
       dockerfile: deploy/Dockerfile
     environment:
       PALIER_LISTEN: ":8080"
-      PALIER_TOKEN: ${PALIER_TOKEN:?}
       DOCKER_CONFIG: /etc/palier/docker
       PALIER_AI_KEY: ${PALIER_AI_KEY:-}
       PALIER_GITLAB_TOKEN: ${PALIER_GITLAB_TOKEN:-}

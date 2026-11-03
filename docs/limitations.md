@@ -2,7 +2,7 @@
 
 ## What Palier does not do
 
-- No accounts or roles: a single token protects the web interface.
+- No accounts, roles or sign-in: the web interface is protected by where it listens or by a reverse proxy that authenticates.
 - No agent or remote machine: one Palier per Docker machine.
 - No alert other than the webhook.
 - No cleanup of old images.

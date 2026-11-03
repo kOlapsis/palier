@@ -108,13 +108,10 @@ The stacks appear as soon as the containers are read, marked "checking versions"
 
 ## Turn on the web interface
 
-The web interface is off by default. To use it, set `PALIER_LISTEN=:8080` and publish the port, for example `-p 127.0.0.1:8080:8080`. It is protected by a token, created at first start in the data directory:
+The web interface is off by default. To use it, set `PALIER_LISTEN=:8080`, publish the port, for example `-p 127.0.0.1:8080:8080`, and open `http://127.0.0.1:8080`.
 
-```sh
-docker exec palier palier token
-```
-
-Open `http://127.0.0.1:8080` and paste the token. To choose the token yourself, set `PALIER_TOKEN`.
+!!! warning "No sign-in"
+    The web interface has no sign-in: whoever reaches the port can apply updates, which is as powerful as the Docker socket. Keep it on `127.0.0.1`, or put it behind a reverse proxy that authenticates (forward auth of Authentik, Authelia, oauth2-proxy…). Palier refuses the changes a page from another site would try to send.
 
 !!! note "Without an AI key"
     Palier works without `PALIER_AI_KEY`, but loses most of its value. It detects versions and proposes plans computed from versions alone, with an "unknown" risk level. These plans are applied on their own like the others, protected by the rollback, but nobody has read what changes, and required steps and dependencies are not taken into account.

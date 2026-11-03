@@ -31,16 +31,3 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		}
 	}
 }
-
-func TestEnsureTokenIsStable(t *testing.T) {
-	c := Config{DataDir: t.TempDir()}
-	generated, err := c.EnsureToken()
-	if err != nil || !generated || len(c.Token) != 64 {
-		t.Fatalf("first start: generated=%v token=%q err=%v", generated, c.Token, err)
-	}
-	again := Config{DataDir: c.DataDir}
-	generated, err = again.EnsureToken()
-	if err != nil || generated || again.Token != c.Token {
-		t.Fatalf("second start: generated=%v token=%q err=%v", generated, again.Token, err)
-	}
-}
