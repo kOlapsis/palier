@@ -501,33 +501,32 @@ func (c *Client) AnnotatedVersion(ctx context.Context, r Ref, digest string) (st
 
 func (c *Client) configCreated(ctx context.Context, r Ref, tag string) (time.Time, error) {
 	base := "https://" + apiHost(r.Domain) + "/v2/" + r.Repo
-	var m struct {
-		Manifests []struct {
-			Digest   string
-			Platform struct{ OS, Architecture string }
+	ref := tag
+	var config string
+	for depth := 0; config == ""; depth++ {
+		var m struct {
+			Manifests []struct {
+				Digest   string
+				Platform struct{ OS, Architecture string }
+			}
+			Config struct{ Digest string }
 		}
-		Config struct{ Digest string }
-	}
-	if err := c.getJSON(ctx, r, base+"/manifests/"+tag, manifestTypes, &m); err != nil {
-		return time.Time{}, err
-	}
-	if len(m.Manifests) > 0 {
-		digest := ""
+		if err := c.getJSON(ctx, r, base+"/manifests/"+ref, manifestTypes, &m); err != nil {
+			return time.Time{}, err
+		}
+		config, ref = m.Config.Digest, ""
 		for _, d := range m.Manifests {
 			if d.Platform.OS == "linux" && d.Platform.Architecture == runtime.GOARCH {
-				digest = d.Digest
+				ref = d.Digest
 				break
 			}
 		}
-		if digest == "" {
+		if config == "" && (ref == "" || depth == 2) {
 			return time.Time{}, fmt.Errorf("%s:%s has no linux/%s image", r.Name(), tag, runtime.GOARCH)
-		}
-		if err := c.getJSON(ctx, r, base+"/manifests/"+digest, manifestTypes, &m); err != nil {
-			return time.Time{}, err
 		}
 	}
 	var cfg struct{ Created time.Time }
-	if err := c.getJSON(ctx, r, base+"/blobs/"+m.Config.Digest, "", &cfg); err != nil {
+	if err := c.getJSON(ctx, r, base+"/blobs/"+config, "", &cfg); err != nil {
 		return time.Time{}, err
 	}
 	return cfg.Created, nil
