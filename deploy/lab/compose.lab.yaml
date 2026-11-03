@@ -19,6 +19,9 @@ services:
       PALIER_REGISTRY_WEBHOOK_SECRET: 0b5d6f1c9a7e4d2b8f3a6c1e9d7b5a3f2e8c4a6b1d9f7e3c5a2b8d6f4e1c9a7b
       DOCKER_index_docker_io_USR: ${LAB_DOCKERHUB_USR:-}
       DOCKER_index_docker_io_PSW: ${LAB_DOCKERHUB_PSW:-}
+      DOCKER_10_10_50_10_USR: palier
+      DOCKER_10_10_50_10_PSW: lab-registry-password
+      SSL_CERT_DIR: /etc/palier/ca
       DOCKER_CONFIG: /etc/palier/docker
       PALIER_AI_KEY: ${PALIER_AI_KEY:-}
       PALIER_GITLAB_TOKEN: ${PALIER_GITLAB_TOKEN:-}
@@ -30,6 +33,7 @@ services:
       - /apps:/apps
       - /opt/palier/docker:/etc/palier/docker:ro
       - /opt/palier/bin/docker-credential-env:/usr/local/bin/docker-credential-env:ro
+      - /opt/palier/labreg/ca:/etc/palier/ca:ro
 
   webhook-tester:
     image: ghcr.io/tarampampam/webhook-tester:2
@@ -52,3 +56,33 @@ services:
     restart: unless-stopped
     ports:
       - "${LAB_MAILPIT_PORT:?}:8025"
+
+  labreg:
+    image: registry:2.8.3
+    restart: unless-stopped
+    environment:
+      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/server.pem
+      REGISTRY_HTTP_TLS_KEY: /certs/server-key.pem
+      REGISTRY_AUTH: token
+      REGISTRY_AUTH_TOKEN_REALM: https://${LAB_ADDRESS:?}:${LAB_LABAUTH_PORT:?}/auth
+      REGISTRY_AUTH_TOKEN_SERVICE: palier-lab-registry
+      REGISTRY_AUTH_TOKEN_ISSUER: palier-lab
+      REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE: /certs/token.pem
+    volumes:
+      - /opt/palier/labreg/certs:/certs:ro
+      - labreg-data:/var/lib/registry
+    ports:
+      - "${LAB_LABREG_PORT:?}:5000"
+
+  labauth:
+    image: cesanta/docker_auth:1.14.0
+    restart: unless-stopped
+    command: ["--v=2", "--alsologtostderr", "/config/auth.yml"]
+    volumes:
+      - /opt/palier/labreg/certs:/certs:ro
+      - /opt/palier/labreg/auth.yml:/config/auth.yml:ro
+    ports:
+      - "${LAB_LABAUTH_PORT:?}:5001"
+
+volumes:
+  labreg-data: {}

@@ -30,6 +30,8 @@ ports:
   webhook_tester: 8081
   oidc: 8090
   mailpit: 8025
+  labreg: 5443
+  labauth: 5001
   gitlab: 8929
   gitlab_ssh: 2224
   immich: 2283

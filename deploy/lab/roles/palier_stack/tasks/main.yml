@@ -48,6 +48,54 @@
   args:
     creates: "{{ palier_dir }}/bin/docker-credential-env"
 
+- name: Create the certificates of the lab registry once
+  ansible.builtin.shell: |
+    set -e
+    d={{ palier_dir }}/labreg
+    mkdir -p $d/certs $d/ca
+    cd $d/certs
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=palier lab CA" -keyout ca-key.pem -out ca.pem
+    openssl req -newkey rsa:2048 -nodes -subj "/CN={{ topology.vm.address }}" -keyout server-key.pem -out server.csr
+    printf 'subjectAltName=IP:{{ topology.vm.address }}\n' > san.ext
+    openssl x509 -req -in server.csr -CA ca.pem -CAkey ca-key.pem -CAcreateserial -days 3650 -extfile san.ext -out server.pem
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=palier lab token" -keyout token-key.pem -out token.pem
+    chmod 0644 *.pem
+    cp ca.pem $d/ca/palier-lab-ca.crt
+  args:
+    creates: "{{ palier_dir }}/labreg/certs/server.pem"
+
+- name: Let the Docker engine trust the lab registry
+  ansible.builtin.shell: |
+    mkdir -p /etc/docker/certs.d/{{ topology.vm.address }}:{{ topology.ports.labreg }}
+    cp {{ palier_dir }}/labreg/certs/ca.pem /etc/docker/certs.d/{{ topology.vm.address }}:{{ topology.ports.labreg }}/ca.crt
+  args:
+    creates: /etc/docker/certs.d/{{ topology.vm.address }}:{{ topology.ports.labreg }}/ca.crt
+
+- name: Write the users of the lab registry token server
+  ansible.builtin.shell: |
+    set -e
+    hash=$(docker run --rm httpd:2.4 htpasswd -nbB palier lab-registry-password | cut -d: -f2)
+    cat > {{ palier_dir }}/labreg/auth.yml <<EOF
+    server:
+      addr: ":5001"
+      certificate: /certs/server.pem
+      key: /certs/server-key.pem
+    token:
+      issuer: palier-lab
+      expiration: 900
+      certificate: /certs/token.pem
+      key: /certs/token-key.pem
+    users:
+      "palier":
+        password: "$hash"
+    acl:
+      - match: {account: "palier"}
+        actions: ["*"]
+    EOF
+    chmod 0644 {{ palier_dir }}/labreg/auth.yml
+  args:
+    creates: "{{ palier_dir }}/labreg/auth.yml"
+
 - name: Create the Docker configuration directory of Palier
   ansible.builtin.file:
     path: "{{ palier_dir }}/docker"

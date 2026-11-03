@@ -5,6 +5,7 @@
 {% endfor %}
   },
   "credHelpers": {
-    "https://index.docker.io/v1/": "env"
+    "https://index.docker.io/v1/": "env",
+    "{{ topology.vm.address }}:{{ topology.ports.labreg }}": "env"
   }
 }

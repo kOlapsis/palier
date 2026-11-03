@@ -62,6 +62,7 @@ The machine is `10.10.50.10`, on the NAT network `palier-lab` (host side `10.10.
 | Service | Address | Credentials |
 |---|---|---|
 | Palier | http://10.10.50.10:8080 | sign-in on the test provider below, any user name, claims `{"groups": ["palier-admins"]}`; or `deploy/lab/lab ssh sudo docker exec -it palier-palier-1 palier` |
+| Lab registry | https://10.10.50.10:5443, tokens from https://10.10.50.10:5001 | `palier` / `lab-registry-password`; TLS signed by the lab CA in `/opt/palier/labreg` |
 | Mailpit | http://10.10.50.10:8025 | none; every email Palier sends arrives here |
 | OIDC test provider | http://10.10.50.10:8090/palier | none; `mock-oauth2-server` signs in whoever fills its form, with the claims typed there |
 | webhook-tester | http://10.10.50.10:8081 | none; the webhooks arrive in session `00000000-0000-4000-8000-000000000001` |

@@ -98,7 +98,18 @@ with, in `config.json`:
 
 An entry of `auths` wins over a helper. A helper answer is kept ten minutes, a failure one minute, and a failure is logged without its secret. Helpers that give an identity token instead of a user and a password are not supported, and the desktop stores (`desktop`, `osxkeychain`, `wincred`, `pass`, `secretservice`) do not work inside a container.
 
-Proven on the bench: `docker-credential-env` for Docker Hub, for the tag reads of Palier and the pulls of `docker compose`. ECR, Artifact Registry and ACR follow the same mechanism but were not tried against a real account.
+Proven on the bench: `docker-credential-env` for Docker Hub, and for a private registry that, like ECR, Artifact Registry and ACR, only accepts tokens from a token server behind TLS, for the tag reads of Palier and the pulls of `docker compose`. ECR, Artifact Registry and ACR themselves were not tried against a real account.
+
+### Certificate authorities
+
+For a registry whose certificate comes from your own authority, mount the authority in the container and point `SSL_CERT_DIR` at its folder: Palier then trusts it on top of the public authorities. The Docker engine needs it too, in `/etc/docker/certs.d/<registry host:port>/ca.crt` on the host, for the pulls.
+
+```yaml
+    volumes:
+      - /etc/palier/ca:/etc/palier/ca:ro
+    environment:
+      SSL_CERT_DIR: /etc/palier/ca
+```
 
 ## Registry webhooks
 
