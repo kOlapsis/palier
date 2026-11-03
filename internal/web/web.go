@@ -146,25 +146,28 @@ func Summarize(list []notify.Incident) Problems {
 	p := Problems{ByStack: map[string][]notify.Incident{}, MoreStack: map[string]int{}}
 	for _, i := range list {
 		if i.Level == notify.Alert {
-			if len(p.Alerts) < 3 {
-				p.Alerts = append(p.Alerts, i)
-			} else {
-				p.More++
-			}
+			p.Alerts = append(p.Alerts, i)
 		} else {
 			p.Others++
 		}
-		if i.Stack == "" {
-			continue
-		}
-		i.Title = strings.TrimPrefix(i.Title, i.Stack+": ")
-		if len(p.ByStack[i.Stack]) < 2 {
+		if i.Stack != "" {
+			i.Title = strings.TrimPrefix(i.Title, i.Stack+": ")
 			p.ByStack[i.Stack] = append(p.ByStack[i.Stack], i)
-		} else {
-			p.MoreStack[i.Stack]++
 		}
 	}
+	p.Alerts, p.More = shorten(p.Alerts, 3)
+	for st, l := range p.ByStack {
+		p.ByStack[st], p.MoreStack[st] = shorten(l, 2)
+	}
 	return p
+}
+
+// shorten keeps the first n incidents and counts the others, but shows a single other one rather than "and 1 more".
+func shorten(l []notify.Incident, n int) ([]notify.Incident, int) {
+	if len(l) <= n+1 {
+		return l, 0
+	}
+	return l[:n], len(l) - n
 }
 
 // Since says how long ago t was, in words.

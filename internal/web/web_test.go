@@ -200,7 +200,14 @@ func TestSummarize(t *testing.T) {
 	if len(p.Alerts) != 3 || p.More != 2 || p.Others != 3 {
 		t.Fatalf("%+v", p)
 	}
-	if g := p.ByStack["grafana"]; len(g) != 2 || g[0].Title != "versions of loki unknown" || p.MoreStack["grafana"] != 1 {
-		t.Errorf("grafana: %+v, more %d", g, p.MoreStack["grafana"])
+	if g := p.ByStack["grafana"]; len(g) != 3 || g[0].Title != "versions of loki unknown" || p.MoreStack["grafana"] != 0 {
+		t.Errorf("grafana: one more is shown, not counted: %+v, more %d", g, p.MoreStack["grafana"])
+	}
+	list = append(list, notify.Incident{Stack: "grafana", Level: "notice", Title: "grafana: versions of tempo unknown"})
+	if p := Summarize(list); len(p.ByStack["grafana"]) != 2 || p.MoreStack["grafana"] != 2 {
+		t.Errorf("grafana with four: %d shown, %d more", len(p.ByStack["grafana"]), p.MoreStack["grafana"])
+	}
+	if p := Summarize(list[:4]); len(p.Alerts) != 4 || p.More != 0 {
+		t.Errorf("four alerts: %d shown, %d more", len(p.Alerts), p.More)
 	}
 }
