@@ -33,6 +33,8 @@ For a project on GitHub, Palier also reads its published security advisories (Gi
 
 A version that fixes a vulnerability in the running version skips the maturation delay. During a wave of vulnerabilities, every hour counts, and verification and rollback remain the safety net.
 
+When the first step of a plan would leave a service exposed, because a long climb starts with versions the advisory still touches, Palier puts a step first: the latest patch of the running line (same major and minor) that the advisory no longer touches, for example GitLab 16.1.6 to 16.1.8 before the 16.3, 16.7 and later stops. The plan then goes on from that patch. Without a patch on the running line, the plan stays as it is.
+
 The built-in catalog complements the notes with excerpts from the official documentation, copied word for word with their address, which the AI cites like the notes. It has entries for:
 
 | Application | What the entry provides |

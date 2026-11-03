@@ -62,7 +62,7 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 - **The stack follows its application.** A database or cache never goes higher than what the application declares it supports. Without a citation, it stays on its major version.
 - **Database major upgrades that keep the data safe.** PostgreSQL, MySQL and MariaDB change major version by export and reimport on a new volume. The old volume is never touched, and Palier compares roles, databases, tables, rows, indexes and constraints before going on.
 - **PostgreSQL collations.** After a patch release that changes the C library of the image, Palier rebuilds the affected indexes and updates the collation version.
-- **Vulnerabilities first.** A version that fixes a vulnerability in the running version skips the maturation delay.
+- **Vulnerabilities first.** A version that fixes a vulnerability in the running version skips the maturation delay, and before a long climb Palier first applies the patch of the running line that closes it.
 - **Notes are data.** Release notes, image names and logs are never treated as instructions or displayed as HTML.
 - **The Compose file stays the source of truth.** Palier edits it in place, keeps its owner, group and mode, and hides no state on the side.
 - **Emails that do not flood you.** One email when a problem opens, one when it is resolved, and a weekly report only when something happened.

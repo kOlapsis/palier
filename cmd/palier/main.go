@@ -333,6 +333,7 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 		if err != nil {
 			rec.Plan = plan.Fallback(st, "Plan computed from versions only.")
 			rec.Plan.Incomplete = append(rec.Plan.Incomplete, "the AI returned no plan: "+err.Error())
+			plan.SecurityFirst(rec.Plan, st)
 			plan.Validate(rec.Plan, st)
 			return rec, nil
 		}
@@ -342,6 +343,11 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 			p.Suspicious = passages
 		}
 		rec.Plan, rec.Source = p, "ai"
+	}
+	before := len(rec.Plan.Steps)
+	plan.SecurityFirst(rec.Plan, st)
+	if added := len(rec.Plan.Steps) - before; added > 0 {
+		slog.Info("security fix first", "stack", st.Name, "steps added", added, "first", rec.Plan.Steps[0].Why)
 	}
 	plan.Validate(rec.Plan, st)
 	body, err := json.Marshal(rec.Plan)
