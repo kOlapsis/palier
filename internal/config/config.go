@@ -96,6 +96,12 @@ func Load(getenv func(string) string) (Config, error) {
 	default:
 		errs = append(errs, fmt.Errorf("PALIER_AUTO: %q, expected all, minor, patch or off", c.Auto))
 	}
+	if _, err := strconv.Atoi(c.Listen); err == nil {
+		c.Listen = ":" + c.Listen
+	}
+	if _, p, err := net.SplitHostPort(c.Listen); c.Listen != "" && (err != nil || p == "") {
+		errs = append(errs, fmt.Errorf("PALIER_LISTEN: %q, expected a port such as 8080 or an address such as 127.0.0.1:8080", c.Listen))
+	}
 	port, err := strconv.Atoi(get("PALIER_SMTP_PORT", "587"))
 	if err != nil || port <= 0 || port > 65535 {
 		errs = append(errs, fmt.Errorf("PALIER_SMTP_PORT: invalid port %q", get("PALIER_SMTP_PORT", "587")))

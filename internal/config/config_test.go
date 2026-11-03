@@ -58,3 +58,15 @@ func TestHookSecret(t *testing.T) {
 		}
 	}
 }
+
+func TestListen(t *testing.T) {
+	for in, want := range map[string]string{"8080": ":8080", ":8080": ":8080", "127.0.0.1:9000": "127.0.0.1:9000", "": ""} {
+		c, err := Load(env(map[string]string{"PALIER_LISTEN": in}))
+		if err != nil || c.Listen != want {
+			t.Errorf("%q: %q %v", in, c.Listen, err)
+		}
+	}
+	if _, err := Load(env(map[string]string{"PALIER_LISTEN": "localhost"})); err == nil || !strings.Contains(err.Error(), "PALIER_LISTEN") {
+		t.Errorf("an address without port: %v", err)
+	}
+}
