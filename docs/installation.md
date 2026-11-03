@@ -17,7 +17,7 @@ Each release image is built by the `release` workflow of this repository, signed
 ```sh
 cosign verify ghcr.io/kolapsis/palier:0.2.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity https://github.com/kOlapsis/palier/.github/workflows/release.yml@refs/tags/v0.1.0
+  --certificate-identity https://github.com/kOlapsis/palier/.github/workflows/release.yml@refs/tags/v0.2.0
 ```
 
 And the build provenance with the GitHub CLI:
