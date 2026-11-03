@@ -75,7 +75,7 @@
   register: palier_image_after
   changed_when: palier_image_after.stdout != palier_image_before.stdout
 
-- name: Start Palier, webhook-tester and the OIDC test provider
+- name: Start Palier and its bench services
   ansible.builtin.command: "{{ palier_compose }} up -d --wait"
   register: palier_up
   until: palier_up.rc == 0

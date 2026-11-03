@@ -64,6 +64,30 @@ CREATE TABLE IF NOT EXISTS decisions (
 	author TEXT NOT NULL,
 	at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS incidents (
+	id INTEGER PRIMARY KEY,
+	key TEXT NOT NULL,
+	stack TEXT NOT NULL,
+	level TEXT NOT NULL,
+	title TEXT NOT NULL,
+	detail TEXT NOT NULL,
+	opened TEXT NOT NULL,
+	resolved TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS outbox (
+	id INTEGER PRIMARY KEY,
+	channel TEXT NOT NULL,
+	subject TEXT NOT NULL,
+	message TEXT NOT NULL,
+	created TEXT NOT NULL,
+	attempts INTEGER NOT NULL DEFAULT 0,
+	next_try TEXT NOT NULL,
+	sent TEXT NOT NULL DEFAULT '',
+	error TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS reports (
+	sent TEXT NOT NULL
+);
 `
 
 // Open opens, and creates if needed, the database of the data directory.

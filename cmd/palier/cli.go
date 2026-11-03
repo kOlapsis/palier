@@ -22,6 +22,7 @@ import (
 
 	"github.com/kolapsis/palier/internal/config"
 	"github.com/kolapsis/palier/internal/notes"
+	"github.com/kolapsis/palier/internal/notify"
 	"github.com/kolapsis/palier/internal/plan"
 	"github.com/kolapsis/palier/internal/run"
 	"github.com/kolapsis/palier/internal/web"
@@ -40,6 +41,9 @@ Usage:
                                            never propose this version again
   palier postpone <stack> <YYYY-MM-DD>     no automatic apply before this date
   palier scan                              scan now and show the state
+  palier notify                            channels, last message sent, open problems
+  palier notify test                       send a test message on every channel
+  palier notify report                     send the report of what happened since the last one
   palier serve                             run Palier (the container does it)
 
 Every command takes --json for scripts.
@@ -135,6 +139,25 @@ func (c *cli) run(cmd string, args []string) error {
 			fmt.Sprintf("No automatic apply of %s before %s.", args[0], args[1]))
 	case cmd == "scan" && len(args) == 0:
 		return c.scan()
+	case cmd == "notify" && len(args) == 0:
+		return c.notifications()
+	case cmd == "notify" && len(args) == 1 && args[0] == "test":
+		if err := c.call(http.MethodPost, "/notify/test", url.Values{}, &map[string]bool{}); err != nil {
+			return err
+		}
+		c.line(c.paint("ok", "Test message accepted by every channel."))
+		return nil
+	case cmd == "notify" && len(args) == 1 && args[0] == "report":
+		var r struct{ Queued bool }
+		if err := c.call(http.MethodPost, "/notify/report", url.Values{}, &r); err != nil {
+			return err
+		}
+		if r.Queued {
+			c.line("Report queued; palier notify shows when it is sent.")
+		} else {
+			c.line("Nothing happened since the last report: nothing sent.")
+		}
+		return nil
 	}
 	return errUsage
 }
@@ -180,6 +203,7 @@ func (c *cli) status() error {
 	if st.Error != "" {
 		c.line(c.paint("bad", clean(st.Error)))
 	}
+	c.incidents(st.Incidents)
 	if len(st.Stacks) == 0 {
 		c.line("No container on this Docker engine yet.")
 		return nil
@@ -190,6 +214,53 @@ func (c *cli) status() error {
 	}
 	c.line("")
 	c.table([]string{"STACK", "STATE", "RUNNING", "TARGET", "NOTE"}, rows)
+	return nil
+}
+
+func (c *cli) incidents(list []notify.Incident) {
+	for _, i := range list {
+		tone, label := "warn", "info"
+		if i.Level == notify.Alert {
+			tone, label = "bad", "alert"
+		}
+		c.line(c.paint(tone, c.bold(label+": ")+clean(i.Title)) + c.dim(" since "+when(i.Opened)))
+	}
+}
+
+func (c *cli) notifications() error {
+	var n struct {
+		Channels  []notify.Channel
+		Incidents []notify.Incident
+	}
+	if err := c.call(http.MethodGet, "/notify", nil, &n); err != nil {
+		return err
+	}
+	if c.json {
+		return c.printJSON(n)
+	}
+	if len(n.Channels) == 0 {
+		c.line("No channel: set PALIER_SMTP_HOST and PALIER_EMAIL_TO to receive emails. Problems are still listed below.")
+	}
+	for _, ch := range n.Channels {
+		c.line(c.bold(ch.Name) + "  " + clean(ch.Describe))
+		switch d := ch.Last; {
+		case d == nil:
+			c.line(c.dim("  nothing sent yet"))
+		case d.Sent != "":
+			c.line(c.paint("ok", "  sent "+when(d.Sent)) + "  " + clean(d.Subject))
+		case d.Error != "":
+			c.line(c.paint("bad", fmt.Sprintf("  failed %d time%s: %s", d.Attempts, plural(d.Attempts), clean(d.Error))) + "  " + clean(d.Subject))
+		default:
+			c.line(c.paint("run", "  waiting to be sent") + "  " + clean(d.Subject))
+		}
+	}
+	c.line("")
+	if len(n.Incidents) == 0 {
+		c.line(c.paint("ok", "No open problem."))
+		return nil
+	}
+	c.line(c.bold("Open problems"))
+	c.incidents(n.Incidents)
 	return nil
 }
 

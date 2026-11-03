@@ -21,6 +21,20 @@
 <dt>DOCKER_CONFIG</dt><dd>{{.DockerConfig}}</dd>
 <dt>PALIER_OIDC_ISSUER</dt><dd>{{with .OIDCIssuer}}{{.}}, client {{$.OIDCClientID}}{{else}}not set: no sign-in{{end}}</dd>
 <dt>PALIER_OIDC_ADMINS</dt><dd>{{with .OIDCAdmins}}{{join .}}{{else}}not set{{end}}</dd>
+<dt>PALIER_SMTP_HOST</dt><dd>{{with .SMTPHost}}{{.}}:{{$.SMTPPort}}, from {{$.SMTPFrom}}{{else}}not set: no email{{end}}</dd>
+<dt>PALIER_EMAIL_TO</dt><dd>{{with .EmailTo}}{{join .}}, level {{$.EmailLevel}}{{else}}not set{{end}}</dd>
+<dt>PALIER_PUBLIC_URL</dt><dd>{{with .PublicURL}}{{.}}{{else}}not set: messages give the command to run instead of a link{{end}}</dd>
 </dl>
 </div>
+
+<h2>Notifications</h2>
+{{with .Error}}<p class="notice bad">{{.}}</p>{{end}}
+{{if .Tested}}<p class="notice info">Test message accepted by every channel.</p>{{end}}
+<div class="panel">
+{{if .Channels}}<table><thead><tr><th>Channel</th><th>Last message</th></tr></thead><tbody>
+{{range .Channels}}<tr><td class="name">{{.Name}}<span class="sub">{{.Describe}}</span></td>
+<td>{{with .Last}}{{.Subject}}<span class="sub">{{if .Sent}}sent {{when .Sent}}{{else if .Error}}failed {{.Attempts}} time(s): {{.Error}}{{else}}waiting to be sent{{end}}</span>{{else}}<span class="muted">nothing sent yet</span>{{end}}</td></tr>
+{{end}}</tbody></table>{{else}}<p class="empty">No channel: set <code>PALIER_SMTP_HOST</code> and <code>PALIER_EMAIL_TO</code> to receive emails.</p>{{end}}
+</div>
+{{if .Channels}}<form method="post" action="/settings/test" class="actions"><button>Send a test</button></form>{{end}}
 {{end}}

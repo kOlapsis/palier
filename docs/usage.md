@@ -80,6 +80,28 @@ Under the plan, `palier show` and the stack page say whether automatic apply wil
 
 A plan is kept as long as its inputs do not change: Compose files, versions, release notes, model and Palier version. Identical inputs therefore always get the same plan and the same judgment, without a new AI call.
 
+## Notifications
+
+Palier works on its own, so it only writes when there is something to know, and once per problem. Each problem gets two emails: one when it opens, one when it is resolved. A run that fails ten times in a row sends one email, not ten.
+
+| Level | When | Examples |
+|---|---|---|
+| Alert | Palier can no longer vouch for a stack. | A rollback failed. Palier cannot read the Docker engine. A critical or high security advisory touches a running version and Palier cannot fix it on its own. |
+| Information | An update did not go through, but the stack runs. | An update rolled back, not started (backup hook, migrations still running) or stopped after a verified step. A plan waits for a decision. The versions of a service cannot be read (seen in two scans in a row, so that a passing request limit does not write). |
+| Weekly report | On Monday from 8:00, and only when something happened since the last one. | The stacks updated, with their versions before and after; the updates that did not go through, grouped by stack; the problems opened, resolved and still open. |
+
+`PALIER_EMAIL_LEVEL=alert` keeps the alerts and the weekly report only. A message that cannot be sent is tried again 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours later, without ever holding up a run. Problems are recorded even without a channel: `palier` lists the open ones above the stacks, and the home page of the web interface shows them too.
+
+```sh
+palier notify          # channels, last message sent or its error, open problems
+palier notify test     # sends a test message now and says whether the server accepted it
+palier notify report   # sends the report of what happened since the last one, if anything did
+```
+
+The Settings page of the web interface shows the same channels, with a "Send a test" button.
+
+Email is the first channel; others will follow, each with its own variables.
+
 ## The webhook
 
 If `PALIER_WEBHOOK_URL` is set, Palier sends a JSON `POST` to it for each of these events:

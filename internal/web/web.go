@@ -20,6 +20,7 @@ import (
 	"github.com/kolapsis/palier/internal/config"
 	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/notes"
+	"github.com/kolapsis/palier/internal/notify"
 	"github.com/kolapsis/palier/internal/plan"
 	"github.com/kolapsis/palier/internal/run"
 	"github.com/kolapsis/palier/internal/version"
@@ -47,7 +48,13 @@ type Deps struct {
 	Run       func(id int64) (*run.View, error)
 	Runs      func(stack string) ([]run.View, error)
 	Rescan    func()
-	Config    config.Config
+
+	Incidents    func() []notify.Incident
+	Channels     func() []notify.Channel
+	NotifyTest   func() error
+	NotifyReport func() (bool, error)
+
+	Config config.Config
 }
 
 type server struct {
@@ -308,7 +315,10 @@ func New(deps Deps) http.Handler {
 		s.pages[p] = template.Must(template.New("").Funcs(funcs).ParseFS(templates, "templates/layout.html", "templates/"+p))
 	}
 	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		s.render(w, http.StatusOK, "index.html", s.deps.Current())
+		s.render(w, http.StatusOK, "index.html", struct {
+			Snapshot
+			Incidents []notify.Incident
+		}{s.deps.Current(), s.incidents()})
 	})
 	s.mux.HandleFunc("GET /stacks/{name}", s.stack)
 	s.mux.HandleFunc("POST /stacks/{name}/apply", s.apply(false))
@@ -317,7 +327,19 @@ func New(deps Deps) http.Handler {
 	s.mux.HandleFunc("POST /stacks/{name}/postpone", s.decide("postpone"))
 	s.mux.HandleFunc("GET /runs/{id}", s.run)
 	s.mux.HandleFunc("GET /settings", func(w http.ResponseWriter, r *http.Request) {
-		s.render(w, http.StatusOK, "settings.html", s.deps.Config)
+		s.render(w, http.StatusOK, "settings.html", struct {
+			config.Config
+			Channels []notify.Channel
+			Tested   string
+			Error    string
+		}{s.deps.Config, s.channels(), r.URL.Query().Get("tested"), r.URL.Query().Get("error")})
+	})
+	s.mux.HandleFunc("POST /settings/test", func(w http.ResponseWriter, r *http.Request) {
+		target := "/settings?tested=1"
+		if err := s.test(); err != nil {
+			target = "/settings?error=" + url.QueryEscape(err.Error())
+		}
+		http.Redirect(w, r, target, http.StatusSeeOther)
 	})
 	var h http.Handler = s.mux
 	if deps.Config.OIDCIssuer != "" {

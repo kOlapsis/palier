@@ -65,6 +65,7 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 - **Vulnerabilities first.** A version that fixes a vulnerability in the running version skips the maturation delay.
 - **Notes are data.** Release notes, image names and logs are never treated as instructions or displayed as HTML.
 - **The Compose file stays the source of truth.** Palier edits it in place, keeps its owner, group and mode, and hides no state on the side.
+- **Emails that do not flood you.** One email when a problem opens, one when it is resolved, and a weekly report only when something happened.
 - **A backup hook.** The `palier.hook.backup` label runs your backup command in the container before any change. If it fails, nothing is applied.
 
 ## Automatic mode
@@ -126,6 +127,8 @@ Three things to get right:
 | `PALIER_SCAN_INTERVAL` | `1h` | Scan frequency |
 | `PALIER_MATURATION` | `72h` | Minimum age of a proposed version |
 | `PALIER_STABLE_SECONDS` | `60` | Stability time required at each verification |
+| `PALIER_SMTP_HOST`, `PALIER_SMTP_PORT`, `PALIER_SMTP_USER`, `PALIER_SMTP_PASSWORD`, `PALIER_SMTP_FROM`, `PALIER_EMAIL_TO` | empty, `587` | Emails: one when a problem opens, one when it is resolved, and a weekly report when something happened |
+| `PALIER_EMAIL_LEVEL` | `info` | `alert` keeps only the alerts and the weekly report |
 | `PALIER_WEBHOOK_URL` | empty | JSON on every plan ready, run end, rollback or failure |
 | `PALIER_GITHUB_TOKEN`, `PALIER_GITLAB_TOKEN` | empty | Notes and security advisories without the anonymous limit |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror |
@@ -174,7 +177,7 @@ The web interface is optional: set `PALIER_LISTEN=:8080` and publish the port. W
 
 - One Palier per Docker machine: no agent, no remote machine.
 - No accounts or roles: the web interface lets in the admins of an OpenID Connect provider.
-- The webhook is the only alert.
+- Email and the webhook are the only channels.
 - Databases other than PostgreSQL, MySQL and MariaDB stay blocked on their major version.
 - Notes outside GitHub and gitlab.com are not read.
 - Registry credentials in a `credsStore` or `credHelpers` are not read.

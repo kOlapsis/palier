@@ -4,7 +4,7 @@
 
 - No accounts or roles: the web interface lets in the admins of an OpenID Connect provider, or, without one, whoever reaches its port.
 - No agent or remote machine: one Palier per Docker machine.
-- No alert other than the webhook.
+- No channel other than email and the webhook.
 - No cleanup of old images.
 - No update of Palier itself.
 - No translation of release notes.

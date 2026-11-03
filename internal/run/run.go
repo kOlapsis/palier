@@ -839,17 +839,18 @@ func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *p
 
 // View is a run as the interface and the command line show it.
 type View struct {
-	ID        int64    `json:"id"`
-	Stack     string   `json:"stack"`
-	Status    string   `json:"status"`
-	DryRun    bool     `json:"dry_run"`
-	Author    string   `json:"author"`
-	Error     string   `json:"error,omitempty"`
-	Started   string   `json:"started"`
-	Finished  string   `json:"finished,omitempty"`
-	Steps     []string `json:"steps,omitempty"`
-	StepsDone int      `json:"steps_done"`
-	Events    []Event  `json:"events,omitempty"`
+	ID        int64         `json:"id"`
+	Stack     string        `json:"stack"`
+	Status    string        `json:"status"`
+	DryRun    bool          `json:"dry_run"`
+	Author    string        `json:"author"`
+	Error     string        `json:"error,omitempty"`
+	Started   string        `json:"started"`
+	Finished  string        `json:"finished,omitempty"`
+	Steps     []string      `json:"steps,omitempty"`
+	Changes   []plan.Change `json:"changes,omitempty"`
+	StepsDone int           `json:"steps_done"`
+	Events    []Event       `json:"events,omitempty"`
 }
 
 const viewColumns = `id, stack, status, dry_run, author, error, started, finished, plan,
@@ -865,6 +866,7 @@ func scanView(row interface{ Scan(...any) error }) (View, error) {
 	if json.Unmarshal([]byte(body), &p) == nil {
 		for _, s := range p.Steps {
 			v.Steps = append(v.Steps, describe(s))
+			v.Changes = append(v.Changes, s.Changes...)
 		}
 	}
 	if v.Status == Done {

@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kolapsis/palier/internal/inventory"
+	"github.com/kolapsis/palier/internal/notify"
 	"github.com/kolapsis/palier/internal/run"
 )
 
@@ -23,10 +25,11 @@ type Line struct {
 
 // Status is the state of every stack at the last scan.
 type Status struct {
-	Began  time.Time `json:"began"`
-	At     time.Time `json:"at"`
-	Error  string    `json:"error,omitempty"`
-	Stacks []Line    `json:"stacks"`
+	Incidents []notify.Incident `json:"incidents"`
+	Began     time.Time         `json:"began"`
+	At        time.Time         `json:"at"`
+	Error     string            `json:"error,omitempty"`
+	Stacks    []Line            `json:"stacks"`
 }
 
 // API returns the JSON handler the command line reaches on the local socket.
@@ -35,7 +38,7 @@ func API(deps Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
 		snap := s.deps.Current()
-		out := Status{Began: snap.Began, At: snap.At, Error: snap.Err, Stacks: []Line{}}
+		out := Status{Incidents: s.incidents(), Began: snap.Began, At: snap.At, Error: snap.Err, Stacks: []Line{}}
 		for _, st := range snap.Stacks {
 			out.Stacks = append(out.Stacks, s.line(s.view(st, snap.At)))
 		}
@@ -71,12 +74,43 @@ func API(deps Deps) http.Handler {
 		v, err := s.deps.Run(id)
 		reply(w, v, err)
 	})
+	mux.HandleFunc("GET /notify", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, map[string]any{"channels": s.channels(), "incidents": s.incidents()}, nil)
+	})
+	mux.HandleFunc("POST /notify/test", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, map[string]bool{"ok": true}, s.test())
+	})
+	mux.HandleFunc("POST /notify/report", func(w http.ResponseWriter, r *http.Request) {
+		queued, err := s.deps.NotifyReport()
+		reply(w, map[string]bool{"queued": queued}, err)
+	})
 	mux.HandleFunc("POST /scan", func(w http.ResponseWriter, r *http.Request) {
 		asked := time.Now()
 		s.deps.Rescan()
 		reply(w, map[string]time.Time{"asked": asked}, nil)
 	})
 	return mux
+}
+
+func (s *server) incidents() []notify.Incident {
+	if s.deps.Incidents == nil {
+		return []notify.Incident{}
+	}
+	return append([]notify.Incident{}, s.deps.Incidents()...)
+}
+
+func (s *server) channels() []notify.Channel {
+	if s.deps.Channels == nil {
+		return []notify.Channel{}
+	}
+	return append([]notify.Channel{}, s.deps.Channels()...)
+}
+
+func (s *server) test() error {
+	if s.deps.NotifyTest == nil {
+		return errors.New("notifications are not available")
+	}
+	return s.deps.NotifyTest()
 }
 
 func reply(w http.ResponseWriter, v any, err error) {

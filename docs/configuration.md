@@ -20,6 +20,13 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_GITLAB_TOKEN` | empty | Reads GitLab release notes (gitlab.com) without the anonymous limit, and those of private projects. |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror (`mirror.gcr.io`, for example), used for reads by digest. |
 | `DOCKER_CONFIG` | `$HOME/.docker` | Folder of the `config.json` that holds the credentials of private registries. |
+| `PALIER_SMTP_HOST`, `PALIER_SMTP_PORT` | empty, `587` | Mail server for the emails. Port 465 uses TLS from the start, any other port STARTTLS, which is required unless the server is on the local network. |
+| `PALIER_SMTP_USER`, `PALIER_SMTP_PASSWORD` | empty | Account on the mail server, when it asks for one. |
+| `PALIER_SMTP_FROM` | the user, when it is an email | Sender of the emails. |
+| `PALIER_EMAIL_TO` | empty | Recipients, separated by commas. Required with `PALIER_SMTP_HOST`. |
+| `PALIER_EMAIL_LEVEL` | `info` | `alert`: only alerts and the weekly report. `info`: also the updates that did not go through. See [notifications](usage.md#notifications). |
+| `PALIER_PUBLIC_URL` | empty | Address of the web interface, such as `https://palier.example.com`, for the links of the emails. Without it, the emails give the command to run. |
+| `TZ` | UTC | Time zone of the dates of the emails and of the weekly report, such as `Europe/Paris`. |
 | `PALIER_OIDC_ISSUER` | empty | OpenID Connect provider that signs people in to the web interface. Empty, the web interface has no sign-in. |
 | `PALIER_OIDC_CLIENT_ID`, `PALIER_OIDC_CLIENT_SECRET` | empty | Client registered at the provider. The secret can stay empty for a public client. |
 | `PALIER_OIDC_ADMINS` | empty | Who may use Palier, separated by commas: groups or roles, emails, or `@domain`. Required with `PALIER_OIDC_ISSUER`. |

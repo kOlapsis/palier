@@ -5,6 +5,7 @@
 <p class="meta">{{if .At.IsZero}}First scan in progress.{{else}}Last scan {{since .At}}.{{end}}</p>
 </div>
 {{with .Err}}<p class="notice bad">{{.}}</p>{{end}}
+{{range .Incidents}}<p class="notice {{if eq .Level "alert"}}bad{{else}}warn{{end}}"><strong>{{if eq .Level "alert"}}Alert{{else}}Information{{end}}:</strong> {{.Title}}<span class="muted">, since {{when .Opened}}</span></p>{{end}}
 {{if .Stacks}}
 <div class="panel">
 <table>

@@ -32,6 +32,14 @@ type Config struct {
 	OIDCClientID   string
 	OIDCSecret     string
 	OIDCAdmins     []string
+	SMTPHost       string
+	SMTPPort       int
+	SMTPUser       string
+	SMTPPassword   string
+	SMTPFrom       string
+	EmailTo        []string
+	EmailLevel     string
+	PublicURL      string
 }
 
 // Load reads the environment through getenv and applies the defaults.
@@ -57,11 +65,14 @@ func Load(getenv func(string) string) (Config, error) {
 		OIDCIssuer:     get("PALIER_OIDC_ISSUER", ""),
 		OIDCClientID:   get("PALIER_OIDC_CLIENT_ID", ""),
 		OIDCSecret:     get("PALIER_OIDC_CLIENT_SECRET", ""),
-	}
-	for _, a := range strings.Split(get("PALIER_OIDC_ADMINS", ""), ",") {
-		if a = strings.TrimSpace(a); a != "" {
-			c.OIDCAdmins = append(c.OIDCAdmins, a)
-		}
+		OIDCAdmins:     list(get("PALIER_OIDC_ADMINS", "")),
+		SMTPHost:       get("PALIER_SMTP_HOST", ""),
+		SMTPUser:       get("PALIER_SMTP_USER", ""),
+		SMTPPassword:   getenv("PALIER_SMTP_PASSWORD"),
+		SMTPFrom:       get("PALIER_SMTP_FROM", ""),
+		EmailTo:        list(get("PALIER_EMAIL_TO", "")),
+		EmailLevel:     get("PALIER_EMAIL_LEVEL", "info"),
+		PublicURL:      strings.TrimSuffix(get("PALIER_PUBLIC_URL", ""), "/"),
 	}
 	var errs []error
 	duration := func(name, def string) time.Duration {
@@ -83,6 +94,30 @@ func Load(getenv func(string) string) (Config, error) {
 	default:
 		errs = append(errs, fmt.Errorf("PALIER_AUTO: %q, expected all, minor, patch or off", c.Auto))
 	}
+	port, err := strconv.Atoi(get("PALIER_SMTP_PORT", "587"))
+	if err != nil || port <= 0 || port > 65535 {
+		errs = append(errs, fmt.Errorf("PALIER_SMTP_PORT: invalid port %q", get("PALIER_SMTP_PORT", "587")))
+	}
+	c.SMTPPort = port
+	if c.SMTPFrom == "" && strings.Contains(c.SMTPUser, "@") {
+		c.SMTPFrom = c.SMTPUser
+	}
+	if c.SMTPHost != "" {
+		if len(c.EmailTo) == 0 {
+			errs = append(errs, errors.New("PALIER_EMAIL_TO: required with PALIER_SMTP_HOST"))
+		}
+		if !strings.Contains(c.SMTPFrom, "@") {
+			errs = append(errs, errors.New("PALIER_SMTP_FROM: required with PALIER_SMTP_HOST, unless PALIER_SMTP_USER is an email address"))
+		}
+	}
+	if c.EmailLevel != "alert" && c.EmailLevel != "info" {
+		errs = append(errs, fmt.Errorf("PALIER_EMAIL_LEVEL: %q, expected alert or info", c.EmailLevel))
+	}
+	if c.PublicURL != "" {
+		if u, err := url.Parse(c.PublicURL); err != nil || u.Host == "" || u.Scheme != "https" && u.Scheme != "http" {
+			errs = append(errs, fmt.Errorf("PALIER_PUBLIC_URL: %q, expected an address such as https://palier.example.com", c.PublicURL))
+		}
+	}
 	if c.OIDCIssuer != "" {
 		if u, err := url.Parse(c.OIDCIssuer); err != nil || u.Host == "" || u.Scheme != "https" && !(u.Scheme == "http" && localHost(u.Hostname())) {
 			errs = append(errs, fmt.Errorf("PALIER_OIDC_ISSUER: %q, expected an https address (http only on a local network)", c.OIDCIssuer))
@@ -95,6 +130,16 @@ func Load(getenv func(string) string) (Config, error) {
 		}
 	}
 	return c, errors.Join(errs...)
+}
+
+func list(v string) []string {
+	var out []string
+	for _, a := range strings.Split(v, ",") {
+		if a = strings.TrimSpace(a); a != "" {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 func localHost(host string) bool {

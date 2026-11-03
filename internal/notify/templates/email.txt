@@ -1,0 +1,15 @@
+{{.Label}}: {{.M.Title}}
+{{with .M.Summary}}
+{{.}}
+{{end}}{{range .M.Fields}}
+{{.Label}}: {{.Value}}{{end}}
+{{range .M.Lists}}
+{{.Title}}
+{{range .Items}}- {{.}}
+{{end}}{{end}}{{with .M.Action}}
+What to do: {{.}}
+{{end}}{{with .M.Link}}
+{{.}}
+{{end}}
+--
+Sent by Palier on {{.Host}}.

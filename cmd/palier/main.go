@@ -26,6 +26,7 @@ import (
 	"github.com/kolapsis/palier/internal/docker"
 	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/notes"
+	"github.com/kolapsis/palier/internal/notify"
 	"github.com/kolapsis/palier/internal/plan"
 	"github.com/kolapsis/palier/internal/registry"
 	"github.com/kolapsis/palier/internal/run"
@@ -132,6 +133,8 @@ type app struct {
 	reg *registry.Client
 	nc  *notes.Client
 	eng *run.Engine
+
+	notifier *notify.Notifier
 }
 
 func setup() (*app, error) {
@@ -168,7 +171,13 @@ func setup() (*app, error) {
 		events := map[string]string{run.Done: "run_done", run.RolledBack: "run_rolled_back", run.Failed: "run_failed", run.Abandoned: "run_abandoned", run.Stopped: "run_stopped"}
 		a.notify(map[string]any{"event": events[status], "stack": stack, "run": id, "status": status, "error": cause})
 	}
-	*a = app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken, cfg.GitLabToken), eng: eng}
+	var senders []notify.Sender
+	if cfg.SMTPHost != "" {
+		var info struct{ Name string }
+		dc.Get(context.Background(), "/info", &info)
+		senders = append(senders, &notify.Email{Host: cfg.SMTPHost, Port: cfg.SMTPPort, User: cfg.SMTPUser, Password: cfg.SMTPPassword, From: cfg.SMTPFrom, To: cfg.EmailTo, Level: cfg.EmailLevel, Machine: info.Name})
+	}
+	*a = app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken, cfg.GitLabToken), eng: eng, notifier: notify.New(db, senders, cfg.PublicURL)}
 	return a, nil
 }
 
@@ -467,6 +476,8 @@ func serve() error {
 	if err := a.eng.Recover(ctx); err != nil {
 		return err
 	}
+	report := func(since, until time.Time) notify.Message { return a.report(ctx, since, until) }
+	go a.notifier.Run(ctx, report)
 
 	var mu sync.Mutex
 	var snap web.Snapshot
@@ -550,8 +561,10 @@ func serve() error {
 							}
 						}
 					}
+					a.sync(ctx, current())
 				}
 			}
+			a.sync(ctx, current())
 			a.waitForScan(ctx, rescan, next.At)
 			if ctx.Err() != nil {
 				return
@@ -598,7 +611,17 @@ func serve() error {
 			default:
 			}
 		},
-		Config: a.cfg,
+		Incidents: func() []notify.Incident {
+			list, err := a.notifier.Incidents(ctx, true)
+			if err != nil {
+				slog.Error("incidents", "err", err)
+			}
+			return list
+		},
+		Channels:     func() []notify.Channel { return a.notifier.Channels(ctx) },
+		NotifyTest:   func() error { return a.notifier.Test(ctx) },
+		NotifyReport: func() (bool, error) { return a.notifier.SendReport(ctx, report, true) },
+		Config:       a.cfg,
 	}
 	sock := socketPath(a.cfg)
 	os.Remove(sock)

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{{.M.Subject}}</title>
+</head>
+<body style="margin:0;padding:0;background:#eef1f4;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f4;">
+<tr><td align="center" style="padding:28px 12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#18212b;">
+<tr><td style="padding:0 6px 14px;font-size:16px;font-weight:700;letter-spacing:-.01em;color:#18212b;">Palier</td></tr>
+<tr><td style="background:#ffffff;border-radius:10px;border-left:5px solid {{.Color}};padding:28px 28px 26px;">
+<p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:{{.Color}};">{{.Label}}</p>
+<h1 style="margin:0 0 14px;font-size:21px;line-height:1.3;font-weight:700;color:#18212b;">{{.M.Title}}</h1>
+{{with .M.Summary}}<p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#36424e;white-space:pre-line;">{{.}}</p>{{end}}
+{{with .M.Fields}}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 6px;font-size:14px;border-collapse:collapse;">
+{{range .}}<tr><td style="padding:7px 0;border-top:1px solid #e3e8ed;color:#5e6b78;width:34%;vertical-align:top;">{{.Label}}</td><td style="padding:7px 0;border-top:1px solid #e3e8ed;color:#18212b;vertical-align:top;">{{.Value}}</td></tr>
+{{end}}</table>{{end}}
+{{range .M.Lists}}<h2 style="margin:22px 0 8px;font-size:15px;font-weight:700;color:#18212b;">{{.Title}}</h2>
+<ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.7;color:#36424e;">{{range .Items}}<li>{{.}}</li>{{end}}</ul>
+{{end}}
+{{with .M.Action}}<p style="margin:20px 0 0;padding:12px 14px;background:#f5f7f9;border-radius:6px;font-size:14px;line-height:1.55;color:#18212b;"><strong>What to do:</strong> {{.}}</p>{{end}}
+{{with .M.Link}}<p style="margin:24px 0 0;"><a href="{{.}}" style="display:inline-block;background:{{$.Color}};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 22px;border-radius:6px;">Open in Palier</a></p>{{end}}
+</td></tr>
+<tr><td style="padding:16px 6px 0;font-size:12px;line-height:1.6;color:#6c7a88;">Sent by Palier on {{.Host}}. Palier writes when a problem opens and when it is resolved, and sends a weekly report only when something happened.{{if ne .Level "alert"}} To receive only alerts, set PALIER_EMAIL_LEVEL=alert.{{end}}</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
