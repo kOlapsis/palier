@@ -355,6 +355,9 @@ func (c *cli) show(stack string) error {
 		if s.Republished {
 			c.line(c.dim(clean(s.Name) + ": tag republished in the registry with different content, not a new version"))
 		}
+		for _, h := range s.Hidden {
+			c.line(c.dim(clean(s.Name) + ": removed from the notes before the AI read them, " + clean(h)))
+		}
 	}
 	for _, s := range st.Services {
 		if len(s.Advisories) > 0 {
@@ -415,6 +418,12 @@ func (c *cli) plan(v web.StackView) {
 		c.line("Automatic apply will pick it up.")
 	case v.AutoWhy != "":
 		c.line("No automatic apply: " + clean(v.AutoWhy) + ".")
+	}
+	if len(p.Suspicious) > 0 {
+		c.line(c.paint("bad", c.bold("The release notes contain text that seems written to steer an AI; the plan waits for you:")))
+		for _, q := range p.Suspicious {
+			c.line(c.paint("bad", "  “"+clean(q)+"”"))
+		}
 	}
 	if len(p.Incomplete) > 0 {
 		c.line(c.paint("bad", "Incomplete plan, it will not be applied:"))

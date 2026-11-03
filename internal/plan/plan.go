@@ -21,6 +21,7 @@ type Plan struct {
 	Steps      []Step   `json:"steps"`
 	Incomplete []string `json:"incomplete"`
 	Withheld   []string `json:"withheld,omitempty"`
+	Suspicious []string `json:"suspicious,omitempty"`
 }
 
 // Step changes some services and passes when its gate and verification pass.
@@ -71,6 +72,7 @@ type Edit struct {
 	Name    string `json:"name,omitempty"`
 	Value   string `json:"value,omitempty"`
 	NewName string `json:"new_name,omitempty"`
+	Source  string `json:"source,omitempty"`
 }
 
 // Fact is a statement of the release notes, with its exact quote.
@@ -139,8 +141,11 @@ func Validate(p *Plan, st *inventory.Stack) {
 				p.incomplete("step %d: the service %s to stop does not exist", n, name)
 			}
 		}
-		for _, op := range s.Operations {
+		for j, op := range s.Operations {
 			validateOp(p, n, op, services)
+			if op.Op == "compose_edit" {
+				checkFreeValues(p, n, &s.Operations[j], st)
+			}
 		}
 		checkGate(p, n, s, services)
 		seen := map[string]bool{}
@@ -180,6 +185,7 @@ func Validate(p *Plan, st *inventory.Stack) {
 	for _, svc := range st.Services {
 		checkStops(p, svc)
 	}
+	checkSuspicious(p, st)
 }
 
 // checkGate requires the background check of the card after each step that changes a service whose card has one.
@@ -617,6 +623,8 @@ func Automatic(p *Plan, auto string) (bool, string) {
 	switch {
 	case auto == "off":
 		return false, "PALIER_AUTO=off"
+	case len(p.Suspicious) > 0:
+		return false, "the release notes contain text that seems written to steer an AI"
 	case len(p.Incomplete) > 0:
 		return false, "incomplete plan"
 	case len(p.Steps) == 0:

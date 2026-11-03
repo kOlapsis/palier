@@ -29,7 +29,8 @@
 {{with .Available}}<details class="versions"><summary>{{len .}} newer version{{if gt (len .) 1}}s{{end}}</summary><p>{{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</p></details>{{end}}
 {{with .Maturing}}<span class="flag muted">Maturing: {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>{{end}}
 {{with .DetectionError}}<span class="flag bad">{{.}}</span>{{end}}
-{{with .NotesError}}<span class="flag bad">{{.}}</span>{{end}}</td>
+{{with .NotesError}}<span class="flag bad">{{.}}</span>{{end}}
+{{with .Hidden}}<details class="versions"><summary>Removed from the notes before the AI read them</summary><p>{{range $i, $h := .}}{{if $i}}<br>{{end}}{{$h}}{{end}}</p></details>{{end}}</td>
 </tr>
 {{with .Advisories}}<tr class="advisories"><td></td><td colspan="4"><details><summary><span class="pill bad">{{severities .}}</span></summary>
 <ul>{{range worstFirst .}}<li><span class="sev {{.Severity}}">{{or .Severity "unknown"}}</span><a href="{{.URL}}" rel="noreferrer noopener">{{with .CVE}}{{.}}{{else}}{{.ID}}{{end}}</a><span>{{.Summary}}</span></li>{{end}}</ul>
@@ -56,6 +57,7 @@
 </div>{{end}}
 </div>
 {{if not .Steps}}<p class="muted">Nothing to apply.</p>{{end}}
+{{with .Suspicious}}<div class="notice bad">The release notes contain text that seems written to steer an AI; the plan waits for you:<ul>{{range .}}<li>“{{.}}”</li>{{end}}</ul></div>{{end}}
 {{with .Incomplete}}<div class="notice bad">Incomplete plan, it will not be applied:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 {{with .Withheld}}<div class="notice info">Versions left out:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 <ol class="steps">

@@ -78,6 +78,17 @@ The AI never writes a command. The code then checks the whole plan before showin
 
 A fact without a valid citation is removed. A plan that does not pass is marked incomplete, with the reason, and is never applied.
 
+## Text written to steer the AI
+
+Release notes are written by others, and a compromised account or an unreviewed contribution can slip instructions for an AI into them. Palier assumes it can happen:
+
+- **Cleaned before reading.** HTML comments, Markdown comments, hidden elements (`hidden`, `display: none`) and invisible characters are removed before the AI reads the notes. `palier show` and the stack page list what was removed.
+- **Unguessable delimiters.** Each note is sent between tags whose name carries a mark the notes cannot guess. A note that imitates a tag of the prompt (`</release_notes>`, `<system>`…) is flagged.
+- **A second look.** A short, separate call asks the AI for the passages addressed to an AI or trying to change how an automated tool judges or acts. Only passages found word for word in the notes are kept.
+- **Flagged plans wait for a person.** A plan with a flagged passage is never applied on its own: `palier show` and the stack page show the passage, and an alert is sent.
+- **Free values must be cited.** A variable, command, healthcheck or mount that the AI writes into the Compose file must appear word for word in the notes of the service or already in the Compose file. A command or healthcheck cannot run shell (`|`, `;`, `&`, `$(`…), a healthcheck cannot reach outside the container, a mount cannot leave the directory of the stack nor target a socket, and a variable cannot read or copy a secret of the stack. Otherwise the plan is incomplete.
+- **Traced.** The run log gives, for each of these values, the note it was written in.
+
 ## The stack follows its application
 
 In a stack, the application is the service that no other service depends on. The services it depends on (database, cache) follow.

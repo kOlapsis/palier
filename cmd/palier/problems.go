@@ -77,7 +77,10 @@ func problems(snap web.Snapshot, last map[string]run.View, plans map[string]*pla
 			}
 		}
 		automatic := false
-		if pending {
+		if pending && len(p.Suspicious) > 0 {
+			out = append(out, notify.Problem{Key: st.Name + ":injection", Stack: st.Name, Level: notify.Alert, Title: st.Name + ": release notes try to steer the AI",
+				Detail: "“" + p.Suspicious[0] + "”", Action: fmt.Sprintf("Palier will not apply this plan on its own. Read the notes and the plan with palier show %s before you apply it.", st.Name), Path: page})
+		} else if pending {
 			ok, why := plan.Automatic(p, auto)
 			automatic = ok
 			if !ok {

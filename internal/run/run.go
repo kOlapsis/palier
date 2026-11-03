@@ -556,6 +556,9 @@ func (e *Engine) composeEdit(ctx context.Context, id int64, cp *Checkpoint, op p
 				if err != nil {
 					return err
 				}
+				if ed.Source != "" {
+					what += " (written in " + ed.Source + ")"
+				}
 				done = append(done, what)
 			}
 			return nil

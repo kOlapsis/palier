@@ -22,7 +22,7 @@
 
 ## Prompt injection
 
-Release notes and security advisories are texts written by others. Palier treats them as data, the AI only chooses from a closed vocabulary, and the code checks the plan. But the free values of `compose_edit` (command, healthcheck, variable, volume) are not yet checked against the notes.
+Release notes and security advisories are texts written by others. Palier treats them as data and checks what the AI makes of them, as [How it works](how-it-works.md#text-written-to-steer-the-ai) describes. What remains: a maintainer who publishes, in plain words, a malicious instruction that reads like an ordinary upgrade note and stays within what the checks accept (a cited variable, a cited mount inside the stack directory) would be followed.
 
 ## What the plan cache implies
 

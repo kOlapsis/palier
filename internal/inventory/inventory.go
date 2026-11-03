@@ -58,6 +58,7 @@ type Service struct {
 	Notes          []notes.Note     `json:"notes,omitempty"`
 	Advisories     []notes.Advisory `json:"advisories,omitempty"`
 	NotesError     string           `json:"notes_error,omitempty"`
+	Hidden         []string         `json:"hidden,omitempty"`
 	BuiltLocally   bool             `json:"built_locally,omitempty"`
 
 	current      version.V
@@ -405,6 +406,13 @@ func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Cli
 	if card := catalog.For(s.Image); card != nil {
 		for _, ex := range card.Excerpts {
 			s.Notes = append(s.Notes, notes.Note{URL: ex.URL, Body: ex.Text})
+		}
+	}
+	for i := range s.Notes {
+		var removed []string
+		s.Notes[i].Body, removed = notes.Clean(s.Notes[i].Body)
+		for _, r := range removed {
+			s.Hidden = append(s.Hidden, cmp.Or(s.Notes[i].Tag, "documentation")+": "+r)
 		}
 	}
 	for _, v := range newer {

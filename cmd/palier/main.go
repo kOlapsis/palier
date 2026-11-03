@@ -336,6 +336,11 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 			plan.Validate(rec.Plan, st)
 			return rec, nil
 		}
+		if passages, err := ai.Screen(ctx, a.cfg.AIKey, a.cfg.AIModel, st); err != nil {
+			p.Incomplete = append(p.Incomplete, "the check of the notes for text written to steer an AI failed: "+err.Error())
+		} else {
+			p.Suspicious = passages
+		}
 		rec.Plan, rec.Source = p, "ai"
 	}
 	plan.Validate(rec.Plan, st)
