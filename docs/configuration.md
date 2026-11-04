@@ -20,7 +20,7 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_GITLAB_TOKEN` | empty | Reads GitLab release notes (gitlab.com) without the anonymous limit, and those of private projects. |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror (`mirror.gcr.io`, for example), used for reads by digest. |
 | `DOCKER_CONFIG` | `$HOME/.docker` | Folder of the `config.json` that holds the credentials of private registries. |
-| `PALIER_SMTP_HOST`, `PALIER_SMTP_PORT` | empty, `587` | Mail server for the emails. Port 465 uses TLS from the start, any other port STARTTLS, which is required unless the server is on the local network. |
+| `PALIER_SMTP_HOST`, `PALIER_SMTP_PORT` | empty, `587` | Mail server for the emails. Port 465 uses TLS from the start, any other port STARTTLS. For a server on the internet, STARTTLS is required and its certificate fully checked. For a server on the local network (`localhost`, a name without a dot such as a Compose service, a private or loopback address), STARTTLS is used when offered, without checking the certificate, so that a relay with a self-signed certificate works, and plain SMTP is accepted when it is not. |
 | `PALIER_SMTP_USER`, `PALIER_SMTP_PASSWORD` | empty | Account on the mail server, when it asks for one. |
 | `PALIER_SMTP_FROM` | the user, when it is an email | Sender of the emails. |
 | `PALIER_EMAIL_TO` | empty | Recipients, separated by commas. Required with `PALIER_SMTP_HOST`. |

@@ -70,6 +70,11 @@ func (e *Email) Send(ctx context.Context, m Message) error {
 	if err != nil {
 		return err
 	}
+	return e.deliver(conn, body)
+}
+
+// deliver speaks SMTP on conn: STARTTLS when offered, required off the local network, then the message to every recipient.
+func (e *Email) deliver(conn net.Conn, body []byte) error {
 	conn.SetDeadline(time.Now().Add(time.Minute))
 	c, err := smtp.NewClient(conn, e.Host)
 	if err != nil {
@@ -79,7 +84,8 @@ func (e *Email) Send(ctx context.Context, m Message) error {
 	defer c.Close()
 	if e.Port != 465 {
 		if ok, _ := c.Extension("STARTTLS"); ok {
-			if err := c.StartTLS(&tls.Config{ServerName: e.Host}); err != nil {
+			// A relay on the local network often offers a self-signed certificate, whose check proves nothing.
+			if err := c.StartTLS(&tls.Config{ServerName: e.Host, InsecureSkipVerify: Local(e.Host)}); err != nil {
 				return err
 			}
 		} else if !Local(e.Host) {
