@@ -18,10 +18,11 @@ import (
 
 // Plan is an ordered list of steps; a plan with reasons in Incomplete is never applied.
 type Plan struct {
-	Steps      []Step   `json:"steps"`
-	Incomplete []string `json:"incomplete"`
-	Withheld   []string `json:"withheld,omitempty"`
-	Suspicious []string `json:"suspicious,omitempty"`
+	Steps      []Step            `json:"steps"`
+	Incomplete []string          `json:"incomplete"`
+	Withheld   []string          `json:"withheld,omitempty"`
+	Suspicious []string          `json:"suspicious,omitempty"`
+	Auto       map[string]string `json:"auto,omitempty"`
 }
 
 // Step changes some services and passes when its gate and verification pass.
@@ -186,6 +187,19 @@ func Validate(p *Plan, st *inventory.Stack) {
 		checkStops(p, svc)
 	}
 	checkSuspicious(p, st)
+	p.Auto = nil
+	for _, svc := range st.Services {
+		switch svc.Auto {
+		case "":
+		case "off", "patch", "minor", "all":
+			if p.Auto == nil {
+				p.Auto = map[string]string{}
+			}
+			p.Auto[svc.Name] = svc.Auto
+		default:
+			p.incomplete("label palier.auto of %s: %q, expected all, minor, patch or off", svc.Name, svc.Auto)
+		}
+	}
 }
 
 // checkGate requires the background check of the card after each step that changes a service whose card has one.
@@ -621,8 +635,6 @@ func Level(from, to string) string {
 // Automatic reports whether PALIER_AUTO lets p be applied without a click, and why not otherwise.
 func Automatic(p *Plan, auto string) (bool, string) {
 	switch {
-	case auto == "off":
-		return false, "PALIER_AUTO=off"
 	case len(p.Suspicious) > 0:
 		return false, "the release notes contain text that seems written to steer an AI"
 	case len(p.Incomplete) > 0:
@@ -637,9 +649,19 @@ func Automatic(p *Plan, auto string) (bool, string) {
 		if s.Reversible == "no" {
 			return false, fmt.Sprintf("step %d is irreversible, even by restoring the volumes", i+1)
 		}
+		if len(s.Changes) == 0 && auto == "off" {
+			return false, "PALIER_AUTO=off"
+		}
 		for _, c := range s.Changes {
-			if l := Level(c.From, c.To); auto == "minor" && l == "major" || auto == "patch" && l != "patch" {
-				return false, fmt.Sprintf("%s %s to %s is a %s version, beyond PALIER_AUTO=%s", c.Service, c.From, c.To, l, auto)
+			level, source := auto, "PALIER_AUTO"
+			if v := p.Auto[c.Service]; v != "" {
+				level, source = v, "palier.auto of "+c.Service
+			}
+			switch l := Level(c.From, c.To); {
+			case level == "off":
+				return false, source + "=off"
+			case level == "minor" && l == "major" || level == "patch" && l != "patch":
+				return false, fmt.Sprintf("%s %s to %s is a %s version, beyond %s=%s", c.Service, c.From, c.To, l, source, level)
 			}
 		}
 	}

@@ -127,7 +127,7 @@ The mirror reduces the requests made to Docker Hub, which limits anonymous acces
 
 ## Labels on your services
 
-Two labels, set in the Compose file of your stacks, change how Palier behaves.
+Three labels, set in the Compose file of your stacks, change how Palier behaves.
 
 ### `palier.hook.backup`
 
@@ -139,6 +139,18 @@ services:
     image: postgres:16.4
     labels:
       palier.hook.backup: "pg_dumpall -U outline > /backup/before-palier.sql"
+```
+
+### `palier.auto`
+
+The automatic apply of this service, instead of `PALIER_AUTO`: `all`, `minor`, `patch` or `off`. It works both ways: `palier.auto: patch` keeps a sensitive service to patch releases while the rest of the machine takes everything, and `palier.auto: all` lets one service update on its own while `PALIER_AUTO=off`. A plan applies on its own only if every service it changes allows its change; another value makes the plan incomplete.
+
+```yaml
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:18.5.3-ce.0
+    labels:
+      palier.auto: patch
 ```
 
 ### `palier.depends_on`

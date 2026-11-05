@@ -234,3 +234,39 @@ func TestFallbackDatabaseMajor(t *testing.T) {
 		t.Fatalf("%v %+v", p.Incomplete, p.Steps[0].Operations)
 	}
 }
+
+func TestAutomaticPerService(t *testing.T) {
+	two := func(auto map[string]string) *Plan {
+		return &Plan{Auto: auto, Steps: []Step{step(Change{"outline", "1.10.1", "1.11.0"}), step(Change{"redis", "7.2.4", "7.2.16"})}}
+	}
+	for _, c := range []struct {
+		auto     map[string]string
+		global   string
+		want     bool
+		mentions string
+	}{
+		{nil, "all", true, ""},
+		{map[string]string{"outline": "patch"}, "all", false, "palier.auto of outline=patch"},
+		{map[string]string{"redis": "off"}, "all", false, "palier.auto of redis=off"},
+		{nil, "off", false, "PALIER_AUTO=off"},
+		{map[string]string{"outline": "all", "redis": "patch"}, "off", true, ""},
+		{map[string]string{"outline": "minor"}, "off", false, "PALIER_AUTO=off"},
+	} {
+		ok, why := Automatic(two(c.auto), c.global)
+		if ok != c.want || !strings.Contains(why, c.mentions) {
+			t.Errorf("auto %v, global %s: %v %q", c.auto, c.global, ok, why)
+		}
+	}
+	if ok, _ := Automatic(&Plan{Steps: []Step{{Risk: "unknown", Reversible: "unknown"}}}, "off"); ok {
+		t.Error("a step without change escaped PALIER_AUTO=off")
+	}
+}
+
+func TestAutoLabel(t *testing.T) {
+	st := &inventory.Stack{Services: []*inventory.Service{{Name: "outline", Auto: "patch"}, {Name: "redis"}, {Name: "postgres", Auto: "major"}}}
+	p := &Plan{}
+	Validate(p, st)
+	if len(p.Auto) != 1 || p.Auto["outline"] != "patch" || !strings.Contains(strings.Join(p.Incomplete, ";"), `palier.auto of postgres: "major"`) {
+		t.Errorf("auto %v, incomplete %q", p.Auto, p.Incomplete)
+	}
+}

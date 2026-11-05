@@ -551,7 +551,7 @@ func serve() error {
 				if err != nil {
 					slog.Error("plan", "stack", st.Name, "err", err)
 				}
-				if rec == nil || a.cfg.Auto == "off" {
+				if rec == nil {
 					continue
 				}
 				ok, why := plan.Automatic(rec.Plan, a.cfg.Auto)
