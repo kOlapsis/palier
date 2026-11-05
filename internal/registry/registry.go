@@ -81,6 +81,14 @@ func New(db *sql.DB, auths *Auths, mirror string) *Client {
 	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}}
 }
 
+// StatusError is a refusal of a registry, with its HTTP status.
+type StatusError struct {
+	Code int
+	msg  string
+}
+
+func (e *StatusError) Error() string { return e.msg }
+
 // Auths are the credentials of config.json: its auths section, and the credential helpers of credHelpers and credsStore.
 type Auths struct {
 	Basic   map[string]string
@@ -270,7 +278,7 @@ func (c *Client) do(ctx context.Context, method string, r Ref, url, accept strin
 		if resp.StatusCode != http.StatusOK {
 			b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 			resp.Body.Close()
-			return nil, fmt.Errorf("%s %s: %s: %s", method, url, resp.Status, strings.TrimSpace(string(b)))
+			return nil, &StatusError{Code: resp.StatusCode, msg: fmt.Sprintf("%s %s: %s: %s", method, url, resp.Status, strings.TrimSpace(string(b)))}
 		}
 		return resp, nil
 	}

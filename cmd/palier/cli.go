@@ -318,6 +318,8 @@ func (c *cli) show(stack string) error {
 		switch crumbs := v.Paths[s.Name]; {
 		case s.BuiltLocally:
 			path = cell{text: "built locally: no registry to check", tone: "muted"}
+		case s.NotInRegistry:
+			path = cell{text: "not in its registry: built locally, or private without credentials", tone: "muted"}
 		case v.At.IsZero():
 			path = cell{text: "checking versions", tone: "run"}
 		case len(crumbs) > 1:

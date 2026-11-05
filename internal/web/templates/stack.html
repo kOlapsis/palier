@@ -23,7 +23,7 @@
 </td>
 <td>{{.State}}{{with .Health}}<span class="sub">{{.}}</span>{{end}}{{if .Restarts}}<span class="sub">{{.Restarts}} restart{{if ne .Restarts 1}}s{{end}}</span>{{end}}</td>
 <td>{{with .DependsOn}}{{join .}}{{else}}<span class="muted">none</span>{{end}}</td>
-<td>{{$path := crumbs . $.Record}}{{if .BuiltLocally}}<span class="muted">built locally: no registry to check</span>{{else if $.At.IsZero}}<span class="muted">checking versions</span>{{else if gt (len $path) 1}}
+<td>{{$path := crumbs . $.Record}}{{if .BuiltLocally}}<span class="muted">built locally: no registry to check</span>{{else if .NotInRegistry}}<span class="muted">not in its registry: built locally, or private without credentials</span>{{else if $.At.IsZero}}<span class="muted">checking versions</span>{{else if gt (len $path) 1}}
 <ol class="path" aria-label="Upgrade path of {{.Name}}">{{range $i, $c := $path}}<li class="{{if eq $i 0}}from{{else if $c.Last}}last{{else if $c.Stop}}stop{{end}}"><span{{if $c.Stop}} title="Required stop"{{end}}>{{$c.Tag}}</span></li>{{end}}</ol>
 {{else if and .Available $.Record}}<span class="muted">stays on {{or .Version .Tag}}: the plan does not change it</span>{{else}}<span class="muted">up to date</span>{{end}}
 {{with .Available}}<details class="versions"><summary>{{len .}} newer version{{if gt (len .) 1}}s{{end}}</summary><p>{{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</p></details>{{end}}

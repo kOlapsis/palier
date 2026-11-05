@@ -4,6 +4,7 @@ package inventory
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -60,6 +61,7 @@ type Service struct {
 	NotesError     string           `json:"notes_error,omitempty"`
 	Hidden         []string         `json:"hidden,omitempty"`
 	BuiltLocally   bool             `json:"built_locally,omitempty"`
+	NotInRegistry  bool             `json:"not_in_registry,omitempty"`
 
 	current      version.V
 	digests      []string
@@ -378,6 +380,11 @@ func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Cli
 	}
 	ref := registry.ParseRef(s.Image + ":" + s.Tag)
 	tags, err := reg.Tags(ctx, ref)
+	var refused *registry.StatusError
+	if errors.As(err, &refused) && (refused.Code == 401 || refused.Code == 403 || refused.Code == 404) && !reg.UsesCredentials(ref.Domain) {
+		s.NotInRegistry = true
+		return
+	}
 	if err != nil {
 		s.DetectionError = err.Error()
 		return

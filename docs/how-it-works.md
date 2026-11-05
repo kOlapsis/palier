@@ -19,6 +19,8 @@ The running version comes, in this order:
 
 The publication date of each version comes from the Docker Hub API, read in pages of a hundred tags with the Docker Hub credentials, or from the creation date of the image for other registries. It is used for the maturation delay.
 
+An image built on the machine is not looked up in a registry: a service with a `build` section or `pull_policy: never` in its Compose file, an image without registry digest, or an image its registry does not know (401, 403 or 404 while Palier has no credentials for that registry) shows as built locally, without error. With credentials, the same refusal stays an error, since it points at the credentials.
+
 Newer versions are sorted. Prereleases are excluded, and variants such as `-alpine` are kept: a service on `-alpine` stays on `-alpine`. A tag republished with different content is not a new version. A version younger than `PALIER_MATURATION` waits, unless it fixes a vulnerability in the running version (see below).
 
 ## 3. Release notes
