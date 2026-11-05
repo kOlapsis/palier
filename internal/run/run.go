@@ -168,6 +168,9 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		return
 	}
 	if err := e.snapshot(ctx, id, st, cp, changedServices(st, p)); err != nil {
+		if ctx.Err() != nil {
+			err = errors.New("Palier was stopped while it copied the volumes")
+		}
 		e.event(id, "cannot copy volumes: %v", err)
 		e.rollback(context.WithoutCancel(ctx), id, cp, err)
 		return
@@ -186,6 +189,9 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 					e.finish(id, Stopped, fmt.Errorf("stopped after step %d of %d: %w; the next steps wait for it", i+1, len(p.Steps), err))
 				}
 				return
+			}
+			if ctx.Err() != nil {
+				err = fmt.Errorf("Palier was stopped during step %d", i+1)
 			}
 			e.event(id, "step %d failed: %v", i+1, err)
 			e.rollback(context.WithoutCancel(ctx), id, cp, err)
