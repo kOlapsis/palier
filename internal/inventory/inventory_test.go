@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseDependsOnAndRoles(t *testing.T) {
-	deps, err := parseDependsOn([]byte(`
+	deps, local, err := parseDependsOn([]byte(`
 services:
   outline:
     depends_on:
@@ -18,9 +18,20 @@ services:
     depends_on: [redis]
   postgres: {}
   redis: {}
+  backup:
+    image: selfstack-backup
+    pull_policy: never
+  runner:
+    build: ./runner
+  pinned:
+    image: nginx
+    pull_policy: always
 `))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(local, map[string]bool{"backup": true, "runner": true}) {
+		t.Errorf("built locally: %v", local)
 	}
 	want := map[string][]string{"outline": {"postgres", "redis"}, "worker": {"redis"}}
 	if !reflect.DeepEqual(deps, want) {

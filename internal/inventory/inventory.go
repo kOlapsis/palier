@@ -151,12 +151,13 @@ func Scan(ctx context.Context, dc *docker.Client) ([]*Stack, error) {
 	var out []*Stack
 	for _, st := range stacks {
 		if !st.Observed {
-			deps, err := readDependsOn(st.ConfigFiles)
+			deps, local, err := readDependsOn(st.ConfigFiles)
 			if err != nil {
 				st.Errors = append(st.Errors, err.Error())
 			}
 			for _, s := range st.Services {
 				s.DependsOn = append(s.DependsOn, deps[s.Name]...)
+				s.BuiltLocally = s.BuiltLocally || local[s.Name]
 			}
 		}
 		assignRoles(st)
@@ -230,35 +231,44 @@ func selfID() string {
 	return ""
 }
 
-func readDependsOn(files []string) (map[string][]string, error) {
-	deps := map[string][]string{}
+// readDependsOn returns the depends_on of each service, and the services built on the machine rather than pulled.
+func readDependsOn(files []string) (map[string][]string, map[string]bool, error) {
+	deps, local := map[string][]string{}, map[string]bool{}
 	for _, f := range files {
 		data, err := os.ReadFile(f)
 		if err != nil {
-			return deps, fmt.Errorf("reading Compose file: %w", err)
+			return deps, local, fmt.Errorf("reading Compose file: %w", err)
 		}
-		d, err := parseDependsOn(data)
+		d, l, err := parseDependsOn(data)
 		if err != nil {
-			return deps, fmt.Errorf("%s: %w", f, err)
+			return deps, local, fmt.Errorf("%s: %w", f, err)
 		}
 		for s, list := range d {
 			deps[s] = append(deps[s], list...)
 		}
+		for s := range l {
+			local[s] = true
+		}
 	}
-	return deps, nil
+	return deps, local, nil
 }
 
-func parseDependsOn(data []byte) (map[string][]string, error) {
+func parseDependsOn(data []byte) (map[string][]string, map[string]bool, error) {
 	var doc struct {
 		Services map[string]struct {
-			DependsOn yaml.Node `yaml:"depends_on"`
+			DependsOn  yaml.Node `yaml:"depends_on"`
+			Build      yaml.Node `yaml:"build"`
+			PullPolicy string    `yaml:"pull_policy"`
 		}
 	}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	deps := map[string][]string{}
+	deps, local := map[string][]string{}, map[string]bool{}
 	for name, s := range doc.Services {
+		if s.Build.Kind != 0 || s.PullPolicy == "never" || s.PullPolicy == "build" {
+			local[name] = true
+		}
 		n := s.DependsOn
 		step := 1
 		if n.Kind == yaml.MappingNode {
@@ -268,7 +278,7 @@ func parseDependsOn(data []byte) (map[string][]string, error) {
 			deps[name] = append(deps[name], n.Content[i].Value)
 		}
 	}
-	return deps, nil
+	return deps, local, nil
 }
 
 func assignRoles(st *Stack) {
