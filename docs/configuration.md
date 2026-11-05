@@ -14,7 +14,7 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_SCAN_INTERVAL` | `1h` | Interval between two scans (Go duration: `30m`, `2h`…). |
 | `PALIER_MATURATION` | `72h` | Minimum age of a version before it is proposed. A version that fixes a vulnerability in the running version does not wait. |
 | `PALIER_STABLE_SECONDS` | `60` | Time a service must stay stable at each verification. |
-| `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off`. See [automatic apply](usage.md#automatic-apply). |
+| `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off`. See [automatic apply](usage.md#automatic-apply). The [`palier.auto`](#palierauto) label overrides it for one service. |
 | `PALIER_WEBHOOK_URL` | empty | Address that receives events as JSON. |
 | `PALIER_GITHUB_TOKEN` | empty | Reads GitHub release notes and security advisories without the anonymous limit. |
 | `PALIER_GITLAB_TOKEN` | empty | Reads GitLab release notes (gitlab.com) without the anonymous limit, and those of private projects. |

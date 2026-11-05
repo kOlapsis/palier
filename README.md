@@ -66,13 +66,14 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 - **Notes are data.** Release notes, image names and logs are never treated as instructions or displayed as HTML.
 - **The Compose file stays the source of truth.** Palier edits it in place, keeps its owner, group and mode, and hides no state on the side.
 - **Emails that do not flood you.** One email when a problem opens, one when it is resolved, and a weekly report only when something happened.
+- **Labels per service.** `palier.auto` sets the automatic apply of one service, `palier.depends_on` adds dependencies.
 - **A backup hook.** The `palier.hook.backup` label runs your backup command in the container before any change. If it fails, nothing is applied.
 
 ## Automatic mode
 
 By default (`PALIER_AUTO=all`), Palier applies any complete plan on its own, major versions included, one stack after the other. It asks for a decision only for what it cannot do alone: a blocking step, an irreversible step or an incomplete plan.
 
-Prefer to stay in control? `minor` excludes major versions, `patch` keeps only patch releases, `off` makes you approve everything with `palier apply`.
+Prefer to stay in control? `minor` excludes major versions, `patch` keeps only patch releases, `off` makes you approve everything with `palier apply`. The `palier.auto` label sets the same for one service, for example `patch` on GitLab while the rest takes everything.
 
 ## Quick start
 
@@ -123,7 +124,7 @@ Three things to get right:
 | Variable | Default | Purpose |
 |---|---|---|
 | `PALIER_AI_KEY`, `PALIER_AI_MODEL` | empty, `claude-sonnet-5-5` | AI that reads the notes and builds the plan |
-| `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off` |
+| `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off`; the `palier.auto` label overrides it for one service |
 | `PALIER_SCAN_INTERVAL` | `1h` | Scan frequency |
 | `PALIER_MATURATION` | `72h` | Minimum age of a proposed version |
 | `PALIER_STABLE_SECONDS` | `60` | Stability time required at each verification |

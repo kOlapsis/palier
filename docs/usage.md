@@ -19,7 +19,7 @@ A large version jump can take a long time. GitLab, with 13 required stops and th
 | up to date | No newer version is available. |
 | computing plan | Newer versions exist, and the AI has not returned its plan yet. |
 | plan ready | A plan exists, and Palier will apply it on its own as soon as the previous stack is done. |
-| awaiting decision | A plan exists, but Palier cannot apply it on its own: a step is blocking or irreversible, the stack is postponed, or `PALIER_AUTO` excludes it. The reason is given on the stack page. |
+| awaiting decision | A plan exists, but Palier cannot apply it on its own: a step is blocking or irreversible, the stack is postponed, or `PALIER_AUTO` or the `palier.auto` label of a service excludes it. The reason is given on the stack page. |
 | incomplete plan | The plan did not pass the checks. The reason is shown, and the plan is not applied. |
 | detection incomplete | The versions of a service could not be read from the registry. |
 | running, completed, rolled back, failed, abandoned, stopped | Result of the last run. |
@@ -74,7 +74,7 @@ A plan waits for your decision only in these cases:
 - a step is irreversible: even restoring the volumes would not undo it;
 - the stack is postponed.
 
-The "attention" level says what changes, it does not block. `PALIER_AUTO=minor` excludes major versions, `PALIER_AUTO=patch` keeps only patch releases, and `PALIER_AUTO=off` turns automatic apply off: every plan then waits for `palier apply`.
+The "attention" level says what changes, it does not block. `PALIER_AUTO=minor` excludes major versions, `PALIER_AUTO=patch` keeps only patch releases, and `PALIER_AUTO=off` turns automatic apply off: every plan then waits for `palier apply`. The [`palier.auto`](configuration.md#palierauto) label overrides this setting for one service, in both directions; a plan applies on its own only if every service it changes allows it.
 
 Under the plan, `palier show` and the stack page say whether automatic apply will take it, or why it rules it out.
 
