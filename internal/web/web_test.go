@@ -211,3 +211,19 @@ func TestSummarize(t *testing.T) {
 		t.Errorf("four alerts: %d shown, %d more", len(p.Alerts), p.More)
 	}
 }
+
+func TestMainService(t *testing.T) {
+	st := &inventory.Stack{Name: "authentik", Services: []*inventory.Service{
+		{Name: "backup", Role: "application", Tag: "local", NotInRegistry: true},
+		{Name: "postgresql", Role: "dependency", Version: "16.4"},
+		{Name: "server", Role: "application", Image: "ghcr.io/goauthentik/server", Version: "2025.8.3"},
+		{Name: "worker", Role: "application", Image: "ghcr.io/goauthentik/server", Version: "2025.8.3"},
+	}}
+	if got := mainService(st); got.Name != "server" {
+		t.Errorf("main service %s", got.Name)
+	}
+	st.Services = st.Services[:2]
+	if got := mainService(st); got.Name != "backup" {
+		t.Errorf("with only a backup and a database: %s", got.Name)
+	}
+}

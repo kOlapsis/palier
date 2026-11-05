@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kolapsis/palier/internal/catalog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -128,13 +129,7 @@ func (s *server) line(v StackView) Line {
 	if len(v.Stack.Services) == 0 {
 		return l
 	}
-	app := v.Stack.Services[0]
-	for _, svc := range v.Stack.Services {
-		if svc.Role == inventory.RoleApplication {
-			app = svc
-			break
-		}
-	}
+	app := mainService(v.Stack)
 	l.Running = app.Version
 	if l.Running == "" {
 		l.Running = app.Tag
@@ -181,6 +176,34 @@ func (s *server) line(v StackView) Line {
 	}
 	l.Note = strings.Join(notes, "; ")
 	return l
+}
+
+// mainService is the application a person thinks of: among the applications of the stack, one with a catalog card, then
+// one read from a registry with a known version, rather than a sidecar built on the machine such as a backup.
+func mainService(st *inventory.Stack) *inventory.Service {
+	rank := func(s *inventory.Service) int {
+		r := 0
+		if s.Role == inventory.RoleApplication {
+			r += 8
+		}
+		if catalog.For(s.Image) != nil {
+			r += 4
+		}
+		if s.Version != "" {
+			r += 2
+		}
+		if !s.BuiltLocally && !s.NotInRegistry {
+			r++
+		}
+		return r
+	}
+	best := st.Services[0]
+	for _, s := range st.Services[1:] {
+		if rank(s) > rank(best) {
+			best = s
+		}
+	}
+	return best
 }
 
 func plural(n int) string {
