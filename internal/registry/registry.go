@@ -188,7 +188,7 @@ func runHelper(name, server string) (string, error) {
 		return "", fmt.Errorf("docker-credential-%s is not in the PATH of Palier (/usr/local/bin): mount it into the container", name)
 	}
 	if err != nil {
-		return "", fmt.Errorf("%w: %.300s", err, strings.TrimSpace(string(out)+" "+stderr.String()))
+		return "", fmt.Errorf("%w: %q", err, truncate(strings.TrimSpace(string(out)+" "+stderr.String()), 300))
 	}
 	var r struct{ Username, Secret string }
 	if err := json.Unmarshal(out, &r); err != nil {
@@ -627,4 +627,11 @@ func (c *Client) getJSON(ctx context.Context, r Ref, url, accept string, out any
 	}
 	defer resp.Body.Close()
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func truncate(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
 }

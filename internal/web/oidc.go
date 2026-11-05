@@ -163,7 +163,7 @@ func (g *gate) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, g.cookie(r, sessionCookie, g.seal(identity{Name: name, Exp: time.Now().Add(sessionLength).Unix()}), "/", int(sessionLength.Seconds())))
 	next := p.Next
-	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.HasPrefix(next, "/auth/") {
+	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.ContainsRune(next, '\\') || strings.HasPrefix(next, "/auth/") {
 		next = "/"
 	}
 	http.Redirect(w, r, next, http.StatusSeeOther)
