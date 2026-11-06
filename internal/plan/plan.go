@@ -557,6 +557,11 @@ func checkDatabase(p *Plan, n int, c Change, svc *inventory.Service, s *Step) {
 	}
 }
 
+// quoted tells whether quote appears word for word in body, a run of spaces and line breaks counting as one space.
+func quoted(body, quote string) bool {
+	return strings.Contains(body, quote) || strings.Contains(strings.Join(strings.Fields(body), " "), strings.Join(strings.Fields(quote), " "))
+}
+
 func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
 	var kept []Fact
 	for _, f := range facts {
@@ -568,7 +573,7 @@ func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
 		url, tag := "", ""
 		for _, s := range st.Services {
 			for _, note := range s.Notes {
-				if url == "" && strings.Contains(note.Body, f.Quote) {
+				if url == "" && quoted(note.Body, f.Quote) {
 					url, tag = note.URL, note.Tag
 				}
 			}

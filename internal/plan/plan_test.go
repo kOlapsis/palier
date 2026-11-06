@@ -270,3 +270,17 @@ func TestAutoLabel(t *testing.T) {
 		t.Errorf("auto %v, incomplete %q", p.Auto, p.Incomplete)
 	}
 }
+
+func TestQuoted(t *testing.T) {
+	body := "### Patches\r\n\r\nauthentik 2026.8.2, 2026.5.7 and  2026.2.7 fix this issue.\r\n"
+	for quote, want := range map[string]bool{
+		"authentik 2026.8.2, 2026.5.7 and 2026.2.7 fix this issue.": true,
+		"### Patches\nauthentik 2026.8.2":                           true,
+		"authentik 2026.8.2 and 2026.2.7 fix this issue.":           false,
+		"authentik 2026.8.3, 2026.5.7 and 2026.2.7 fix this issue.": false,
+	} {
+		if quoted(body, quote) != want {
+			t.Errorf("quoted(%q) != %v", quote, want)
+		}
+	}
+}

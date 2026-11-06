@@ -19,6 +19,7 @@ func invisible(r rune) bool {
 
 // Clean removes from a note what a reader does not see but a model reads: comments, hidden elements and invisible characters, and returns what it removed.
 func Clean(body string) (string, []string) {
+	body = strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\r", "\n")
 	var removed []string
 	for _, re := range []*regexp.Regexp{htmlComment, mdComment, hiddenTag} {
 		body = re.ReplaceAllStringFunc(body, func(m string) string {

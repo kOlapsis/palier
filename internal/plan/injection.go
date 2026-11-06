@@ -175,7 +175,7 @@ func checkSuspicious(p *Plan, st *inventory.Stack) {
 	in := func(v string) bool {
 		for _, s := range st.Services {
 			for _, note := range s.Notes {
-				if strings.Contains(note.Body, v) {
+				if quoted(note.Body, v) {
 					return true
 				}
 			}

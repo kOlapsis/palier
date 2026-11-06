@@ -27,3 +27,9 @@ func TestClean(t *testing.T) {
 		t.Errorf("%q %q", same, none)
 	}
 }
+
+func TestCleanLineEndings(t *testing.T) {
+	if got, removed := Clean("### Summary\r\n\r\nA fix.\rDone."); got != "### Summary\n\nA fix.\nDone." || removed != nil {
+		t.Errorf("%q %q", got, removed)
+	}
+}
