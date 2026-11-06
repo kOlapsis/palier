@@ -1,4 +1,4 @@
-// Package ai asks Claude for the update plan of a stack.
+// Package ai asks a language model for the update plan of a stack.
 package ai
 
 import (
@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -140,9 +141,9 @@ func notesBlock(st *inventory.Stack) (string, string) {
 }
 
 // Screen asks the model for the passages of the notes of st that try to steer an AI; plan.Validate keeps only those really in the notes.
-func Screen(ctx context.Context, key, model string, st *inventory.Stack) ([]string, error) {
+func Screen(ctx context.Context, e Endpoint, st *inventory.Stack) ([]string, error) {
 	block, _ := notesBlock(st)
-	text, err := call(ctx, key, model, screenSystem, []any{map[string]any{"type": "text", "text": block}}, object(map[string]any{"passages": stringList}), "low")
+	text, err := e.call(ctx, screenSystem, []any{map[string]any{"type": "text", "text": block}}, object(map[string]any{"passages": stringList}), "low")
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +164,7 @@ type serviceInput struct {
 }
 
 // Propose asks the model for the plan of st; the result still has to go through plan.Validate.
-func Propose(ctx context.Context, key, model string, st *inventory.Stack) (*plan.Plan, error) {
+func Propose(ctx context.Context, e Endpoint, st *inventory.Stack) (*plan.Plan, error) {
 	var prompt strings.Builder
 	block, _ := notesBlock(st)
 	for _, f := range st.ConfigFiles {
@@ -193,7 +194,7 @@ func Propose(ctx context.Context, key, model string, st *inventory.Stack) (*plan
 	}
 	js, _ := json.MarshalIndent(services, "", "  ")
 	fmt.Fprintf(&prompt, "<services>\n%s\n</services>\nPlan the update of the stack %q.", js, st.Name)
-	text, err := call(ctx, key, model, system, []any{
+	text, err := e.call(ctx, system, []any{
 		map[string]any{"type": "text", "text": block, "cache_control": map[string]any{"type": "ephemeral"}},
 		map[string]any{"type": "text", "text": prompt.String()},
 	}, schema(), "high")
@@ -207,11 +208,16 @@ func Propose(ctx context.Context, key, model string, st *inventory.Stack) (*plan
 	return &p, nil
 }
 
-// readStream gathers the text of a streamed Messages API answer and its stop reason.
-// call sends one request to the Anthropic API and returns the text of a complete answer in the given JSON schema.
-func call(ctx context.Context, key, model, system string, content []any, schema map[string]any, effort string) (string, error) {
+// Endpoint is the API and model that answer: Provider is "anthropic" or "openai", for any OpenAI-compatible API.
+type Endpoint struct{ Provider, URL, Key, Model string }
+
+// call sends one request to the model and returns the text of a complete answer in the given JSON schema.
+func (e Endpoint) call(ctx context.Context, system string, content []any, schema map[string]any, effort string) (string, error) {
+	if e.Provider == "openai" {
+		return e.chat(ctx, system, content, schema)
+	}
 	body := map[string]any{
-		"model":         model,
+		"model":         e.Model,
 		"max_tokens":    64000,
 		"stream":        true,
 		"system":        system,
@@ -227,7 +233,7 @@ func call(ctx context.Context, key, model, system string, content []any, schema 
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", key)
+	req.Header.Set("x-api-key", e.Key)
 	req.Header.Set("anthropic-version", "2026-10-21")
 	resp, err := (&http.Client{Timeout: 30 * time.Minute}).Do(req)
 	if err != nil {
@@ -248,6 +254,7 @@ func call(ctx context.Context, key, model, system string, content []any, schema 
 	return text, nil
 }
 
+// readStream gathers the text of a streamed Messages API answer and its stop reason.
 func readStream(r io.Reader) (string, string, error) {
 	var text strings.Builder
 	stop := ""
@@ -284,4 +291,67 @@ func readStream(r io.Reader) (string, string, error) {
 		}
 	}
 	return text.String(), stop, sc.Err()
+}
+
+func (e Endpoint) chat(ctx context.Context, system string, content []any, schema map[string]any) (string, error) {
+	var user strings.Builder
+	for _, c := range content {
+		user.WriteString(c.(map[string]any)["text"].(string))
+	}
+	raw, err := json.Marshal(map[string]any{
+		"model": e.Model,
+		"messages": []any{
+			map[string]any{"role": "system", "content": system},
+			map[string]any{"role": "user", "content": user.String()},
+		},
+		"response_format": map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "answer", "strict": true, "schema": schema}},
+	})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(e.URL, "/")+"/chat/completions", bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if e.Key != "" {
+		req.Header.Set("Authorization", "Bearer "+e.Key)
+	}
+	resp, err := (&http.Client{Timeout: 30 * time.Minute}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	answer, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("AI API %s: %s: %.4096s", e.URL, resp.Status, bytes.TrimSpace(answer))
+	}
+	return readChat(answer)
+}
+
+// readChat returns the text of a complete Chat Completions answer.
+func readChat(answer []byte) (string, error) {
+	var out struct {
+		Choices []struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct{ Content, Refusal string }
+		}
+	}
+	if err := json.Unmarshal(answer, &out); err != nil {
+		return "", fmt.Errorf("unreadable AI answer: %w", err)
+	}
+	if len(out.Choices) == 0 {
+		return "", errors.New("AI answer without choices")
+	}
+	c := out.Choices[0]
+	switch {
+	case c.Message.Refusal != "":
+		return "", fmt.Errorf("AI refused: %.300s", c.Message.Refusal)
+	case c.FinishReason != "stop":
+		return "", fmt.Errorf("AI response cut off (%s)", c.FinishReason)
+	}
+	return c.Message.Content, nil
 }

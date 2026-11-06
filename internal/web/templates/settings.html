@@ -9,7 +9,7 @@
 <dt>PALIER_DOCKER_HOST</dt><dd>{{.DockerHost}}</dd>
 <dt>PALIER_DATA_DIR</dt><dd>{{.DataDir}}</dd>
 <dt>PALIER_LISTEN</dt><dd>{{.Listen}}</dd>
-<dt>PALIER_AI_KEY</dt><dd>{{if .AIKey}}set, model {{.AIModel}}{{else}}not set: plans computed from versions only{{end}}</dd>
+<dt>PALIER_AI_PROVIDER</dt><dd>{{if .AI}}{{.AIProvider}}{{with .AIURL}} at {{.}}{{end}}, model {{.AIModel}}, key {{if .AIKey}}set{{else}}not set{{end}}{{else}}PALIER_AI_KEY not set: plans computed from versions only{{end}}</dd>
 <dt>PALIER_SCAN_INTERVAL</dt><dd>{{.ScanInterval}}</dd>
 <dt>PALIER_MATURATION</dt><dd>{{.Maturation}}</dd>
 <dt>PALIER_STABLE_SECONDS</dt><dd>{{.StableSeconds}}</dd>

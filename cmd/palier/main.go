@@ -266,13 +266,15 @@ func inputHash(st *inventory.Stack, cfg config.Config) string {
 		Notes         []string
 	}
 	in := struct {
+		Provider string
+		URL      string
 		Model    string
 		Prompt   string
 		Build    string
 		AI       bool
 		Files    map[string]string
 		Services []svc
-	}{Model: cfg.AIModel, Prompt: ai.Fingerprint, Build: build, AI: cfg.AIKey != "", Files: map[string]string{}}
+	}{Provider: cfg.AIProvider, URL: cfg.AIURL, Model: cfg.AIModel, Prompt: ai.Fingerprint, Build: build, AI: cfg.AI, Files: map[string]string{}}
 	for _, f := range st.ConfigFiles {
 		data, _ := os.ReadFile(f)
 		in.Files[f] = string(data)
@@ -332,13 +334,14 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 	}
 	hasNotes := slices.ContainsFunc(st.Services, func(s *inventory.Service) bool { return len(s.Notes) > 0 })
 	switch {
-	case a.cfg.AIKey == "":
+	case !a.cfg.AI:
 		rec.Plan = plan.Fallback(st, "No AI key: plan computed from versions only.")
 	case !hasNotes:
 		rec.Plan = plan.Fallback(st, "No release notes found: plan computed from versions only.")
 	default:
-		slog.Info("computing plan with AI", "stack", st.Name, "model", a.cfg.AIModel)
-		p, err := ai.Propose(ctx, a.cfg.AIKey, a.cfg.AIModel, st)
+		slog.Info("computing plan with AI", "stack", st.Name, "provider", a.cfg.AIProvider, "model", a.cfg.AIModel)
+		model := ai.Endpoint{Provider: a.cfg.AIProvider, URL: a.cfg.AIURL, Key: a.cfg.AIKey, Model: a.cfg.AIModel}
+		p, err := ai.Propose(ctx, model, st)
 		if err != nil {
 			rec.Plan = plan.Fallback(st, "Plan computed from versions only.")
 			rec.Plan.Incomplete = append(rec.Plan.Incomplete, "the AI returned no plan: "+err.Error())
@@ -346,7 +349,7 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 			plan.Validate(rec.Plan, st)
 			return rec, nil
 		}
-		if passages, err := ai.Screen(ctx, a.cfg.AIKey, a.cfg.AIModel, st); err != nil {
+		if passages, err := ai.Screen(ctx, model, st); err != nil {
 			p.Incomplete = append(p.Incomplete, "the check of the notes for text written to steer an AI failed: "+err.Error())
 		} else {
 			p.Suspicious = passages
@@ -667,7 +670,7 @@ func serve() error {
 		servers = append(servers, srv)
 		go func() { errc <- srv.ListenAndServe() }()
 	}
-	slog.Info("palier started", "socket", sock, "web", a.cfg.Listen, "data_dir", a.cfg.DataDir, "ai", a.cfg.AIKey != "", "auto", a.cfg.Auto)
+	slog.Info("palier started", "socket", sock, "web", a.cfg.Listen, "data_dir", a.cfg.DataDir, "ai", a.cfg.AI, "auto", a.cfg.Auto)
 	select {
 	case err := <-errc:
 		return err

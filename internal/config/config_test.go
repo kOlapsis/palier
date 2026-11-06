@@ -70,3 +70,24 @@ func TestListen(t *testing.T) {
 		t.Errorf("an address without port: %v", err)
 	}
 }
+
+func TestAIProvider(t *testing.T) {
+	c, err := Load(env(map[string]string{"PALIER_AI_PROVIDER": "openai", "PALIER_AI_URL": "http://ollama:11434/v1/", "PALIER_AI_MODEL": "qwen3:8b"}))
+	if err != nil || !c.AI || c.AIURL != "http://ollama:11434/v1" {
+		t.Fatalf("local model: %+v %v", c, err)
+	}
+	if c, _ := Load(env(nil)); c.AI {
+		t.Error("anthropic without key must leave the AI off")
+	}
+	for _, bad := range []map[string]string{
+		{"PALIER_AI_PROVIDER": "openai", "PALIER_AI_MODEL": "gpt-5"},
+		{"PALIER_AI_PROVIDER": "openai", "PALIER_AI_URL": "http://ollama:11434/v1"},
+		{"PALIER_AI_PROVIDER": "openai", "PALIER_AI_URL": "ollama:11434", "PALIER_AI_MODEL": "m"},
+		{"PALIER_AI_PROVIDER": "mistral"},
+		{"PALIER_AI_URL": "http://x/v1"},
+	} {
+		if _, err := Load(env(bad)); err == nil || !strings.Contains(err.Error(), "PALIER_AI_") {
+			t.Errorf("%v: %v", bad, err)
+		}
+	}
+}

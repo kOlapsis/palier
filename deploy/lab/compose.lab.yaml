@@ -84,5 +84,17 @@ services:
     ports:
       - "${LAB_LABAUTH_PORT:?}:5001"
 
+  ollama:
+    image: ollama/ollama:0.40.15
+    profiles: [ai-local]
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "65536"
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: q8_0
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ollama-models:/root/.ollama
+
 volumes:
   labreg-data: {}
+  ollama-models: {}

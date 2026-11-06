@@ -124,6 +124,7 @@ Three things to get right:
 | Variable | Default | Purpose |
 |---|---|---|
 | `PALIER_AI_KEY`, `PALIER_AI_MODEL` | empty, `claude-sonnet-5-5` | AI that reads the notes and builds the plan |
+| `PALIER_AI_PROVIDER`, `PALIER_AI_URL` | `anthropic`, empty | `openai` for an OpenAI-compatible API, including a model you host (Ollama, vLLM) |
 | `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off`; the `palier.auto` label overrides it for one service |
 | `PALIER_SCAN_INTERVAL` | `1h` | Scan frequency |
 | `PALIER_MATURATION` | `72h` | Minimum age of a proposed version |

@@ -17,8 +17,11 @@ type Config struct {
 	DockerHost     string
 	DataDir        string
 	Listen         string
+	AIProvider     string
+	AIURL          string
 	AIKey          string
 	AIModel        string
+	AI             bool
 	ScanInterval   time.Duration
 	Maturation     time.Duration
 	StableSeconds  int
@@ -56,7 +59,9 @@ func Load(getenv func(string) string) (Config, error) {
 		DataDir:        get("PALIER_DATA_DIR", "/var/lib/palier"),
 		Listen:         get("PALIER_LISTEN", ""),
 		AIKey:          get("PALIER_AI_KEY", ""),
-		AIModel:        get("PALIER_AI_MODEL", "claude-sonnet-5-5"),
+		AIProvider:     get("PALIER_AI_PROVIDER", "anthropic"),
+		AIURL:          strings.TrimSuffix(get("PALIER_AI_URL", ""), "/"),
+		AIModel:        get("PALIER_AI_MODEL", ""),
 		Auto:           get("PALIER_AUTO", "all"),
 		WebhookURL:     get("PALIER_WEBHOOK_URL", ""),
 		GitHubToken:    get("PALIER_GITHUB_TOKEN", ""),
@@ -95,6 +100,32 @@ func Load(getenv func(string) string) (Config, error) {
 	case "off", "patch", "minor", "all":
 	default:
 		errs = append(errs, fmt.Errorf("PALIER_AUTO: %q, expected all, minor, patch or off", c.Auto))
+	}
+	switch c.AIProvider {
+	case "anthropic":
+		c.AI = c.AIKey != ""
+		if c.AIModel == "" {
+			c.AIModel = "claude-sonnet-5-5"
+		}
+		if c.AIURL != "" {
+			errs = append(errs, errors.New("PALIER_AI_URL: only with PALIER_AI_PROVIDER=openai"))
+		}
+	case "openai":
+		c.AI = true
+		if c.AIURL == "" {
+			c.AIURL = "https://api.openai.com/v1"
+			if c.AIKey == "" {
+				errs = append(errs, errors.New("PALIER_AI_KEY: required with PALIER_AI_PROVIDER=openai, unless PALIER_AI_URL names a server without key"))
+			}
+		}
+		if u, err := url.Parse(c.AIURL); err != nil || u.Host == "" || u.Scheme != "https" && u.Scheme != "http" {
+			errs = append(errs, fmt.Errorf("PALIER_AI_URL: %q, expected an address such as http://ollama:11434/v1", c.AIURL))
+		}
+		if c.AIModel == "" {
+			errs = append(errs, errors.New("PALIER_AI_MODEL: required with PALIER_AI_PROVIDER=openai"))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("PALIER_AI_PROVIDER: %q, expected anthropic or openai", c.AIProvider))
 	}
 	if _, err := strconv.Atoi(c.Listen); err == nil {
 		c.Listen = ":" + c.Listen

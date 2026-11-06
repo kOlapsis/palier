@@ -9,8 +9,10 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_DOCKER_HOST` | `unix:///var/run/docker.sock` | Docker engine. |
 | `PALIER_DATA_DIR` | `/var/lib/palier` | SQLite database, database exports, and the `palier.sock` socket the command line talks to. |
 | `PALIER_LISTEN` | empty | Port or address of the web interface, such as `8080` or `127.0.0.1:8080`. Empty, the web interface is off and only the command line is available. |
-| `PALIER_AI_KEY` | empty | Anthropic API key. Without a key, plans are computed from versions alone. |
-| `PALIER_AI_MODEL` | `claude-sonnet-5-5` | Model used for plans. |
+| `PALIER_AI_PROVIDER` | `anthropic` | `anthropic`, or `openai` for any API compatible with OpenAI's Chat Completions: OpenAI, Mistral, or a model you host (Ollama, vLLM, LM Studio). See [AI provider](#ai-provider). |
+| `PALIER_AI_URL` | `https://api.openai.com/v1` | Address of the OpenAI-compatible API, such as `http://ollama:11434/v1`. Only with `PALIER_AI_PROVIDER=openai`. |
+| `PALIER_AI_KEY` | empty | API key. With Anthropic, no key means plans computed from versions alone. With `openai`, a server of your own can do without. |
+| `PALIER_AI_MODEL` | `claude-sonnet-5-5` | Model used for plans. Required with `openai`. |
 | `PALIER_SCAN_INTERVAL` | `1h` | Interval between two scans (Go duration: `30m`, `2h`…). |
 | `PALIER_MATURATION` | `72h` | Minimum age of a version before it is proposed. A version that fixes a vulnerability in the running version does not wait. |
 | `PALIER_STABLE_SECONDS` | `60` | Time a service must stay stable at each verification. |
@@ -31,6 +33,32 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_OIDC_ISSUER` | empty | OpenID Connect provider that signs people in to the web interface. Empty, the web interface has no sign-in. |
 | `PALIER_OIDC_CLIENT_ID`, `PALIER_OIDC_CLIENT_SECRET` | empty | Client registered at the provider. The secret can stay empty for a public client. |
 | `PALIER_OIDC_ADMINS` | empty | Who may use Palier, separated by commas: groups or roles, emails, or `@domain`. Required with `PALIER_OIDC_ISSUER`. |
+
+## AI provider
+
+Palier talks to the Anthropic API by default. `PALIER_AI_PROVIDER=openai` sends the same instructions and the same strict JSON schema to any API compatible with OpenAI's Chat Completions and structured outputs (`response_format` of type `json_schema`). The guarantees do not depend on the model: the operations come from a closed list, every fact needs a quote found word for word in the notes, and the code validates the plan before anything runs. A weaker model gives plans that are more often incomplete or refused, never a plan applied without validation. Changing the provider, the address or the model computes the plans again.
+
+A model you host, with Ollama in the same Compose project as Palier:
+
+```yaml
+services:
+  palier:
+    environment:
+      PALIER_AI_PROVIDER: openai
+      PALIER_AI_URL: http://ollama:11434/v1
+      PALIER_AI_MODEL: qwen3:4b-instruct-2507-q4_K_M
+  ollama:
+    image: ollama/ollama
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "65536"
+    volumes:
+      - ollama-models:/root/.ollama
+volumes:
+  ollama-models: {}
+```
+
+!!! warning "Context length"
+    The instructions, the Compose files and the release notes of a stack take from a few thousand tokens to more than 35,000 for Outline. Give the model a context of 65,536 tokens: `OLLAMA_CONTEXT_LENGTH` for Ollama, `--max-model-len` for vLLM. When a prompt does not fit, the server refuses it, and Palier keeps a plan computed from versions alone, marked incomplete with the message of the server.
 
 ## Sign-in with OpenID Connect
 
