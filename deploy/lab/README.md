@@ -36,9 +36,21 @@ All commands are `deploy/lab/lab <command>`.
 | `deploy` | Redeploys Palier from the working copy, and only Palier: the stacks under `/apps` are not restarted, unlike `up`. Check first that no run is in progress, since restarting Palier rolls it back to its last verified step. |
 | `status` | Prints the state of the machine, Palier, webhook-tester and each stack of `topology.yml`, checked over HTTP from the host. Exits 0 only if all of them are in service, 1 otherwise. |
 | `ssh [cmd]` | Opens a shell on the machine as `debian`, or runs `cmd` there. |
-| `scenario <name>` | Copies `scenarios/common.sh` and `scenarios/<name>.sh` to the machine and runs them as root: the replayable bench scenarios (`whoami-apply`, `whoami-missing-tag`, `whoami-exits`, `whoami-kill`, `whoami-reset` to put whoami back to v1.10.1 between them, `outline-apply`, `outline-fail-step3`, `outline-major`, `outline-major-fail`, `outline-pg16` to put postgres back on 16.14 and its old volume, `gitlab-fail-step2`, `gitlab-apply`, `immich-fail-step2`, `immich-apply`, `whoami-failed`, and `webhooks` to list what webhook-tester received; `reset-apps` puts Outline back to its start with its three seeded documents). |
+| `scenario <name> [VAR=value…]` | Copies `scenarios/common.sh` and `scenarios/<name>.sh` to the machine and runs them as root, with the variables given: the replayable bench scenarios (`whoami-apply`, `whoami-missing-tag`, `whoami-exits`, `whoami-kill`, `whoami-reset` to put whoami back to v1.10.1 between them, `outline-apply`, `outline-fail-step3`, `outline-major`, `outline-major-fail`, `outline-pg16` to put postgres back on 16.14 and its old volume, `gitlab-fail-step2`, `gitlab-apply`, `immich-fail-step2`, `immich-apply`, `whoami-failed`, `webhooks` to list what webhook-tester received, and `ai-local` to compare the plans of Anthropic and of a local model; `reset-apps` puts Outline back to its start with its three seeded documents). |
 | `reset-apps` | Stops the stacks of `topology.yml`, deletes their data and their compose files, then starts them again at the versions of `versions.yml` with fresh data (and, for GitLab and Immich, the seed: a project, an account). Use it to replay an upgrade scenario. |
 | `down` | Deletes the machine, its disks, its seed, its storage pool and its network. Only the base image stays, in `~/.cache/palier-lab` and in the `palier-lab-base` pool, so the next `up` downloads nothing. |
+
+## Trying a local model
+
+`ai-local` starts Ollama (the `ai-local` profile of `compose.lab.yaml`, CPU only, context of 65,536 tokens), pulls the model, then computes the plan of each stack with `palier plan <stack> --once` in a scratch data volume, once per provider. The Palier of the bench keeps its own plans. Postpone the stacks first (`palier postpone whoami 2026-11-30` in the Palier container), otherwise the Palier of the bench may update them in the middle of the comparison.
+
+```sh
+deploy/lab/lab scenario whoami-reset
+deploy/lab/lab scenario ai-local                                   # whoami, outline, immich; Anthropic then qwen3 4B
+deploy/lab/lab scenario ai-local MODEL=qwen3:8b STACKS=whoami PROVIDERS=openai
+```
+
+Each plan is summed up on one line per step, followed by what Palier refused in it; the full JSON stays in `/tmp/ai-<provider>-<stack>.json` on the machine. A model takes 2.5 GB (4B) to 5 GB (8B) of disk in the `ollama-models` volume: check `df -h /` first. Ollama is stopped at the end; `docker compose --profile ai-local rm -sf ollama` and `docker volume rm palier_ollama-models` free the space. [Try a local model](../../docs/local-model.md) gives the same steps for a Palier outside the bench.
 
 The engine of the machine pulls Docker Hub images through `mirror.gcr.io`, because the anonymous Docker Hub limit is shared with every machine behind the same public address.
 

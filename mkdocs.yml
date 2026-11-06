@@ -17,6 +17,7 @@ nav:
   - Installation: installation.md
   - Usage: usage.md
   - Configuration: configuration.md
+  - Try a local model: local-model.md
   - How it works: how-it-works.md
   - Limitations: limitations.md
 exclude_docs: |

@@ -192,7 +192,11 @@ scenario)
 	need_key
 	cat "$LAB_DIR/scenarios/common.sh" "$LAB_DIR/scenarios/$2.sh" | ssh_vm 'cat > /tmp/palier-scenario.sh'
 	ssh_vm 'cat > /tmp/immich-check.py' <"$LAB_DIR/scenarios/immich-check.py"
-	ssh_vm 'sudo bash /tmp/palier-scenario.sh'
+	shift 2
+	for a in "$@"; do
+		case $a in [A-Z]*=*) ;; *) die "expected VAR=value after the scenario name, got $a" 2 ;; esac
+	done
+	ssh_vm "sudo $(printf '%q ' "$@")bash /tmp/palier-scenario.sh"
 	;;
 -h | --help | help) usage ;;
 *)
