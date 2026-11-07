@@ -72,7 +72,7 @@ Besides email, Palier posts its messages to the channels whose address is set. E
 | `PALIER_NTFY_URL` | The topic, such as `https://ntfy.sh/my-palier-topic` or `http://ntfy/palier` for a server of your own in the same Compose project. With an access token: `https://:tk_…@ntfy.example.com/palier`; with an account: `https://user:password@ntfy.example.com/palier`. Alerts are sent with high priority. |
 | `PALIER_SLACK_URL` | An incoming webhook, `https://hooks.slack.com/services/…`. |
 | `PALIER_DISCORD_URL` | A channel webhook, `https://discord.com/api/webhooks/…`. Mentions such as `@everyone` are disabled. |
-| `PALIER_TELEGRAM_URL` | `https://api.telegram.org/bot<token>/sendMessage?chat_id=<chat>`, with the token of your bot and the id of the chat it writes to. |
+| `PALIER_TELEGRAM_URL` | `https://api.telegram.org/bot<token>/sendMessage?chat_id=<chat>`. Create the bot with @BotFather, which gives the token. Send the bot a message, or add it to a group, then open `https://api.telegram.org/bot<token>/getUpdates`: the chat id is in `message.chat.id` (negative for a group). |
 
 Messages are plain text: release notes and logs quoted in them cannot add links, mentions or formatting. An address must use https, except for a server on the local network. `palier notify test` sends a test message to every channel and prints the refusal of each one.
 

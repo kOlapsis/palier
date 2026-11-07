@@ -10,4 +10,4 @@ until [ "$(sql "SELECT status FROM runs WHERE id > $previous ORDER BY id DESC LI
 sql "SELECT id, status, substr(error, 1, 300) FROM runs WHERE id > $previous"
 echo "whoami: $(whoami_image)"
 chattr -i /apps/whoami/compose.yaml
-docker rmi "docker.io/traefik/whoami:$target" >/dev/null 2>&1 || true
+docker rmi -f "docker.io/traefik/whoami:$target" >/dev/null 2>&1 || true

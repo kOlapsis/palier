@@ -1,4 +1,4 @@
-# Computes the plans of whoami, Outline and Immich twice in a scratch data volume: with Anthropic, then with a local model served by Ollama through PALIER_AI_PROVIDER=openai.
+# Computes the plans of whoami, Outline and Immich in a scratch data volume with each provider of PROVIDERS: anthropic, openai (a local model served by Ollama) and openai-cloud (the OpenAI API with LAB_OPENAI_KEY and LAB_OPENAI_MODEL).
 MODEL=${MODEL:-qwen3:4b-instruct-2507-q4_K_M}
 $PALIER --profile ai-local up -d --quiet-pull ollama 2>/dev/null
 until $PALIER exec -T ollama ollama list >/dev/null 2>&1; do sleep 1; done
@@ -8,6 +8,7 @@ for stack in ${STACKS:-whoami outline immich}; do
 	for provider in ${PROVIDERS:-anthropic openai}; do
 		set --
 		[ "$provider" = openai ] && set -- -e PALIER_AI_PROVIDER=openai -e PALIER_AI_URL=http://ollama:11434/v1 -e PALIER_AI_MODEL="$MODEL" -e PALIER_AI_KEY=
+		[ "$provider" = openai-cloud ] && set -- -e PALIER_AI_PROVIDER=openai -e PALIER_AI_MODEL="$(sed -n 's/^LAB_OPENAI_MODEL=//p' /opt/palier/compose.env)" -e PALIER_AI_KEY="$(sed -n 's/^LAB_OPENAI_KEY=//p' /opt/palier/compose.env)"
 		out=/tmp/ai-$provider-$stack
 		start=$(date +%s)
 		$PALIER run --rm --no-deps -T -v palier_ai-local:/var/lib/palier -e PALIER_LISTEN= "$@" \

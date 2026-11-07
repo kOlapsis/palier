@@ -15,7 +15,8 @@ for s in 1:webhook 2:slack 3:discord 4:telegram; do
 	curl -s "http://127.0.0.1:8081/api/session/00000000-0000-4000-8000-00000000000${s%%:*}/requests" | python3 -c '
 import base64, hashlib, hmac, json, sys
 name, start = sys.argv[1], int(sys.argv[2])
-reqs = sorted((r for r in json.load(sys.stdin) if r["captured_at_unix_milli"] >= start * 1000), key=lambda r: r["captured_at_unix_milli"])
+reqs = json.load(sys.stdin)
+reqs = sorted((r for r in reqs if r["captured_at_unix_milli"] >= start * 1000), key=lambda r: r["captured_at_unix_milli"]) if isinstance(reqs, list) else []
 print(f"== {name}: {len(reqs)} received")
 for r in reqs:
     body = base64.b64decode(r["request_payload_base64"])
