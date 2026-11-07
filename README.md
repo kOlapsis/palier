@@ -131,7 +131,8 @@ Three things to get right:
 | `PALIER_STABLE_SECONDS` | `60` | Stability time required at each verification |
 | `PALIER_SMTP_HOST`, `PALIER_SMTP_PORT`, `PALIER_SMTP_USER`, `PALIER_SMTP_PASSWORD`, `PALIER_SMTP_FROM`, `PALIER_EMAIL_TO` | empty, `587` | Emails: one when a problem opens, one when it is resolved, and a weekly report when something happened |
 | `PALIER_EMAIL_LEVEL` | `info` | `alert` keeps only the alerts and the weekly report |
-| `PALIER_WEBHOOK_URL` | empty | JSON on every plan ready, run end, rollback or failure |
+| `PALIER_WEBHOOK_URL`, `PALIER_WEBHOOK_SECRET` | empty | JSON on every plan ready, run end, rollback or failure, signed with HMAC-SHA256 when a secret is set |
+| `PALIER_NTFY_URL`, `PALIER_SLACK_URL`, `PALIER_DISCORD_URL`, `PALIER_TELEGRAM_URL` | empty | Notification channels, besides email |
 | `PALIER_GITHUB_TOKEN`, `PALIER_GITLAB_TOKEN` | empty | Notes and security advisories without the anonymous limit |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror |
 | `PALIER_LISTEN` | empty | Address of the web interface, off when empty (`:8080` to turn it on) |
@@ -179,7 +180,7 @@ The web interface is optional: set `PALIER_LISTEN=:8080` and publish the port. W
 
 - One Palier per Docker machine: no agent, no remote machine.
 - No accounts or roles: the web interface lets in the admins of an OpenID Connect provider.
-- Email and the webhook are the only channels.
+- Notifications go to email, ntfy, Slack, Discord, Telegram and one webhook; not yet Teams, Matrix or Gotify, one channel of each type, and every channel gets the same messages.
 - Databases other than PostgreSQL, MySQL and MariaDB stay blocked on their major version.
 - Notes outside GitHub and gitlab.com are not read.
 - Containers started outside Compose are only observed.

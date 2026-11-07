@@ -82,16 +82,18 @@ A plan is kept as long as its inputs do not change: Compose files, versions, rel
 
 ## Notifications
 
-Palier works on its own, so it only writes when there is something to know, and once per problem. Each problem gets two emails: one when it opens, one when it is resolved. A run that fails ten times in a row sends one email, not ten.
+Palier works on its own, so it only writes when there is something to know, and once per problem. Each problem gets two messages on each channel: one when it opens, one when it is resolved. A run that fails ten times in a row sends one message, not ten.
+
+The channels are email, ntfy, Slack, Discord and Telegram, each set by its own variables (see [notification channels](configuration.md#notification-channels)). Every channel receives the same messages, as plain text.
 
 | Level | When | Examples |
 |---|---|---|
 | Alert | Palier can no longer vouch for a stack. | A rollback failed. Palier cannot read the Docker engine. A critical or high security advisory touches a running version and Palier cannot fix it on its own. |
 | Information | An update did not go through, but the stack runs. | An update rolled back, not started (backup hook, migrations still running) or stopped after a verified step. A plan waits for a decision. |
-| Notice | Shown, never emailed. | The versions of a service cannot be read (seen in two scans in a row). They appear in the weekly report while they last. |
+| Notice | Shown, never sent. | The versions of a service cannot be read (seen in two scans in a row). They appear in the weekly report while they last. |
 | Weekly report | On Monday from 8:00, and only when something happened since the last one. | The stacks updated, with their versions before and after; the updates that did not go through, grouped by stack; the problems opened, resolved and still open. |
 
-`PALIER_EMAIL_LEVEL=alert` keeps the alerts and the weekly report only. A message that cannot be sent is tried again 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours later, without ever holding up a run. Problems are recorded even without a channel. `palier` names the open alerts above the stacks and counts the other problems (`palier notify` lists them all); the home page of the web interface shows the alerts in one line and each problem under the status of its stack.
+`PALIER_EMAIL_LEVEL=alert` keeps the alerts and the weekly report only; each other channel has its own level, such as `PALIER_NTFY_LEVEL`. A message that cannot be sent is tried again 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours later, without ever holding up a run. Problems are recorded even without a channel. `palier` names the open alerts above the stacks and counts the other problems (`palier notify` lists them all); the home page of the web interface shows the alerts in one line and each problem under the status of its stack.
 
 ```sh
 palier notify          # channels, last message sent or its error, open problems
@@ -100,8 +102,6 @@ palier notify report   # sends the report of what happened since the last one, i
 ```
 
 The Settings page of the web interface shows the same channels, with a "Send a test" button.
-
-Email is the first channel; others will follow, each with its own variables.
 
 ## The webhook
 
@@ -126,7 +126,14 @@ If `PALIER_WEBHOOK_URL` is set, Palier sends a JSON `POST` to it for each of the
  "changes": ["whoami v1.10.1 → v1.12.0"], "at": "2026-11-01T06:14:02Z"}
 ```
 
-Dry runs do not send a webhook.
+Dry runs do not send a webhook. A webhook that fails is not sent again.
+
+With `PALIER_WEBHOOK_SECRET`, each request carries `X-Palier-Signature: sha256=<hex>`, the HMAC-SHA256 of the body with the secret. The receiver computes the same HMAC over the raw body, compares in constant time, and can refuse a request whose `at` is too old:
+
+```python
+expected = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
+ok = hmac.compare_digest(expected, request.headers["X-Palier-Signature"])
+```
 
 ## The command line
 

@@ -14,7 +14,7 @@
 <dt>PALIER_MATURATION</dt><dd>{{.Maturation}}</dd>
 <dt>PALIER_STABLE_SECONDS</dt><dd>{{.StableSeconds}}</dd>
 <dt>PALIER_AUTO</dt><dd>{{.Auto}}</dd>
-<dt>PALIER_WEBHOOK_URL</dt><dd>{{if .WebhookURL}}set{{else}}not set{{end}}</dd>
+<dt>PALIER_WEBHOOK_URL</dt><dd>{{if .WebhookURL}}set, {{if .WebhookSecret}}signed{{else}}not signed{{end}}{{else}}not set{{end}}</dd>
 <dt>PALIER_GITHUB_TOKEN</dt><dd>{{if .GitHubToken}}set{{else}}not set{{end}}</dd>
 <dt>PALIER_GITLAB_TOKEN</dt><dd>{{if .GitLabToken}}set{{else}}not set{{end}}</dd>
 <dt>PALIER_REGISTRY_MIRROR</dt><dd>{{with .RegistryMirror}}{{.}}{{else}}not set{{end}}</dd>
@@ -34,7 +34,7 @@
 {{if .Channels}}<table><thead><tr><th>Channel</th><th>Last message</th></tr></thead><tbody>
 {{range .Channels}}<tr><td class="name">{{.Name}}<span class="sub">{{.Describe}}</span></td>
 <td>{{with .Last}}{{.Subject}}<span class="sub">{{if .Sent}}sent {{when .Sent}}{{else if .Error}}failed {{.Attempts}} time(s): {{.Error}}{{else}}waiting to be sent{{end}}</span>{{else}}<span class="muted">nothing sent yet</span>{{end}}</td></tr>
-{{end}}</tbody></table>{{else}}<p class="empty">No channel: set <code>PALIER_SMTP_HOST</code> and <code>PALIER_EMAIL_TO</code> to receive emails.</p>{{end}}
+{{end}}</tbody></table>{{else}}<p class="empty">No channel: set <code>PALIER_SMTP_HOST</code> and <code>PALIER_EMAIL_TO</code>, or <code>PALIER_NTFY_URL</code>, <code>PALIER_SLACK_URL</code>, <code>PALIER_DISCORD_URL</code> or <code>PALIER_TELEGRAM_URL</code>.</p>{{end}}
 </div>
 {{if .Channels}}<form method="post" action="/settings/test" class="actions"><button>Send a test</button></form>{{end}}
 {{end}}

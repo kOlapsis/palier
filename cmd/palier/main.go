@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -181,10 +182,16 @@ func setup() (*app, error) {
 		a.notify(map[string]any{"event": events[status], "stack": stack, "run": id, "status": status, "error": cause})
 	}
 	var senders []notify.Sender
-	if cfg.SMTPHost != "" {
-		var info struct{ Name string }
+	var info struct{ Name string }
+	if cfg.SMTPHost != "" || len(cfg.Chats) > 0 {
 		dc.Get(context.Background(), "/info", &info)
+	}
+	if cfg.SMTPHost != "" {
 		senders = append(senders, &notify.Email{Host: cfg.SMTPHost, Port: cfg.SMTPPort, User: cfg.SMTPUser, Password: cfg.SMTPPassword, From: cfg.SMTPFrom, To: cfg.EmailTo, Level: cfg.EmailLevel, Machine: info.Name})
+	}
+	for _, c := range cfg.Chats {
+		c.Machine = info.Name
+		senders = append(senders, &c)
 	}
 	*a = app{cfg: cfg, db: db, dc: dc, reg: reg, nc: notes.New(db, cfg.GitHubToken, cfg.GitLabToken), eng: eng, notifier: notify.New(db, senders, cfg.PublicURL)}
 	return a, nil
@@ -478,6 +485,11 @@ func (a *app) notify(event map[string]any) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if a.cfg.WebhookSecret != "" {
+		mac := hmac.New(sha256.New, []byte(a.cfg.WebhookSecret))
+		mac.Write(body)
+		req.Header.Set("X-Palier-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		slog.Error("webhook", "event", event["event"], "err", err)

@@ -66,7 +66,7 @@ type List struct {
 	Items []string `json:"items"`
 }
 
-// Sender is a channel: email today, others later.
+// Sender is a channel: email, ntfy, Slack, Discord or Telegram.
 type Sender interface {
 	Name() string
 	Describe() string
@@ -253,7 +253,7 @@ func (n *Notifier) Channels(ctx context.Context) []Channel {
 // Test sends a test message through every channel at once and returns their errors.
 func (n *Notifier) Test(ctx context.Context) error {
 	if len(n.senders) == 0 {
-		return errors.New("no notification channel: set PALIER_SMTP_HOST and PALIER_EMAIL_TO")
+		return errors.New("no notification channel: set PALIER_SMTP_HOST and PALIER_EMAIL_TO, or PALIER_NTFY_URL, PALIER_SLACK_URL, PALIER_DISCORD_URL or PALIER_TELEGRAM_URL")
 	}
 	m := Message{Kind: Test, Level: Info, Subject: "Test message", Title: "Palier can reach you",
 		Summary: "This is a test message. Palier writes here when a problem opens and when it is resolved, and sends a weekly report when something happened."}

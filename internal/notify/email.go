@@ -49,8 +49,10 @@ func (e *Email) Describe() string {
 }
 
 // Wants tells whether the level of the channel lets m through: alert only, or alert and information.
-func (e *Email) Wants(m Message) bool {
-	return m.Kind == Report || m.Kind == Test || m.Level == Alert || e.Level != Alert
+func (e *Email) Wants(m Message) bool { return wants(e.Level, m) }
+
+func wants(level string, m Message) bool {
+	return m.Kind == Report || m.Kind == Test || m.Level == Alert || level != Alert
 }
 
 // Send writes m to every recipient.
@@ -134,14 +136,8 @@ func (e *Email) render(m Message) ([]byte, error) {
 	if c, ok := colors[m.Kind]; ok {
 		color = c
 	}
-	host := e.Machine
-	if host == "" {
-		host, _ = os.Hostname()
-	}
-	data := map[string]any{"M": m, "Color": color, "Host": host, "Level": e.Level, "Label": labels[m.Kind]}
-	if m.Kind == Opened {
-		data["Label"] = map[string]string{Alert: "Alert", Info: "Information"}[m.Level]
-	}
+	data := mailData(m, e.Machine, e.Level)
+	data["Color"] = color
 	var html, text bytes.Buffer
 	if err := htmlMail.Execute(&html, data); err != nil {
 		return nil, err
@@ -173,6 +169,17 @@ func (e *Email) render(m Message) ([]byte, error) {
 	}
 	fmt.Fprintf(&b, "--%s--\r\n", boundary)
 	return b.Bytes(), nil
+}
+
+func mailData(m Message, host, level string) map[string]any {
+	if host == "" {
+		host, _ = os.Hostname()
+	}
+	data := map[string]any{"M": m, "Host": host, "Level": level, "Label": labels[m.Kind]}
+	if m.Kind == Opened {
+		data["Label"] = map[string]string{Alert: "Alert", Info: "Information"}[m.Level]
+	}
+	return data
 }
 
 func random() string {

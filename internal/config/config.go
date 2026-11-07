@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kolapsis/palier/internal/notify"
 )
 
 // Config is the whole configuration of a Palier process.
@@ -27,6 +29,8 @@ type Config struct {
 	StableSeconds  int
 	Auto           string
 	WebhookURL     string
+	WebhookSecret  string
+	Chats          []notify.Chat
 	GitHubToken    string
 	GitLabToken    string
 	RegistryMirror string
@@ -64,6 +68,7 @@ func Load(getenv func(string) string) (Config, error) {
 		AIModel:        get("PALIER_AI_MODEL", ""),
 		Auto:           get("PALIER_AUTO", "all"),
 		WebhookURL:     get("PALIER_WEBHOOK_URL", ""),
+		WebhookSecret:  getenv("PALIER_WEBHOOK_SECRET"),
 		GitHubToken:    get("PALIER_GITHUB_TOKEN", ""),
 		GitLabToken:    get("PALIER_GITLAB_TOKEN", ""),
 		RegistryMirror: get("PALIER_REGISTRY_MIRROR", ""),
@@ -151,6 +156,28 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if c.EmailLevel != "alert" && c.EmailLevel != "info" {
 		errs = append(errs, fmt.Errorf("PALIER_EMAIL_LEVEL: %q, expected alert or info", c.EmailLevel))
+	}
+	for _, t := range notify.ChatTypes {
+		name := "PALIER_" + strings.ToUpper(t)
+		addr := get(name+"_URL", "")
+		if addr == "" {
+			continue
+		}
+		u, err := url.Parse(addr)
+		switch {
+		case err != nil || u.Host == "" || u.Scheme != "https" && !(u.Scheme == "http" && notify.Local(u.Hostname())):
+			errs = append(errs, fmt.Errorf("%s_URL: expected an https address (http only on a local network)", name))
+		case t == "telegram" && (!strings.HasSuffix(u.Path, "/sendMessage") || u.Query().Get("chat_id") == ""):
+			errs = append(errs, fmt.Errorf("%s_URL: expected https://api.telegram.org/bot<token>/sendMessage?chat_id=<chat>", name))
+		}
+		level := get(name+"_LEVEL", "info")
+		if level != "alert" && level != "info" {
+			errs = append(errs, fmt.Errorf("%s_LEVEL: %q, expected alert or info", name, level))
+		}
+		c.Chats = append(c.Chats, notify.Chat{Type: t, URL: addr, Level: level})
+	}
+	if c.WebhookSecret != "" && c.WebhookURL == "" {
+		errs = append(errs, errors.New("PALIER_WEBHOOK_SECRET: only with PALIER_WEBHOOK_URL"))
 	}
 	if c.PublicURL != "" {
 		if u, err := url.Parse(c.PublicURL); err != nil || u.Host == "" || u.Scheme != "https" && u.Scheme != "http" {

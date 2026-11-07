@@ -17,7 +17,10 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_MATURATION` | `72h` | Minimum age of a version before it is proposed. A version that fixes a vulnerability in the running version does not wait. |
 | `PALIER_STABLE_SECONDS` | `60` | Time a service must stay stable at each verification. |
 | `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off`. See [automatic apply](usage.md#automatic-apply). The [`palier.auto`](#palierauto) label overrides it for one service. |
-| `PALIER_WEBHOOK_URL` | empty | Address that receives events as JSON. |
+| `PALIER_WEBHOOK_URL` | empty | Address that receives events as JSON. See [the webhook](usage.md#the-webhook). |
+| `PALIER_WEBHOOK_SECRET` | empty | Signs each webhook with HMAC-SHA256 in `X-Palier-Signature`. |
+| `PALIER_NTFY_URL`, `PALIER_SLACK_URL`, `PALIER_DISCORD_URL`, `PALIER_TELEGRAM_URL` | empty | Notification channels. See [notification channels](#notification-channels). |
+| `PALIER_NTFY_LEVEL`, `PALIER_SLACK_LEVEL`, `PALIER_DISCORD_LEVEL`, `PALIER_TELEGRAM_LEVEL` | `info` | `alert` or `info`, as `PALIER_EMAIL_LEVEL`. |
 | `PALIER_GITHUB_TOKEN` | empty | Reads GitHub release notes and security advisories without the anonymous limit. |
 | `PALIER_GITLAB_TOKEN` | empty | Reads GitLab release notes (gitlab.com) without the anonymous limit, and those of private projects. |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror (`mirror.gcr.io`, for example), used for reads by digest. |
@@ -59,6 +62,19 @@ volumes:
 
 !!! warning "Context length"
     The instructions, the Compose files and the release notes of a stack take from a few thousand tokens to more than 35,000 for Outline. Give the model a context of 65,536 tokens: `OLLAMA_CONTEXT_LENGTH` for Ollama, `--max-model-len` for vLLM. When a prompt does not fit, the server refuses it, and Palier keeps a plan computed from versions alone, marked incomplete with the message of the server.
+
+## Notification channels
+
+Besides email, Palier posts its messages to the channels whose address is set. Each address holds the secret of the service: keep it out of version control. Palier never shows it, neither in the web interface nor in the errors of a channel.
+
+| Variable | Address |
+|---|---|
+| `PALIER_NTFY_URL` | The topic, such as `https://ntfy.sh/my-palier-topic` or `http://ntfy/palier` for a server of your own in the same Compose project. With an access token: `https://:tk_…@ntfy.example.com/palier`; with an account: `https://user:password@ntfy.example.com/palier`. Alerts are sent with high priority. |
+| `PALIER_SLACK_URL` | An incoming webhook, `https://hooks.slack.com/services/…`. |
+| `PALIER_DISCORD_URL` | A channel webhook, `https://discord.com/api/webhooks/…`. Mentions such as `@everyone` are disabled. |
+| `PALIER_TELEGRAM_URL` | `https://api.telegram.org/bot<token>/sendMessage?chat_id=<chat>`, with the token of your bot and the id of the chat it writes to. |
+
+Messages are plain text: release notes and logs quoted in them cannot add links, mentions or formatting. An address must use https, except for a server on the local network. `palier notify test` sends a test message to every channel and prints the refusal of each one.
 
 ## Sign-in with OpenID Connect
 

@@ -245,7 +245,7 @@ func (c *cli) notifications() error {
 		return c.printJSON(n)
 	}
 	if len(n.Channels) == 0 {
-		c.line("No channel: set PALIER_SMTP_HOST and PALIER_EMAIL_TO to receive emails. Problems are still listed below.")
+		c.line("No channel: set PALIER_SMTP_HOST and PALIER_EMAIL_TO, or PALIER_NTFY_URL, PALIER_SLACK_URL, PALIER_DISCORD_URL or PALIER_TELEGRAM_URL. Problems are still listed below.")
 	}
 	for _, ch := range n.Channels {
 		c.line(c.bold(ch.Name) + "  " + clean(ch.Describe))

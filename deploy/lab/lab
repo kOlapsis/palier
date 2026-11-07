@@ -193,10 +193,12 @@ scenario)
 	cat "$LAB_DIR/scenarios/common.sh" "$LAB_DIR/scenarios/$2.sh" | ssh_vm 'cat > /tmp/palier-scenario.sh'
 	ssh_vm 'cat > /tmp/immich-check.py' <"$LAB_DIR/scenarios/immich-check.py"
 	shift 2
+	vars=
 	for a in "$@"; do
 		case $a in [A-Z]*=*) ;; *) die "expected VAR=value after the scenario name, got $a" 2 ;; esac
+		vars="$vars'$(printf %s "$a" | sed "s/'/'\\\\''/g")' "
 	done
-	ssh_vm "sudo $(printf '%q ' "$@")bash /tmp/palier-scenario.sh"
+	ssh_vm "sudo $vars""bash /tmp/palier-scenario.sh"
 	;;
 -h | --help | help) usage ;;
 *)

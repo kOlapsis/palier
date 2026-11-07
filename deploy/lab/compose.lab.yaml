@@ -27,6 +27,11 @@ services:
       PALIER_GITLAB_TOKEN: ${PALIER_GITLAB_TOKEN:-}
       PALIER_REGISTRY_MIRROR: mirror.gcr.io
       PALIER_WEBHOOK_URL: http://webhook-tester:8080/00000000-0000-4000-8000-000000000001
+      PALIER_WEBHOOK_SECRET: lab-webhook-secret
+      PALIER_NTFY_URL: ${LAB_NTFY_URL:-https://ntfy.sh/palier-lab-0df9d9ef06cb}
+      PALIER_SLACK_URL: ${LAB_SLACK_URL:-http://webhook-tester:8080/00000000-0000-4000-8000-000000000002}
+      PALIER_DISCORD_URL: ${LAB_DISCORD_URL:-http://webhook-tester:8080/00000000-0000-4000-8000-000000000003}
+      PALIER_TELEGRAM_URL: ${LAB_TELEGRAM_URL:-http://webhook-tester:8080/00000000-0000-4000-8000-000000000004/sendMessage?chat_id=1}
     ports: !override
       - "${LAB_PALIER_PORT:?}:8080"
     volumes:

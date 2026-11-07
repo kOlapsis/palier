@@ -91,3 +91,27 @@ func TestAIProvider(t *testing.T) {
 		}
 	}
 }
+
+func TestChats(t *testing.T) {
+	c, err := Load(env(map[string]string{
+		"PALIER_NTFY_URL":       "http://ntfy/palier",
+		"PALIER_NTFY_LEVEL":     "alert",
+		"PALIER_TELEGRAM_URL":   "https://api.telegram.org/bot1:abc/sendMessage?chat_id=-100",
+		"PALIER_WEBHOOK_URL":    "https://hooks.example/x",
+		"PALIER_WEBHOOK_SECRET": "s",
+	}))
+	if err != nil || len(c.Chats) != 2 || c.Chats[0].Type != "ntfy" || c.Chats[0].Level != "alert" || c.Chats[1].Level != "info" {
+		t.Fatalf("%+v %v", c.Chats, err)
+	}
+	for _, bad := range []map[string]string{
+		{"PALIER_SLACK_URL": "http://hooks.slack.com/services/x"},
+		{"PALIER_DISCORD_URL": "discord.com/api/webhooks/1/x"},
+		{"PALIER_TELEGRAM_URL": "https://api.telegram.org/bot1:abc/sendMessage"},
+		{"PALIER_NTFY_URL": "https://ntfy.sh/x", "PALIER_NTFY_LEVEL": "all"},
+		{"PALIER_WEBHOOK_SECRET": "s"},
+	} {
+		if _, err := Load(env(bad)); err == nil {
+			t.Errorf("%v accepted", bad)
+		}
+	}
+}
