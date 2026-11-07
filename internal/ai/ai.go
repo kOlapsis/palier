@@ -73,7 +73,7 @@ func array(items any) map[string]any { return map[string]any{"type": "array", "i
 func operation() map[string]any {
 	return object(map[string]any{
 		"op": enum(plan.Ops), "service": str, "services": stringList, "image": str, "tag": str,
-		"seconds": map[string]any{"type": "integer"}, "check_ref": str, "engine": str, "to_image": str, "to_tag": str,
+		"seconds": map[string]any{"type": "integer"}, "check_ref": str, "engine": enum(append([]string{""}, plan.Engines...)), "to_image": str, "to_tag": str,
 		"edits": array(object(map[string]any{
 			"action": enum(plan.EditActions),
 			"name":   str, "value": str, "new_name": str,

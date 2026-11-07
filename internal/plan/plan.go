@@ -111,7 +111,7 @@ var (
 	Reversibles = []string{"yes", "conditional", "no", "unknown"}
 	EditActions = []string{"set_env", "unset_env", "rename_env", "set_command", "unset_command", "set_healthcheck", "unset_healthcheck", "add_volume", "remove_volume", "remove_service"}
 	Categories  = []string{"breaking_change", "manual_action", "configuration_change", "data_migration", "security_fix", "deprecation", "mandatory_step", "min_dependency", "supported_dependency", "storage_format_change"}
-	databases   = []string{"postgres", "mysql", "mariadb"}
+	Engines     = []string{"postgres", "mysql", "mariadb"}
 )
 
 func (p *Plan) incomplete(format string, args ...any) {
@@ -436,7 +436,7 @@ func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Ser
 	}
 	if op.Op == "db_dump_restore" {
 		switch {
-		case !slices.Contains(databases, op.Engine):
+		case !slices.Contains(Engines, op.Engine):
 			p.incomplete("step %d: no export and reimport method for engine %q", n, op.Engine)
 		case op.ToTag == "":
 			p.incomplete("step %d: db_dump_restore without a target version", n)
@@ -540,7 +540,7 @@ func checkChangeOps(p *Plan, n int, s *Step, c Change, svc *inventory.Service, s
 
 func engine(image string) string {
 	name := image[strings.LastIndex(image, "/")+1:]
-	for _, db := range databases {
+	for _, db := range Engines {
 		if strings.HasPrefix(name, db) {
 			return db
 		}
