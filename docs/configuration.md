@@ -21,7 +21,7 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_WEBHOOK_SECRET` | empty | Signs each webhook with HMAC-SHA256 in `X-Palier-Signature`. |
 | `PALIER_NTFY_URL`, `PALIER_SLACK_URL`, `PALIER_DISCORD_URL`, `PALIER_TELEGRAM_URL` | empty | Notification channels. See [notification channels](#notification-channels). |
 | `PALIER_NTFY_LEVEL`, `PALIER_SLACK_LEVEL`, `PALIER_DISCORD_LEVEL`, `PALIER_TELEGRAM_LEVEL` | `info` | `alert` or `info`, as `PALIER_EMAIL_LEVEL`. |
-| `PALIER_GITHUB_TOKEN` | empty | Reads GitHub release notes and security advisories without the anonymous limit. |
+| `PALIER_GITHUB_TOKEN` | empty | Reads GitHub release notes and security advisories without the anonymous limit. A classic token with the `read:packages` scope also lists the publication dates of GHCR tags in one request. |
 | `PALIER_GITLAB_TOKEN` | empty | Reads GitLab release notes (gitlab.com) without the anonymous limit, and those of private projects. |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror (`mirror.gcr.io`, for example), used for reads by digest. |
 | `DOCKER_CONFIG` | `$HOME/.docker` | Folder of the `config.json` that holds the credentials of private registries. |

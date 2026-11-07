@@ -2,10 +2,12 @@ package registry
 
 import (
 	"encoding/base64"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseRef(t *testing.T) {
@@ -34,7 +36,7 @@ func TestCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := New(nil, auths, "mirror.gcr.io/")
+	c := New(nil, auths, "mirror.gcr.io/", "")
 	if c.mirror != "https://mirror.gcr.io" || c.UsesCredentials("mirror.gcr.io") {
 		t.Fatalf("mirror %q must not carry the Docker Hub credentials", c.mirror)
 	}
@@ -68,7 +70,7 @@ func TestCredentialHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := New(nil, auths, "")
+	c := New(nil, auths, "", "")
 	decode := func(s string) string { b, _ := base64.StdEncoding.DecodeString(s); return string(b) }
 	if got := decode(c.credentials("123456789012.dkr.ecr.eu-west-3.amazonaws.com")); got != "user-123456789012.dkr.ecr.eu-west-3.amazonaws.com:pw" {
 		t.Errorf("ecr: %q", got)
@@ -90,5 +92,13 @@ func TestCredentialHelpers(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"credHelpers":{"x.io":"../../bin/sh"}}`), 0o600)
 	if _, err := LoadAuths(dir); err == nil {
 		t.Error("a helper name with a path was accepted")
+	}
+}
+
+func TestRetryAfter(t *testing.T) {
+	for v, want := range map[string]time.Duration{"7": 7 * time.Second, "900": 2 * time.Minute, "": 3 * time.Second, "Wed, 21 Oct 2026 07:28:00 GMT": 3 * time.Second, "-1": 3 * time.Second} {
+		if got := retryAfter(http.Header{"Retry-After": {v}}, 3*time.Second); got != want {
+			t.Errorf("%q: %v", v, got)
+		}
 	}
 }

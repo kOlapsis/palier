@@ -161,7 +161,7 @@ func setup() (*app, error) {
 		db.Close()
 		return nil, err
 	}
-	reg := registry.New(db, auths, cfg.RegistryMirror)
+	reg := registry.New(db, auths, cfg.RegistryMirror, cfg.GitHubToken)
 	if auths != nil {
 		for host, h := range auths.Helpers {
 			slog.Info("credential helper", "registry", host, "helper", "docker-credential-"+h)

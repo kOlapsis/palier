@@ -61,24 +61,27 @@ func (r Ref) Name() string { return r.Domain + "/" + r.Repo }
 
 // Client queries registries with the credentials of the Docker configuration and keeps push dates in the database.
 type Client struct {
-	http   *http.Client
-	db     *sql.DB
-	auths  *Auths
-	mirror string
-	mu     sync.Mutex
-	authz  map[string]string
-	helped map[string]helped
-	hub    string
-	dated  map[string]time.Time
+	http     *http.Client
+	db       *sql.DB
+	auths    *Auths
+	mirror   string
+	mu       sync.Mutex
+	authz    map[string]string
+	helped   map[string]helped
+	hub      string
+	dated    map[string]time.Time
+	github   string
+	slots    map[string]chan struct{}
+	unlisted map[string]time.Time
 }
 
-// New returns a registry client whose date cache lives in db, with the credentials of auths, and mirror, when set, serving the Docker Hub reads by digest.
-func New(db *sql.DB, auths *Auths, mirror string) *Client {
+// New returns a registry client whose date cache lives in db, with the credentials of auths, mirror, when set, serving the Docker Hub reads by digest, and github, when set, listing the dates of GHCR tags.
+func New(db *sql.DB, auths *Auths, mirror, github string) *Client {
 	mirror = strings.TrimSuffix(mirror, "/")
 	if mirror != "" && !strings.Contains(mirror, "://") {
 		mirror = "https://" + mirror
 	}
-	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}}
+	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}, github: github, slots: map[string]chan struct{}{}, unlisted: map[string]time.Time{}}
 }
 
 // StatusError is a refusal of a registry, with its HTTP status.
@@ -221,6 +224,34 @@ func apiHost(domain string) string {
 	return domain
 }
 
+const perHost = 4
+
+// send runs req once at most perHost requests to the same host are running, and returns when the headers have arrived.
+func (c *Client) send(req *http.Request) (*http.Response, error) {
+	c.mu.Lock()
+	slot := c.slots[req.URL.Host]
+	if slot == nil {
+		slot = make(chan struct{}, perHost)
+		c.slots[req.URL.Host] = slot
+	}
+	c.mu.Unlock()
+	select {
+	case slot <- struct{}{}:
+	case <-req.Context().Done():
+		return nil, req.Context().Err()
+	}
+	defer func() { <-slot }()
+	return c.http.Do(req)
+}
+
+// retryAfter is the wait a throttled registry asks for in seconds, at most two minutes, or def.
+func retryAfter(h http.Header, def time.Duration) time.Duration {
+	if s, err := strconv.Atoi(h.Get("Retry-After")); err == nil && s > 0 {
+		return time.Duration(min(s, 120)) * time.Second
+	}
+	return def
+}
+
 var challengeParam = regexp.MustCompile(`(\w+)="([^"]*)"`)
 
 func (c *Client) get(ctx context.Context, r Ref, url, accept string) (*http.Response, error) {
@@ -244,7 +275,7 @@ func (c *Client) do(ctx context.Context, method string, r Ref, url, accept strin
 		if authz != "" {
 			req.Header.Set("Authorization", authz)
 		}
-		resp, err := c.http.Do(req)
+		resp, err := c.send(req)
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +301,7 @@ func (c *Client) do(ctx context.Context, method string, r Ref, url, accept strin
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(time.Duration(throttled) * time.Second):
+			case <-time.After(retryAfter(resp.Header, time.Duration(throttled)*time.Second)):
 			}
 			attempt--
 			continue
@@ -313,7 +344,7 @@ func (c *Client) authorize(ctx context.Context, domain, challenge string) (strin
 	if creds != "" {
 		req.Header.Set("Authorization", "Basic "+creds)
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.send(req)
 	if err != nil {
 		return "", err
 	}
@@ -377,6 +408,11 @@ func (c *Client) Pushed(ctx context.Context, r Ref, tag string) (time.Time, erro
 			return t, err
 		}
 		return time.Time{}, fmt.Errorf("%s:%s is not in the Docker Hub tag list", r.Name(), tag)
+	}
+	if c.listDates(ctx, r, tag) {
+		if t, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
+			return t, err
+		}
 	}
 	pushed, err := c.configCreated(ctx, r, tag)
 	if err != nil {
@@ -461,7 +497,7 @@ func (c *Client) hubGet(ctx context.Context, url string, out any) error {
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
-		resp, err := c.http.Do(req)
+		resp, err := c.send(req)
 		if err != nil {
 			return err
 		}
@@ -474,10 +510,7 @@ func (c *Client) hubGet(ctx context.Context, url string, out any) error {
 			continue
 		case resp.StatusCode == http.StatusTooManyRequests && attempt < 4:
 			resp.Body.Close()
-			wait := time.Duration(attempt+1) * 5 * time.Second
-			if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && s > 0 {
-				wait = time.Duration(min(s, 120)) * time.Second
-			}
+			wait := retryAfter(resp.Header, time.Duration(attempt+1)*5*time.Second)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -505,7 +538,7 @@ func (c *Client) hubLogin(ctx context.Context) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
+	resp, err := c.send(req)
 	if err != nil {
 		return "", err
 	}

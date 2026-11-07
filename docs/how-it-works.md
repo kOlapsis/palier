@@ -17,7 +17,9 @@ The running version comes, in this order:
 3. otherwise from the OCI annotation `org.opencontainers.image.version` that the registry gives for this digest;
 4. otherwise from the `org.opencontainers.image.version` label of the image.
 
-The publication date of each version comes from the Docker Hub API, read in pages of a hundred tags with the Docker Hub credentials, or from the creation date of the image for other registries. It is used for the maturation delay.
+The publication date of each version is used for the maturation delay. It comes from the list of tags with their dates, where the registry has one: the Docker Hub API, read in pages of a hundred tags with the Docker Hub credentials; the Quay API, anonymous for public images; and, with a `PALIER_GITHUB_TOKEN` that has the `read:packages` scope, the GitHub Packages API for GHCR. Elsewhere, or when that list is refused, it is the creation date of the image, two or three requests per tag. Palier keeps each date once read.
+
+Palier sends at most four requests at a time to the same registry, and when a registry answers 429 it waits the time given by `Retry-After` (two minutes at most) before trying again.
 
 An image built on the machine is not looked up in a registry: a service with a `build` section or `pull_policy: never` in its Compose file, an image without registry digest, or an image its registry does not know (401, 403 or 404 while Palier has no credentials for that registry) shows as built locally, without error. With credentials, the same refusal stays an error, since it points at the credentials.
 
