@@ -13,6 +13,7 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_AI_URL` | `https://api.openai.com/v1` | Address of the OpenAI-compatible API, such as `http://ollama:11434/v1`. Only with `PALIER_AI_PROVIDER=openai`. |
 | `PALIER_AI_KEY` | empty | API key. With Anthropic, no key means plans computed from versions alone. With `openai`, a server of your own can do without. |
 | `PALIER_AI_MODEL` | `claude-sonnet-5-5` | Model used for plans. Required with `openai`. |
+| `PALIER_AI_TIMEOUT` | `30m` | Longest wait for one answer of the model (Go duration). Raise it for a model on CPU: without an answer in time, Palier keeps a plan computed from versions alone, marked incomplete. |
 | `PALIER_SCAN_INTERVAL` | `1h` | Interval between two scans (Go duration: `30m`, `2h`…). |
 | `PALIER_MATURATION` | `72h` | Minimum age of a version before it is proposed. A version that fixes a vulnerability in the running version does not wait. |
 | `PALIER_STABLE_SECONDS` | `60` | Time a service must stay stable at each verification. |

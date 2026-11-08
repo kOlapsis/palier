@@ -23,6 +23,7 @@ type Config struct {
 	AIURL          string
 	AIKey          string
 	AIModel        string
+	AITimeout      time.Duration
 	AI             bool
 	ScanInterval   time.Duration
 	Maturation     time.Duration
@@ -96,6 +97,7 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	c.ScanInterval = duration("PALIER_SCAN_INTERVAL", "1h")
 	c.Maturation = duration("PALIER_MATURATION", "72h")
+	c.AITimeout = duration("PALIER_AI_TIMEOUT", "30m")
 	stable, err := strconv.Atoi(get("PALIER_STABLE_SECONDS", "60"))
 	if err != nil || stable <= 0 {
 		errs = append(errs, fmt.Errorf("PALIER_STABLE_SECONDS: invalid number of seconds %q", get("PALIER_STABLE_SECONDS", "60")))

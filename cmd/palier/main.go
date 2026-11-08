@@ -347,7 +347,7 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 		rec.Plan = plan.Fallback(st, "No release notes found: plan computed from versions only.")
 	default:
 		slog.Info("computing plan with AI", "stack", st.Name, "provider", a.cfg.AIProvider, "model", a.cfg.AIModel)
-		model := ai.Endpoint{Provider: a.cfg.AIProvider, URL: a.cfg.AIURL, Key: a.cfg.AIKey, Model: a.cfg.AIModel}
+		model := ai.Endpoint{Provider: a.cfg.AIProvider, URL: a.cfg.AIURL, Key: a.cfg.AIKey, Model: a.cfg.AIModel, Timeout: a.cfg.AITimeout}
 		p, err := ai.Propose(ctx, model, st)
 		if err != nil {
 			rec.Plan = plan.Fallback(st, "Plan computed from versions only.")

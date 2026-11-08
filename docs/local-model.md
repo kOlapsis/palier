@@ -6,7 +6,7 @@ Palier can plan with a model you host, through any API compatible with OpenAI's 
 
 The model must follow long instructions, answer in a strict JSON schema, and copy quotes word for word from release notes that can exceed 35,000 tokens. Palier checks everything it returns: a plan with an invented operation, a missing step or a quote that is not in the notes is marked incomplete and never applied. A model that is too small therefore costs you nothing but time: its plans are refused.
 
-On the Palier bench (6 CPU cores, no GPU), `qwen3:4b-instruct-2507-q4_K_M` took 6 to 7 minutes per stack, and every plan it returned was refused: invented checks, a missing `recreate` after `set_image`, facts quoted inexactly. `qwen3:8b` gave a much better plan for a small stack in 16 minutes, refused only for an invented check, and did not answer within 30 minutes for Outline, whose notes take 35,000 tokens. Palier waits 30 minutes per request at most. Claude Sonnet and OpenAI's models take 7 to 50 seconds and their plans pass. Plan on a GPU, then judge on your own stacks.
+On the Palier bench (6 CPU cores, no GPU), `qwen3:4b-instruct-2507-q4_K_M` took 6 to 7 minutes per stack, and every plan it returned was refused: invented checks, a missing `recreate` after `set_image`, facts quoted inexactly. `qwen3:8b` gave a much better plan for a small stack in 16 minutes, refused only for an invented check, and did not answer within 30 minutes for Outline, whose notes take 35,000 tokens. Palier waits 30 minutes per request by default: raise `PALIER_AI_TIMEOUT` (`2h`, for example) for a model on CPU. Claude Sonnet and OpenAI's models take 7 to 50 seconds and their plans pass. Plan on a GPU, then judge on your own stacks.
 
 ## 1. Start Ollama next to Palier
 

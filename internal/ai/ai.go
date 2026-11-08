@@ -209,7 +209,10 @@ func Propose(ctx context.Context, e Endpoint, st *inventory.Stack) (*plan.Plan, 
 }
 
 // Endpoint is the API and model that answer: Provider is "anthropic" or "openai", for any OpenAI-compatible API.
-type Endpoint struct{ Provider, URL, Key, Model string }
+type Endpoint struct {
+	Provider, URL, Key, Model string
+	Timeout                   time.Duration
+}
 
 // call sends one request to the model and returns the text of a complete answer in the given JSON schema.
 func (e Endpoint) call(ctx context.Context, system string, content []any, schema map[string]any, effort string) (string, error) {
@@ -235,7 +238,7 @@ func (e Endpoint) call(ctx context.Context, system string, content []any, schema
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", e.Key)
 	req.Header.Set("anthropic-version", "2026-10-21")
-	resp, err := (&http.Client{Timeout: 30 * time.Minute}).Do(req)
+	resp, err := (&http.Client{Timeout: e.Timeout}).Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -317,7 +320,7 @@ func (e Endpoint) chat(ctx context.Context, system string, content []any, schema
 	if e.Key != "" {
 		req.Header.Set("Authorization", "Bearer "+e.Key)
 	}
-	resp, err := (&http.Client{Timeout: 30 * time.Minute}).Do(req)
+	resp, err := (&http.Client{Timeout: e.Timeout}).Do(req)
 	if err != nil {
 		return "", err
 	}
