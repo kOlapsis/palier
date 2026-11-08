@@ -156,6 +156,8 @@ For a registry whose certificate comes from your own authority, mount the author
       SSL_CERT_DIR: /etc/palier/ca
 ```
 
+When a registry other than Docker Hub refuses Palier (401, 403 or 404 on the tag list, or on its token server), the service shows "versions unknown" with the answer of the registry, and a problem of level Information is sent on every channel: missing credentials are never silent. Docker Hub gives the same answer for a private image and for a name that only exists on the machine, so such a service shows "not in its registry", with a notice on the home page and in the weekly report, without a message.
+
 ## Registry webhooks
 
 A registry that announces each new tag can make Palier scan at once instead of at the next interval. Set `PALIER_REGISTRY_WEBHOOK_SECRET` to at least 32 random characters (`openssl rand -hex 32`), turn the web interface on, and give the registry this address:

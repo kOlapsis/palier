@@ -29,7 +29,9 @@ func TestProblems(t *testing.T) {
 	}
 	snap := web.Snapshot{At: time.Now(), Stacks: []*inventory.Stack{
 		up("rolled"), up("failed"), up("fixed"), up("blocked", critical), up("patched", critical),
-		up("registry", func(s *inventory.Service) { s.DetectionError = "401" }),
+		up("registry", func(s *inventory.Service) { s.DetectionError = "429" }),
+		up("private", func(s *inventory.Service) { s.DetectionError, s.RegistryRefused = "ghcr.io refuses", true }),
+		up("hub", func(s *inventory.Service) { s.NotInRegistry = true }),
 		{Name: "watched", Observed: true},
 	}}
 	last := map[string]run.View{
@@ -47,14 +49,20 @@ func TestProblems(t *testing.T) {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
-	want := []string{"blocked:decision", "blocked:vulnerable", "failed:failed", "registry/registry:detection", "rolled:rolled_back"}
+	want := []string{"blocked:decision", "blocked:vulnerable", "failed:failed", "hub/hub:detection", "private/private:detection", "registry/registry:detection", "rolled:rolled_back"}
 	if !slices.Equal(keys, want) {
 		t.Fatalf("problems %v, want %v", keys, want)
 	}
 	if p := got["rolled:rolled_back"]; p.Level != notify.Info || p.Detail != "step 1 failed\nlogs" || p.Path != "/runs/3" {
 		t.Errorf("rolled back: %+v", p)
 	}
-	if got["failed:failed"].Level != notify.Alert || got["blocked:vulnerable"].Level != notify.Alert || !got["registry/registry:detection"].Flaky {
+	if p := got["hub/hub:detection"]; p.Level != notify.Notice || p.Flaky {
+		t.Errorf("not on Docker Hub must be shown: %+v", p)
+	}
+	if p := got["private/private:detection"]; p.Level != notify.Info || p.Flaky {
+		t.Errorf("registry refusal must be sent at once: %+v", p)
+	}
+	if got["failed:failed"].Level != notify.Alert || got["blocked:vulnerable"].Level != notify.Alert || !got["registry/registry:detection"].Flaky || got["registry/registry:detection"].Level != notify.Notice {
 		t.Errorf("levels: %+v", got)
 	}
 }

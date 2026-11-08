@@ -35,34 +35,35 @@ type Stack struct {
 
 // Service is one service of a stack, as it runs.
 type Service struct {
-	Name           string           `json:"name"`
-	Container      string           `json:"container"`
-	Image          string           `json:"image"`
-	Tag            string           `json:"tag"`
-	Digest         string           `json:"digest,omitempty"`
-	Version        string           `json:"version,omitempty"`
-	VersionSource  string           `json:"version_source,omitempty"`
-	Republished    bool             `json:"republished,omitempty"`
-	State          string           `json:"state"`
-	Healthcheck    bool             `json:"healthcheck"`
-	Health         string           `json:"health,omitempty"`
-	Restarts       int              `json:"restarts"`
-	Mounts         []Mount          `json:"mounts,omitempty"`
-	DependsOn      []string         `json:"depends_on,omitempty"`
-	Role           string           `json:"role"`
-	Available      []Release        `json:"available,omitempty"`
-	Maturing       []Release        `json:"maturing,omitempty"`
-	DetectionError string           `json:"detection_error,omitempty"`
-	ImageID        string           `json:"image_id"`
-	Source         string           `json:"source,omitempty"`
-	BackupHook     string           `json:"backup_hook,omitempty"`
-	Auto           string           `json:"auto,omitempty"`
-	Notes          []notes.Note     `json:"notes,omitempty"`
-	Advisories     []notes.Advisory `json:"advisories,omitempty"`
-	NotesError     string           `json:"notes_error,omitempty"`
-	Hidden         []string         `json:"hidden,omitempty"`
-	BuiltLocally   bool             `json:"built_locally,omitempty"`
-	NotInRegistry  bool             `json:"not_in_registry,omitempty"`
+	Name            string           `json:"name"`
+	Container       string           `json:"container"`
+	Image           string           `json:"image"`
+	Tag             string           `json:"tag"`
+	Digest          string           `json:"digest,omitempty"`
+	Version         string           `json:"version,omitempty"`
+	VersionSource   string           `json:"version_source,omitempty"`
+	Republished     bool             `json:"republished,omitempty"`
+	State           string           `json:"state"`
+	Healthcheck     bool             `json:"healthcheck"`
+	Health          string           `json:"health,omitempty"`
+	Restarts        int              `json:"restarts"`
+	Mounts          []Mount          `json:"mounts,omitempty"`
+	DependsOn       []string         `json:"depends_on,omitempty"`
+	Role            string           `json:"role"`
+	Available       []Release        `json:"available,omitempty"`
+	Maturing        []Release        `json:"maturing,omitempty"`
+	DetectionError  string           `json:"detection_error,omitempty"`
+	ImageID         string           `json:"image_id"`
+	Source          string           `json:"source,omitempty"`
+	BackupHook      string           `json:"backup_hook,omitempty"`
+	Auto            string           `json:"auto,omitempty"`
+	Notes           []notes.Note     `json:"notes,omitempty"`
+	Advisories      []notes.Advisory `json:"advisories,omitempty"`
+	NotesError      string           `json:"notes_error,omitempty"`
+	Hidden          []string         `json:"hidden,omitempty"`
+	BuiltLocally    bool             `json:"built_locally,omitempty"`
+	NotInRegistry   bool             `json:"not_in_registry,omitempty"`
+	RegistryRefused bool             `json:"registry_refused,omitempty"`
 
 	current      version.V
 	digests      []string
@@ -383,8 +384,18 @@ func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Cli
 	ref := registry.ParseRef(s.Image + ":" + s.Tag)
 	tags, err := reg.Tags(ctx, ref)
 	var refused *registry.StatusError
-	if errors.As(err, &refused) && (refused.Code == 401 || refused.Code == 403 || refused.Code == 404) && !reg.UsesCredentials(ref.Domain) {
-		s.NotInRegistry = true
+	if errors.As(err, &refused) && (refused.Code == 401 || refused.Code == 403 || refused.Code == 404) {
+		// Docker Hub answers alike, with or without credentials, for a private repository and for a name that only exists on this machine.
+		if ref.Domain == "docker.io" {
+			s.NotInRegistry = true
+			return
+		}
+		s.RegistryRefused = true
+		cause := "no credentials for " + ref.Domain + " in the Docker configuration of Palier"
+		if reg.UsesCredentials(ref.Domain) {
+			cause = "the credentials for " + ref.Domain + " are refused or do not give access to " + ref.Repo
+		}
+		s.DetectionError = fmt.Sprintf("%s refuses to list the tags of %s (%d): %s. %s", ref.Domain, ref.Repo, refused.Code, cause, err)
 		return
 	}
 	if err != nil {

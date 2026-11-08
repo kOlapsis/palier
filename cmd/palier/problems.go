@@ -95,7 +95,14 @@ func problems(snap web.Snapshot, last map[string]run.View, plans map[string]*pla
 					severe = append(severe, fmt.Sprintf("%s %s (%s): %s", s.Name, cmp.Or(adv.CVE, adv.ID), adv.Severity, adv.Summary))
 				}
 			}
-			if s.DetectionError != "" {
+			if s.NotInRegistry {
+				out = append(out, notify.Problem{Key: st.Name + "/" + s.Name + ":detection", Stack: st.Name, Level: notify.Notice, Title: st.Name + ": " + s.Name + " is not on Docker Hub",
+					Detail: "Docker Hub does not list " + s.Image + ": the image was built on this machine outside Compose, or it is private and the Docker Hub credentials of Palier cannot read it.",
+					Action: "If the image is private, give Palier Docker Hub credentials that can read it. If it is built on this machine, nothing to do: Palier leaves it as it is.", Path: page})
+			} else if s.RegistryRefused {
+				out = append(out, notify.Problem{Key: st.Name + "/" + s.Name + ":detection", Stack: st.Name, Level: notify.Info, Title: st.Name + ": the registry of " + s.Name + " refuses Palier",
+					Detail: s.DetectionError, Action: "Give Palier access to this registry: credentials in the auths section of config.json in DOCKER_CONFIG, or a credential helper. Until then, Palier cannot update this service.", Path: page})
+			} else if s.DetectionError != "" {
 				out = append(out, notify.Problem{Key: st.Name + "/" + s.Name + ":detection", Stack: st.Name, Level: notify.Notice, Title: st.Name + ": versions of " + s.Name + " unknown",
 					Detail: s.DetectionError, Action: "Palier cannot update this service until it reads its registry again. Credentials and request limits are the usual causes.", Path: page, Flaky: true})
 			}

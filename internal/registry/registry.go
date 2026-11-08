@@ -319,7 +319,7 @@ func (c *Client) authorize(ctx context.Context, domain, challenge string) (strin
 	creds := c.credentials(domain)
 	if strings.HasPrefix(challenge, "Basic ") {
 		if creds == "" {
-			return "", fmt.Errorf("registry %s requires credentials", domain)
+			return "", &StatusError{Code: http.StatusUnauthorized, msg: fmt.Sprintf("registry %s requires credentials", domain)}
 		}
 		return "Basic " + creds, nil
 	}
@@ -350,7 +350,7 @@ func (c *Client) authorize(ctx context.Context, domain, challenge string) (strin
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("registry %s token: %s", params["realm"], resp.Status)
+		return "", &StatusError{Code: resp.StatusCode, msg: fmt.Sprintf("registry %s token: %s", params["realm"], resp.Status)}
 	}
 	var t struct {
 		Token       string
