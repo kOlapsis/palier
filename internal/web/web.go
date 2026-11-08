@@ -339,6 +339,7 @@ func New(deps Deps) http.Handler {
 			return v
 		},
 		"join":       func(v []string) string { return strings.Join(v, ", ") },
+		"upper":      strings.ToUpper,
 		"tone":       func(v string) string { return tones[v] },
 		"crumbs":     crumbs,
 		"hasStop":    hasStop,

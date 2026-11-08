@@ -30,7 +30,7 @@ type Chat struct {
 func (c *Chat) Name() string { return c.Type }
 
 // Describe sums up the channel without its secret.
-func (c *Chat) Describe() string {
+func (c Chat) Describe() string {
 	u, _ := url.Parse(c.URL)
 	return fmt.Sprintf("%s, level %s", u.Hostname(), c.Level)
 }

@@ -4,30 +4,60 @@
 <h1>Settings</h1>
 <p class="meta">Read from the environment at startup. To change one, edit the variable and restart Palier.</p>
 </div>
-<div class="panel">
-<dl class="settings">
+<h2>AI</h2>
+<div class="panel"><dl class="settings">
+<dt>PALIER_AI_PROVIDER</dt><dd>{{.AIProvider}}{{if not .AI}}<span class="sub">No AI: plans are computed from versions only. Set PALIER_AI_KEY.</span>{{end}}</dd>
+<dt>PALIER_AI_URL</dt><dd>{{with .AIURL}}{{.}}{{else}}<span class="muted">not set</span>{{end}}</dd>
+<dt>PALIER_AI_MODEL</dt><dd>{{.AIModel}}</dd>
+<dt>PALIER_AI_KEY</dt><dd>{{if .AIKey}}set{{else}}<span class="muted">not set</span>{{end}}</dd>
+<dt>PALIER_AI_TIMEOUT</dt><dd>{{.AITimeout}}<span class="sub">Longest wait for one answer of the model.</span></dd>
+</dl></div>
+
+<h2>Updates</h2>
+<div class="panel"><dl class="settings">
+<dt>PALIER_AUTO</dt><dd>{{.Auto}}<span class="sub">Updates applied without a decision; the palier.auto label overrides it for one service.</span></dd>
+<dt>PALIER_SCAN_INTERVAL</dt><dd>{{.ScanInterval}}</dd>
+<dt>PALIER_MATURATION</dt><dd>{{.Maturation}}<span class="sub">Minimum age of a version before it is proposed.</span></dd>
+<dt>PALIER_STABLE_SECONDS</dt><dd>{{.StableSeconds}}<span class="sub">Time a service must stay stable at each verification.</span></dd>
+</dl></div>
+
+<h2>Registries and release notes</h2>
+<div class="panel"><dl class="settings">
+<dt>DOCKER_CONFIG</dt><dd>{{.DockerConfig}}<span class="sub">Credentials of private registries.</span></dd>
+<dt>PALIER_REGISTRY_MIRROR</dt><dd>{{with .RegistryMirror}}{{.}}{{else}}<span class="muted">not set</span>{{end}}</dd>
+<dt>PALIER_REGISTRY_WEBHOOK_SECRET</dt><dd>{{if .HookSecret}}set{{else}}<span class="muted">not set: registries cannot announce new tags</span>{{end}}</dd>
+<dt>PALIER_GITHUB_TOKEN</dt><dd>{{if .GitHubToken}}set{{else}}<span class="muted">not set: 60 requests per hour to GitHub</span>{{end}}</dd>
+<dt>PALIER_GITLAB_TOKEN</dt><dd>{{if .GitLabToken}}set{{else}}<span class="muted">not set</span>{{end}}</dd>
+</dl></div>
+
+<h2>Web interface and sign-in</h2>
+<div class="panel"><dl class="settings">
+<dt>PALIER_LISTEN</dt><dd>{{.Listen}}</dd>
+<dt>PALIER_PUBLIC_URL</dt><dd>{{with .PublicURL}}{{.}}{{else}}<span class="muted">not set: messages give the command to run instead of a link</span>{{end}}</dd>
+<dt>PALIER_OIDC_ISSUER</dt><dd>{{with .OIDCIssuer}}{{.}}{{else}}<span class="muted">not set: no sign-in</span>{{end}}</dd>
+<dt>PALIER_OIDC_CLIENT_ID</dt><dd>{{with .OIDCClientID}}{{.}}{{else}}<span class="muted">not set</span>{{end}}</dd>
+<dt>PALIER_OIDC_ADMINS</dt><dd>{{with .OIDCAdmins}}{{join .}}{{else}}<span class="muted">not set</span>{{end}}</dd>
+</dl></div>
+
+<h2>Engine and data</h2>
+<div class="panel"><dl class="settings">
 <dt>PALIER_DOCKER_HOST</dt><dd>{{.DockerHost}}</dd>
 <dt>PALIER_DATA_DIR</dt><dd>{{.DataDir}}</dd>
-<dt>PALIER_LISTEN</dt><dd>{{.Listen}}</dd>
-<dt>PALIER_AI_PROVIDER</dt><dd>{{if .AI}}{{.AIProvider}}{{with .AIURL}} at {{.}}{{end}}, model {{.AIModel}}, key {{if .AIKey}}set{{else}}not set{{end}}, timeout {{.AITimeout}}{{else}}PALIER_AI_KEY not set: plans computed from versions only{{end}}</dd>
-<dt>PALIER_SCAN_INTERVAL</dt><dd>{{.ScanInterval}}</dd>
-<dt>PALIER_MATURATION</dt><dd>{{.Maturation}}</dd>
-<dt>PALIER_STABLE_SECONDS</dt><dd>{{.StableSeconds}}</dd>
-<dt>PALIER_AUTO</dt><dd>{{.Auto}}</dd>
-<dt>PALIER_WEBHOOK_URL</dt><dd>{{if .WebhookURL}}set, {{if .WebhookSecret}}signed{{else}}not signed{{end}}{{else}}not set{{end}}</dd>
-<dt>PALIER_GITHUB_TOKEN</dt><dd>{{if .GitHubToken}}set{{else}}not set{{end}}</dd>
-<dt>PALIER_GITLAB_TOKEN</dt><dd>{{if .GitLabToken}}set{{else}}not set{{end}}</dd>
-<dt>PALIER_REGISTRY_MIRROR</dt><dd>{{with .RegistryMirror}}{{.}}{{else}}not set{{end}}</dd>
-<dt>DOCKER_CONFIG</dt><dd>{{.DockerConfig}}</dd>
-<dt>PALIER_OIDC_ISSUER</dt><dd>{{with .OIDCIssuer}}{{.}}, client {{$.OIDCClientID}}{{else}}not set: no sign-in{{end}}</dd>
-<dt>PALIER_OIDC_ADMINS</dt><dd>{{with .OIDCAdmins}}{{join .}}{{else}}not set{{end}}</dd>
-<dt>PALIER_SMTP_HOST</dt><dd>{{with .SMTPHost}}{{.}}:{{$.SMTPPort}}, from {{$.SMTPFrom}}{{else}}not set: no email{{end}}</dd>
-<dt>PALIER_EMAIL_TO</dt><dd>{{with .EmailTo}}{{join .}}, level {{$.EmailLevel}}{{else}}not set{{end}}</dd>
-<dt>PALIER_PUBLIC_URL</dt><dd>{{with .PublicURL}}{{.}}{{else}}not set: messages give the command to run instead of a link{{end}}</dd>
-</dl>
-</div>
+</dl></div>
 
-<h2>Notifications</h2>
+<h2>Notification settings</h2>
+<div class="panel"><dl class="settings">
+<dt>PALIER_SMTP_HOST</dt><dd>{{with .SMTPHost}}{{.}}:{{$.SMTPPort}}{{else}}<span class="muted">not set: no email</span>{{end}}</dd>
+{{if .SMTPHost}}<dt>PALIER_SMTP_USER</dt><dd>{{with .SMTPUser}}{{.}}{{else}}<span class="muted">not set</span>{{end}}</dd>
+<dt>PALIER_SMTP_FROM</dt><dd>{{.SMTPFrom}}</dd>
+<dt>PALIER_EMAIL_TO</dt><dd>{{join .EmailTo}}</dd>
+<dt>PALIER_EMAIL_LEVEL</dt><dd>{{.EmailLevel}}</dd>
+{{end}}{{range .Chats}}<dt>PALIER_{{upper .Type}}_URL</dt><dd>{{.Describe}}</dd>
+{{end}}<dt>PALIER_WEBHOOK_URL</dt><dd>{{if .WebhookURL}}set{{else}}<span class="muted">not set</span>{{end}}</dd>
+{{if .WebhookURL}}<dt>PALIER_WEBHOOK_SECRET</dt><dd>{{if .WebhookSecret}}set: requests are signed{{else}}<span class="muted">not set: requests are not signed</span>{{end}}</dd>
+{{end}}</dl></div>
+
+<h2>Notification channels</h2>
 {{with .Error}}<p class="notice bad">{{.}}</p>{{end}}
 {{if .Tested}}<p class="notice info">Test message accepted by every channel.</p>{{end}}
 <div class="panel">
