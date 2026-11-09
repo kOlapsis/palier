@@ -29,7 +29,7 @@ docker exec palier-palier-1 palier plan mariadb --once >/dev/null 2>&1
 apply_and_report mariadb
 echo "after: $(count mariadb-mariadb-1 palier-lab-password)"
 echo "on WebDAV after: $(rc lsf dav:palier/mariadb/mariadb | tr '\n' ' ')"
-echo "on the WebDAV server disk: $(find /opt/palier/webdav/mariadb -type f -newermt "@$started" -printf '%P %s bytes, ')"
+echo "on the WebDAV server disk: $(find /opt/palier/webdav/palier/mariadb -type f -newermt "@$started" -printf '%P %s bytes, ')"
 echo "dumps of mariadb on MinIO: $minio_before before, $(rc lsf -R minio:palier/mariadb 2>/dev/null | grep -c dump.sql$) after"
 dir=dav:palier/mariadb/mariadb/$(latest dav:palier/mariadb/mariadb)
 verify "$dir/dump.sql"
