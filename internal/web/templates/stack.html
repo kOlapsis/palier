@@ -38,6 +38,17 @@
 {{end}}{{end}}</tbody>
 </table>
 </div>
+{{with .Backups}}
+<h2>Backups</h2>
+<div class="panel">
+<table><thead><tr><th>Service</th><th>Made</th><th>Backup</th></tr></thead><tbody>
+{{range .}}<tr><td class="name">{{.Service}}<span class="sub">{{.Kind}}{{with .Databases}}: {{join .}}{{end}}</span></td>
+<td>{{when .At}}<span class="sub">before run <a href="/runs/{{.Run}}">{{.Run}}</a></span></td>
+<td>{{if .Error}}<span class="pill bad">failed</span><span class="sub">{{.Error}}</span>{{else}}<span class="mono">{{.Location}}</span><span class="sub">{{size .Size}} in {{.Seconds}} s, sha256 <span class="mono">{{.SHA256}}</span></span>{{end}}</td></tr>
+{{end}}</tbody></table>
+</div>
+{{end}}
+
 {{if hasStop .Stack .Record}}<p class="legend"><i></i>required stop from the catalog card; the last version of the path is the target.</p>{{end}}
 
 {{with .Runs}}{{with index . 0}}{{if and (eq .Status "running") (not .DryRun)}}

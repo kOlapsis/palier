@@ -374,6 +374,19 @@ func (c *cli) show(stack string) error {
 			c.advisories(s.Name, s.Advisories)
 		}
 	}
+	if len(v.Backups) > 0 {
+		c.line("")
+		c.line(c.bold("Backups"))
+		rows := [][]cell{}
+		for _, b := range v.Backups {
+			where := cell{text: clean(b.Location)}
+			if b.Error != "" {
+				where = cell{text: "failed: " + strings.SplitN(clean(b.Error), "\n", 2)[0], tone: "bad"}
+			}
+			rows = append(rows, []cell{{text: clean(b.Service), bold: true}, {text: clean(b.Kind)}, {text: when(b.At)}, {text: fmt.Sprint(b.Run), tone: "muted"}, where})
+		}
+		c.table([]string{"SERVICE", "KIND", "MADE", "RUN", "LOCATION"}, rows)
+	}
 	c.plan(v)
 	if len(v.Runs) > 0 {
 		c.line("")

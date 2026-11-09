@@ -57,6 +57,7 @@ type Service struct {
 	Source          string           `json:"source,omitempty"`
 	BackupHook      string           `json:"backup_hook,omitempty"`
 	Backup          string           `json:"backup,omitempty"`
+	BackupTo        string           `json:"backup_to,omitempty"`
 	Auto            string           `json:"auto,omitempty"`
 	Notes           []notes.Note     `json:"notes,omitempty"`
 	Advisories      []notes.Advisory `json:"advisories,omitempty"`
@@ -210,6 +211,7 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 	svc.Source = img.Config.Labels["org.opencontainers.image.source"]
 	svc.BackupHook = c.Labels["palier.hook.backup"]
 	svc.Backup = c.Labels["palier.backup"]
+	svc.BackupTo = strings.TrimSpace(c.Labels["palier.backup.to"])
 	svc.Auto = strings.TrimSpace(c.Labels["palier.auto"])
 	svc.ImageID = c.ImageID
 	for _, m := range d.Mounts {

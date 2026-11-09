@@ -23,7 +23,7 @@
 
 <h2>Backups</h2>
 <div class="panel"><dl class="settings">
-<dt>PALIER_BACKUP_TO</dt><dd>{{with .BackupTo}}{{.}}<span class="sub">Where the palier.backup labels send their backups, through rclone.</span>{{else}}<span class="muted">not set: a service with a palier.backup label is not updated</span>{{end}}</dd>
+<dt>PALIER_BACKUP_TO</dt><dd>{{with .BackupTo}}{{.}}<span class="sub">Where the palier.backup labels send their backups, through rclone.</span>{{else}}<span class="muted">not set: a service with a palier.backup label and no palier.backup.to is not updated</span>{{end}}</dd>
 <dt>PALIER_BACKUP_KEEP</dt><dd>{{.BackupKeep}}<span class="sub">Backups kept for each service.</span></dd>
 </dl></div>
 

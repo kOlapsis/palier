@@ -7,6 +7,7 @@ services:
     restart: always
     labels:
       palier.backup: dump
+      palier.backup.to: dav:palier
     environment:
       MARIADB_ROOT_PASSWORD: palier-lab-password
       MARIADB_DATABASE: shop

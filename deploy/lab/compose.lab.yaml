@@ -45,6 +45,11 @@ services:
       RCLONE_CONFIG_SFTP_PORT: ${LAB_SFTP_PORT:?}
       RCLONE_CONFIG_SFTP_USER: palier
       RCLONE_CONFIG_SFTP_PASS: Lrx0JAiJow7v_jI3ygeAymjwzPTj5bJfU6E9I2Xkqb50
+      RCLONE_CONFIG_DAV_TYPE: webdav
+      RCLONE_CONFIG_DAV_URL: http://${LAB_ADDRESS:?}:${LAB_WEBDAV_PORT:?}
+      RCLONE_CONFIG_DAV_VENDOR: other
+      RCLONE_CONFIG_DAV_USER: palier
+      RCLONE_CONFIG_DAV_PASS: 7AIGOKzglFNc2T5hXEd35It_2hhAKsvyeDxW34JlmpP1BSw
     ports: !override
       - "${LAB_PALIER_PORT:?}:8080"
     volumes:
@@ -123,6 +128,18 @@ services:
     ports:
       - "${LAB_SFTP_PORT:?}:22"
 
+  webdav:
+    image: docker.io/hacdias/webdav:v5.17.1
+    restart: unless-stopped
+    command: ["--config", "/etc/webdav/config.yml"]
+    configs:
+      - source: webdav
+        target: /etc/webdav/config.yml
+    volumes:
+      - /opt/palier/webdav:/data
+    ports:
+      - "${LAB_WEBDAV_PORT:?}:6065"
+
   ollama:
     image: ollama/ollama:0.40.15
     profiles: [ai-local]
@@ -138,3 +155,15 @@ volumes:
   labreg-data: {}
   minio-data: {}
   ollama-models: {}
+
+configs:
+  webdav:
+    content: |
+      address: 0.0.0.0
+      port: 6065
+      directory: /data
+      permissions: none
+      users:
+        - username: palier
+          password: lab-webdav-password
+          permissions: CRUD

@@ -112,7 +112,7 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, fmt.Errorf("PALIER_BACKUP_KEEP: invalid number of backups %q", get("PALIER_BACKUP_KEEP", "7")))
 	}
 	c.BackupKeep = keep
-	if c.BackupTo != "" && !rcloneRemote.MatchString(c.BackupTo) {
+	if c.BackupTo != "" && !Destination.MatchString(c.BackupTo) {
 		errs = append(errs, fmt.Errorf("PALIER_BACKUP_TO: %q, expected an rclone remote and a path such as offsite:palier, the remote set by RCLONE_CONFIG_OFFSITE_TYPE and the other RCLONE_CONFIG_OFFSITE_ variables", c.BackupTo))
 	}
 	switch c.Auto {
@@ -215,7 +215,8 @@ func Load(getenv func(string) string) (Config, error) {
 	return c, errors.Join(errs...)
 }
 
-var rcloneRemote = regexp.MustCompile(`^[A-Za-z0-9_.+@][A-Za-z0-9_.+@-]*:`)
+// Destination matches an rclone remote with its path, without the inline parameters that could hold a secret.
+var Destination = regexp.MustCompile(`^[A-Za-z0-9_.+@][A-Za-z0-9_.+@-]*:`)
 
 func list(v string) []string {
 	var out []string

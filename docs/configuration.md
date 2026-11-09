@@ -95,13 +95,15 @@ An SFTP server, whose password rclone wants in its own obscured form (`docker ru
       RCLONE_CONFIG_NAS_PASS: ${NAS_PASS_OBSCURED}
 ```
 
-Each backup goes to `<PALIER_BACKUP_TO>/<stack>/<service>/<date>/`, the date in UTC such as `20261109T202416Z`:
+Each backup goes to `<PALIER_BACKUP_TO>/<stack>/<service>/<date>/`, or under the [`palier.backup.to`](#palierbackupto) of the service, the date in UTC such as `20261109T202416Z`:
 
 - `dump.sql`, the logical export of the database: `pg_dumpall` for PostgreSQL, `mysqldump` or `mariadb-dump` of every database but the system ones for MySQL and MariaDB. It restores with `psql -U postgres -d postgres < dump.sql` or `mariadb -uroot < dump.sql` on the same major version.
 - `volumes.tar`, an archive of the volumes and host directories the service mounts read-write, each under its path in the container (`var/lib/postgresql/data/…`). Host system paths, logs and the bulk data of a catalog card are left out, as for the [restore point](how-it-works.md#5-execution).
 - next to each file, its `.sha256`, in the format of `sha256sum -c`.
 
 The data goes from the container to rclone in a stream, through the memory of Palier: neither the export nor the archive is written to the disk of the machine. To encrypt or compress them, define the remote as a rclone [`crypt`](https://rclone.org/crypt/) or [`compress`](https://rclone.org/compress/) remote over the real one. On S3, rclone sends a stream in parts of 5 MiB by default, which limits one file to about 48 GiB; raise `RCLONE_S3_CHUNK_SIZE` for more.
+
+`palier show` and the stack page list the last backup of each service and kind, with its location, size and SHA-256, and the last failure when it came after.
 
 The database credentials are read in the environment of its container, as for a major upgrade, and never appear in a log or an event. Each backup sends a `backup_done` or `backup_failed` event to [the webhook](usage.md#the-webhook), with the location, size and SHA-256 of the file, for a tool that fetches it and tests its restore.
 
@@ -215,7 +217,7 @@ The mirror reduces the requests made to Docker Hub, which limits anonymous acces
 
 ## Labels on your services
 
-Four labels, set in the Compose file of your stacks, change how Palier behaves.
+Five labels, set in the Compose file of your stacks, change how Palier behaves.
 
 ### `palier.backup`
 
@@ -230,6 +232,19 @@ services:
     image: postgres:16.4
     labels:
       palier.backup: dump
+```
+
+### `palier.backup.to`
+
+Where the backups of this service go, instead of `PALIER_BACKUP_TO`: an rclone remote and a path, such as `nas:backups`, defined by its `RCLONE_CONFIG_` variables like any other. A service can have it without `PALIER_BACKUP_TO`.
+
+```yaml
+services:
+  database:
+    image: ghcr.io/immich-app/postgres:16-vectorchord0.3.0-pgvectors0.2.0
+    labels:
+      palier.backup: dump
+      palier.backup.to: nas:backups
 ```
 
 ### `palier.hook.backup`

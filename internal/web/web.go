@@ -50,6 +50,7 @@ type Deps struct {
 	Automatic func(stack string, p *plan.Plan) (bool, string)
 	Run       func(id int64) (*run.View, error)
 	Runs      func(stack string) ([]run.View, error)
+	Backups   func(stack string) ([]run.Archive, error)
 	Rescan    func()
 	Scanning  func() bool
 
@@ -344,6 +345,7 @@ func New(deps Deps) http.Handler {
 		"crumbs":     crumbs,
 		"hasStop":    hasStop,
 		"inc":        func(i int) int { return i + 1 },
+		"size":       size,
 		"worstFirst": WorstFirst,
 		"severities": Severities,
 		"when": func(v string) string {
@@ -426,6 +428,18 @@ func registryHook(deps Deps) http.Handler {
 	})
 }
 
+func size(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
+	}
+	return fmt.Sprintf("%d bytes", n)
+}
+
 func (s *server) find(name string) (*inventory.Stack, time.Time) {
 	snap := s.deps.Current()
 	for _, st := range snap.Stacks {
@@ -460,6 +474,7 @@ type StackView struct {
 	AutoWhy   string             `json:"auto_why,omitempty"`
 	Postponed string             `json:"postponed,omitempty"`
 	Runs      []run.View         `json:"runs"`
+	Backups   []run.Archive      `json:"backups"`
 	Error     string             `json:"error,omitempty"`
 }
 
@@ -477,6 +492,9 @@ func (s *server) view(st *inventory.Stack, at time.Time) StackView {
 		v.Postponed = until.Format("2006-01-02")
 	}
 	v.Runs, _ = s.deps.Runs(st.Name)
+	if s.deps.Backups != nil {
+		v.Backups, _ = s.deps.Backups(st.Name)
+	}
 	return v
 }
 

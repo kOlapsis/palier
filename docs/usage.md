@@ -27,7 +27,7 @@ A large version jump can take a long time. GitLab, with 13 required stops and th
 
 ## The stack page
 
-`palier show <stack>` (or the stack page of the web interface) shows each service with its role (application or dependency), its running version, its dependencies and the available versions. A version that is too recent appears as "maturing" until it reaches the age set by `PALIER_MATURATION` (72 hours by default), unless it fixes a vulnerability in the running version. Each known vulnerability of the running version is flagged under the service, with its severity and a link to the advisory.
+`palier show <stack>` (or the stack page of the web interface) shows each service with its role (application or dependency), its running version, its dependencies and the available versions. A version that is too recent appears as "maturing" until it reaches the age set by `PALIER_MATURATION` (72 hours by default), unless it fixes a vulnerability in the running version. Each known vulnerability of the running version is flagged under the service, with its severity and a link to the advisory. Under the services, the last [backup](configuration.md#backups) of each one.
 
 Below the services comes the plan, step by step. Each step shows:
 

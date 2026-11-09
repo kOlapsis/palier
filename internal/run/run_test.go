@@ -1,6 +1,7 @@
 package run
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/kolapsis/palier/internal/inventory"
+	"github.com/kolapsis/palier/internal/store"
 )
 
 func TestDependencyOrder(t *testing.T) {
@@ -157,5 +159,34 @@ func TestBackupPaths(t *testing.T) {
 	}
 	if got := expired(names, 7); got != nil {
 		t.Errorf("expired with room left = %v", got)
+	}
+}
+
+func TestLastBackups(t *testing.T) {
+	db, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, r := range []struct {
+		service, kind, err string
+		run                int
+	}{{"db", "dump", "", 1}, {"db", "dump", "refused", 2}, {"db", "volumes", "refused", 1}, {"db", "volumes", "", 2}, {"db", "dump", "", 3}, {"db", "dump", "refused", 4}, {"app", "volumes", "", 4}} {
+		body := fmt.Sprintf(`{"service":%q,"kind":%q,"error":%q,"run":%d}`, r.service, r.kind, r.err, r.run)
+		if _, err := db.Exec(`INSERT INTO backups (stack, service, kind, ok, body) VALUES ('s', ?, ?, ?, ?)`, r.service, r.kind, r.err == "", body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := LastBackups(context.Background(), db, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, a := range list {
+		got = append(got, fmt.Sprintf("%s %s %d %s", a.Service, a.Kind, a.Run, a.Error))
+	}
+	want := []string{"app volumes 4 ", "db dump 3 ", "db dump 4 refused", "db volumes 2 "}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q", got)
 	}
 }

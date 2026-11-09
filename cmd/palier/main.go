@@ -660,6 +660,7 @@ func serve() error {
 		},
 		Run:      func(id int64) (*run.View, error) { return run.Load(ctx, a.db, id) },
 		Runs:     func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 20) },
+		Backups:  func(stack string) ([]run.Archive, error) { return run.LastBackups(ctx, a.db, stack) },
 		Scanning: scanning.Load,
 		Rescan: func() {
 			select {

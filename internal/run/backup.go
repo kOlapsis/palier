@@ -2,18 +2,23 @@ package run
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"path"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/kolapsis/palier/internal/compose"
+	"github.com/kolapsis/palier/internal/config"
 	"github.com/kolapsis/palier/internal/docker"
 	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/plan"
@@ -36,13 +41,16 @@ type Archive struct {
 	SHA256    string   `json:"sha256,omitempty"`
 	Seconds   int      `json:"seconds"`
 	Error     string   `json:"error,omitempty"`
+	Run       int64    `json:"run"`
+	At        string   `json:"at"`
 }
 
 // backups makes and sends off the machine the backups the palier.backup labels of st ask for, then keeps the BackupKeep latest of each service.
 func (e *Engine) backups(ctx context.Context, id int64, st *inventory.Stack) error {
 	stamp := time.Now().UTC().Format(stampLayout)
-	var done []string
+	var done [][2]string
 	for _, s := range st.Services {
+		to := cmp.Or(s.BackupTo, e.BackupTo)
 		for _, kind := range strings.Split(s.Backup, ",") {
 			if kind = strings.TrimSpace(kind); kind == "" {
 				continue
@@ -52,13 +60,15 @@ func (e *Engine) backups(ctx context.Context, id int64, st *inventory.Stack) err
 			switch {
 			case kind != "dump" && kind != "volumes":
 				err = fmt.Errorf("palier.backup is %q, expected dump, volumes, or both separated by a comma", s.Backup)
-			case e.BackupTo == "":
-				err = errors.New("palier.backup asks for a backup, but PALIER_BACKUP_TO is not set")
+			case s.BackupTo != "" && !config.Destination.MatchString(s.BackupTo):
+				err = fmt.Errorf("palier.backup.to is %q, expected an rclone remote and a path such as nas:backups", s.BackupTo)
+			case to == "":
+				err = errors.New("palier.backup asks for a backup, but neither palier.backup.to nor PALIER_BACKUP_TO is set")
 			case kind == "dump":
-				a.Engine, a.Location = plan.EngineOf(s.Image), remotePath(e.BackupTo, st.Name, s.Name, stamp, "dump.sql")
+				a.Engine, a.Location = plan.EngineOf(s.Image), remotePath(to, st.Name, s.Name, stamp, "dump.sql")
 				err = e.dump(ctx, ProjectOf(st), s, &a)
 			default:
-				a.Location = remotePath(e.BackupTo, st.Name, s.Name, stamp, "volumes.tar")
+				a.Location = remotePath(to, st.Name, s.Name, stamp, "volumes.tar")
 				err = e.archive(ctx, id, st, s, &a)
 			}
 			if err != nil {
@@ -71,21 +81,51 @@ func (e *Engine) backups(ctx context.Context, id int64, st *inventory.Stack) err
 				}
 				e.event(id, "backup of %s (%s%s) sent to %s: %d bytes, sha256 %s, %d s", s.Name, kind, dbs, a.Location, a.Size, a.SHA256, a.Seconds)
 			}
+			a.Run, a.At = id, now()
+			body, _ := json.Marshal(a)
+			if _, err := e.DB.Exec(`INSERT INTO backups (stack, service, kind, ok, body) VALUES (?, ?, ?, ?, ?)`, st.Name, s.Name, kind, a.Error == "", string(body)); err != nil {
+				slog.Error("backup record", "run", id, "err", err)
+			}
 			if e.BackedUp != nil {
 				e.BackedUp(st.Name, id, a)
 			}
 			if err != nil {
 				return fmt.Errorf("the backup of %s failed, nothing is applied: %w", s.Name, err)
 			}
-			if !slices.Contains(done, s.Name) {
-				done = append(done, s.Name)
+			if d := [2]string{s.Name, to}; !slices.Contains(done, d) {
+				done = append(done, d)
 			}
 		}
 	}
-	for _, name := range done {
-		e.rotate(ctx, id, remotePath(e.BackupTo, st.Name, name))
+	for _, d := range done {
+		e.rotate(ctx, id, remotePath(d[1], st.Name, d[0]))
 	}
 	return nil
+}
+
+// LastBackups returns, for each service and kind of backup of stack, the last one sent, then the last failure when it came after.
+func LastBackups(ctx context.Context, db *sql.DB, stack string) ([]Archive, error) {
+	rows, err := db.QueryContext(ctx, `SELECT body FROM backups WHERE id IN (SELECT max(id) FROM backups WHERE stack = ? GROUP BY service, kind, ok) ORDER BY service, kind, id`, stack)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Archive
+	for rows.Next() {
+		var body string
+		var a Archive
+		if err := rows.Scan(&body); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(body), &a); err != nil {
+			return nil, err
+		}
+		if n := len(out); n > 0 && out[n-1].Service == a.Service && out[n-1].Kind == a.Kind && out[n-1].Error != "" {
+			out = out[:n-1]
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 // remotePath joins parts under the rclone destination root.
@@ -206,13 +246,13 @@ func (e *Engine) upload(ctx context.Context, dest string, write func(io.Writer) 
 	if err == nil && werr == nil {
 		return n.n, hex.EncodeToString(h.Sum(nil)), nil
 	}
-	if werr != nil {
-		e.rclone(context.WithoutCancel(ctx), nil, nil, "deletefile", dest)
+	if werr == nil || err != nil && !errors.Is(err, werr) {
+		return 0, "", err
 	}
-	if err == nil || errors.Is(err, werr) {
-		return 0, "", werr
+	if derr := e.rclone(context.WithoutCancel(ctx), nil, nil, "deletefile", dest); derr != nil {
+		return 0, "", fmt.Errorf("%w; the partial file %s may remain: %v", werr, dest, derr)
 	}
-	return 0, "", err
+	return 0, "", fmt.Errorf("%w; the partial file %s was deleted", werr, dest)
 }
 
 // rclone runs rclone with args in a throwaway container that gets the RCLONE_ variables of Palier.
