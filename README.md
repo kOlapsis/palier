@@ -67,7 +67,7 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 - **The Compose file stays the source of truth.** Palier edits it in place, keeps its owner, group and mode, and hides no state on the side.
 - **Emails that do not flood you.** One email when a problem opens, one when it is resolved, and a weekly report only when something happened.
 - **Labels per service.** `palier.auto` sets the automatic apply of one service, `palier.depends_on` adds dependencies.
-- **A backup hook.** The `palier.hook.backup` label runs your backup command in the container before any change. If it fails, nothing is applied.
+- **Backups sent off the machine.** The `palier.backup` label has Palier export the database or archive the volumes of a service before each update, and send them to S3, SFTP, WebDAV or any rclone remote, with their SHA-256, keeping the latest few. If a backup fails, nothing is applied. The `palier.hook.backup` label runs a backup command of your own.
 
 ## Automatic mode
 
@@ -137,6 +137,7 @@ Three things to get right:
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror |
 | `PALIER_LISTEN` | empty | Address of the web interface, off when empty (`:8080` to turn it on) |
 | `PALIER_OIDC_ISSUER`, `PALIER_OIDC_CLIENT_ID`, `PALIER_OIDC_CLIENT_SECRET`, `PALIER_OIDC_ADMINS` | empty | Sign-in to the web interface with authentik, Keycloak, Google, Microsoft…, admins only |
+| `PALIER_BACKUP_TO`, `PALIER_BACKUP_KEEP`, `RCLONE_*` | empty, `7` | Where the `palier.backup` labels send their backups, through rclone, and how many are kept per service |
 
 The full list is in [docs/configuration.md](docs/configuration.md).
 

@@ -5,6 +5,8 @@ services:
   mysql:
     image: {{ mysql.image }}:{{ mysql.tag }}
     restart: always
+    labels:
+      palier.backup: dump
     environment:
       MYSQL_ROOT_PASSWORD: palier-lab-password
       MYSQL_DATABASE: shop

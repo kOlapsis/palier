@@ -33,6 +33,18 @@ services:
       PALIER_SLACK_URL: ${LAB_SLACK_URL:-http://webhook-tester:8080/00000000-0000-4000-8000-000000000002}
       PALIER_DISCORD_URL: ${LAB_DISCORD_URL:-http://webhook-tester:8080/00000000-0000-4000-8000-000000000003}
       PALIER_TELEGRAM_URL: ${LAB_TELEGRAM_URL:-http://webhook-tester:8080/00000000-0000-4000-8000-000000000004/sendMessage?chat_id=1}
+      PALIER_BACKUP_TO: minio:palier
+      PALIER_BACKUP_KEEP: "3"
+      RCLONE_CONFIG_MINIO_TYPE: s3
+      RCLONE_CONFIG_MINIO_PROVIDER: Minio
+      RCLONE_CONFIG_MINIO_ENDPOINT: http://${LAB_ADDRESS:?}:${LAB_MINIO_PORT:?}
+      RCLONE_CONFIG_MINIO_ACCESS_KEY_ID: palier
+      RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY: lab-minio-password
+      RCLONE_CONFIG_SFTP_TYPE: sftp
+      RCLONE_CONFIG_SFTP_HOST: ${LAB_ADDRESS:?}
+      RCLONE_CONFIG_SFTP_PORT: ${LAB_SFTP_PORT:?}
+      RCLONE_CONFIG_SFTP_USER: palier
+      RCLONE_CONFIG_SFTP_PASS: Lrx0JAiJow7v_jI3ygeAymjwzPTj5bJfU6E9I2Xkqb50
     ports: !override
       - "${LAB_PALIER_PORT:?}:8080"
     volumes:
@@ -90,6 +102,27 @@ services:
     ports:
       - "${LAB_LABAUTH_PORT:?}:5001"
 
+  minio:
+    image: docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    restart: unless-stopped
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: palier
+      MINIO_ROOT_PASSWORD: lab-minio-password
+    volumes:
+      - minio-data:/data
+    ports:
+      - "${LAB_MINIO_PORT:?}:9000"
+
+  sftp:
+    image: docker.io/atmoz/sftp:latest@sha256:0960390462a4441dbb63698d7c185b76a41ffcee7b78ff4adf275f3e66f9c475
+    restart: unless-stopped
+    command: ["palier:lab-sftp-password:1001:1001:backups"]
+    volumes:
+      - /opt/palier/sftp:/home/palier/backups
+    ports:
+      - "${LAB_SFTP_PORT:?}:22"
+
   ollama:
     image: ollama/ollama:0.40.15
     profiles: [ai-local]
@@ -103,4 +136,5 @@ services:
 
 volumes:
   labreg-data: {}
+  minio-data: {}
   ollama-models: {}

@@ -32,6 +32,8 @@ ports:
   mailpit: 8025
   labreg: 5443
   labauth: 5001
+  minio: 9000
+  sftp: 2222
   gitlab: 8929
   gitlab_ssh: 2224
   immich: 2283

@@ -59,7 +59,7 @@ A run ends in one of these states:
 |---|---|
 | completed | All steps passed. |
 | rolled back | A step failed, or Palier was restarted during the run, and the whole stack went back to the last verified step. Steps verified before that stay applied, and in automatic mode, a new run starts from there at the next scan. |
-| abandoned | Nothing was changed: the stack had changed since the plan was computed, a check of the catalog card (GitLab background migrations) did not pass yet, a backup hook failed, or the restore point was impossible. |
+| abandoned | Nothing was changed: the stack had changed since the plan was computed, a check of the catalog card (GitLab background migrations) did not pass yet, a backup hook or a backup failed, or the restore point was impossible. |
 | stopped | A step was applied and verified, but the check of the catalog card that must pass before the next step (GitLab background migrations) still failed after 2 hours. The stack stays on that step, and the next run changes nothing until the check passes. |
 | failed | Even the rollback failed. The details say what is left in the modified state. |
 
@@ -115,6 +115,8 @@ If `PALIER_WEBHOOK_URL` is set, Palier sends a JSON `POST` to it for each of the
 | `run_failed` | The rollback failed. |
 | `run_abandoned` | A run was abandoned before any change. |
 | `run_stopped` | A run stopped after a verified step, waiting for a check of the catalog card. |
+| `backup_done` | A backup asked by a `palier.backup` label was sent off the machine, before the update. One event per file. |
+| `backup_failed` | A backup failed; the run is abandoned and nothing is changed. |
 
 ```json
 {"event": "run_rolled_back", "stack": "outline", "run": 12, "status": "rolled_back",
@@ -124,6 +126,14 @@ If `PALIER_WEBHOOK_URL` is set, Palier sends a JSON `POST` to it for each of the
 ```json
 {"event": "plan_ready", "stack": "whoami", "steps": 1,
  "changes": ["whoami v1.10.1 → v1.12.0"], "at": "2026-11-01T06:14:02Z"}
+```
+
+```json
+{"event": "backup_done", "stack": "pgcoll", "run": 87, "service": "postgres", "kind": "dump",
+ "engine": "postgres", "databases": ["lab", "postgres"],
+ "location": "minio:palier/pgcoll/postgres/20261109T202416Z/dump.sql", "size": 41144,
+ "sha256": "c844aa7dd282739fec23318b5ebf5b9721ccdf6bb7e9557ee253286e7da44b0f", "seconds": 0,
+ "at": "2026-11-09T20:24:17Z"}
 ```
 
 Dry runs do not send a webhook. A webhook that fails is not sent again.

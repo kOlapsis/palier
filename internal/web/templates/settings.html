@@ -21,6 +21,12 @@
 <dt>PALIER_STABLE_SECONDS</dt><dd>{{.StableSeconds}}<span class="sub">Time a service must stay stable at each verification.</span></dd>
 </dl></div>
 
+<h2>Backups</h2>
+<div class="panel"><dl class="settings">
+<dt>PALIER_BACKUP_TO</dt><dd>{{with .BackupTo}}{{.}}<span class="sub">Where the palier.backup labels send their backups, through rclone.</span>{{else}}<span class="muted">not set: a service with a palier.backup label is not updated</span>{{end}}</dd>
+<dt>PALIER_BACKUP_KEEP</dt><dd>{{.BackupKeep}}<span class="sub">Backups kept for each service.</span></dd>
+</dl></div>
+
 <h2>Registries and release notes</h2>
 <div class="panel"><dl class="settings">
 <dt>DOCKER_CONFIG</dt><dd>{{.DockerConfig}}<span class="sub">Credentials of private registries.</span></dd>

@@ -45,7 +45,11 @@ type Engine struct {
 	Registry   *registry.Client
 	Stable     time.Duration
 	DataDir    string
+	BackupTo   string
+	BackupKeep int
+	Rclone     []string
 	Finished   func(stack string, id int64, status, cause string)
+	BackedUp   func(stack string, id int64, a Archive)
 }
 
 // Checkpoint is the state of a stack before its first modification, then after each verified step.
@@ -161,6 +165,10 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 	}
 	if err != nil {
 		e.finish(id, Abandoned, fmt.Errorf("cannot create checkpoint: %w", err))
+		return
+	}
+	if err := e.backups(ctx, id, st); err != nil {
+		e.finish(id, Abandoned, err)
 		return
 	}
 	if err := e.modified(id); err != nil {

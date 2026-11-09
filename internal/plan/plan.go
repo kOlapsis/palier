@@ -440,7 +440,7 @@ func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Ser
 			p.incomplete("step %d: no export and reimport method for engine %q", n, op.Engine)
 		case op.ToTag == "":
 			p.incomplete("step %d: db_dump_restore without a target version", n)
-		case services[op.Service] != nil && engine(services[op.Service].Image) != op.Engine:
+		case services[op.Service] != nil && EngineOf(services[op.Service].Image) != op.Engine:
 			p.incomplete("step %d: db_dump_restore %s on %s, whose image is not a %s database", n, op.Engine, op.Service, op.Engine)
 		}
 	}
@@ -538,7 +538,8 @@ func checkChangeOps(p *Plan, n int, s *Step, c Change, svc *inventory.Service, s
 	}
 }
 
-func engine(image string) string {
+// EngineOf returns the database engine of an image, or "" when it is not a known database.
+func EngineOf(image string) string {
 	name := image[strings.LastIndex(image, "/")+1:]
 	for _, db := range Engines {
 		if strings.HasPrefix(name, db) {
@@ -552,7 +553,7 @@ func checkDatabase(p *Plan, n int, c Change, svc *inventory.Service, s *Step) {
 	if Level(c.From, c.To) != "major" {
 		return
 	}
-	if db := engine(svc.Image); db != "" && !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service }) {
+	if db := EngineOf(svc.Image); db != "" && !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service }) {
 		p.incomplete("step %d: %s changes major (%s to %s) without db_dump_restore, which is required for %s", n, c.Service, c.From, c.To, db)
 	}
 }
@@ -608,7 +609,7 @@ func Fallback(st *inventory.Stack, why string) *Plan {
 			continue
 		}
 		step.Changes = append(step.Changes, Change{Service: s.Name, From: s.Version, To: target})
-		if db := engine(s.Image); db != "" && Level(s.Version, target) == "major" {
+		if db := EngineOf(s.Image); db != "" && Level(s.Version, target) == "major" {
 			step.Operations = append(step.Operations, Operation{Op: "db_dump_restore", Service: s.Name, Engine: db, ToImage: s.Image, ToTag: target})
 			continue
 		}

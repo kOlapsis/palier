@@ -113,6 +113,14 @@
     mode: "0400"
   no_log: true
 
+- name: Create the directory of the SFTP server, owned by its palier user
+  ansible.builtin.file:
+    path: "{{ palier_dir }}/sftp"
+    state: directory
+    owner: "1001"
+    group: "1001"
+    mode: "0755"
+
 - name: Create /apps
   ansible.builtin.file:
     path: /apps

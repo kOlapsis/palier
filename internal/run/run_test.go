@@ -143,3 +143,19 @@ func TestCopyVerdict(t *testing.T) {
 		t.Error("copyVerdict accepts garbage")
 	}
 }
+
+func TestBackupPaths(t *testing.T) {
+	if got := remotePath("offsite:palier/", "pgcoll", "postgres"); got != "offsite:palier/pgcoll/postgres" {
+		t.Errorf("remotePath = %s", got)
+	}
+	if got := remotePath("minio:", "pgcoll", "postgres"); got != "minio:pgcoll/postgres" {
+		t.Errorf("remotePath at the root = %s", got)
+	}
+	names := []string{"20261109T100000Z/", "notes/", "20261107T100000Z/", "20261108T100000Z/", "20261110T100000Z/"}
+	if got := expired(names, 2); !reflect.DeepEqual(got, []string{"20261107T100000Z", "20261108T100000Z"}) {
+		t.Errorf("expired = %v", got)
+	}
+	if got := expired(names, 7); got != nil {
+		t.Errorf("expired with room left = %v", got)
+	}
+}

@@ -5,6 +5,8 @@ services:
   mariadb:
     image: {{ mariadb.image }}:{{ mariadb.tag }}
     restart: always
+    labels:
+      palier.backup: dump
     environment:
       MARIADB_ROOT_PASSWORD: palier-lab-password
       MARIADB_DATABASE: shop

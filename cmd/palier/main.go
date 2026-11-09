@@ -176,10 +176,24 @@ func setup() (*app, error) {
 		}
 	}
 	a := &app{}
-	eng := &run.Engine{DB: db, Docker: dc, DockerHost: cfg.DockerHost, Registry: reg, Stable: time.Duration(cfg.StableSeconds) * time.Second, DataDir: cfg.DataDir}
+	eng := &run.Engine{DB: db, Docker: dc, DockerHost: cfg.DockerHost, Registry: reg, Stable: time.Duration(cfg.StableSeconds) * time.Second, DataDir: cfg.DataDir,
+		BackupTo: cfg.BackupTo, BackupKeep: cfg.BackupKeep}
+	for _, v := range os.Environ() {
+		if strings.HasPrefix(v, "RCLONE_") {
+			eng.Rclone = append(eng.Rclone, v)
+		}
+	}
 	eng.Finished = func(stack string, id int64, status, cause string) {
 		events := map[string]string{run.Done: "run_done", run.RolledBack: "run_rolled_back", run.Failed: "run_failed", run.Abandoned: "run_abandoned", run.Stopped: "run_stopped"}
 		a.notify(map[string]any{"event": events[status], "stack": stack, "run": id, "status": status, "error": cause})
+	}
+	eng.BackedUp = func(stack string, id int64, b run.Archive) {
+		event := map[string]any{"event": "backup_done", "stack": stack, "run": id, "service": b.Service, "kind": b.Kind, "engine": b.Engine, "databases": b.Databases,
+			"location": b.Location, "size": b.Size, "sha256": b.SHA256, "seconds": b.Seconds}
+		if b.Error != "" {
+			event = map[string]any{"event": "backup_failed", "stack": stack, "run": id, "service": b.Service, "kind": b.Kind, "location": b.Location, "error": b.Error}
+		}
+		a.notify(event)
 	}
 	var senders []notify.Sender
 	var info struct{ Name string }

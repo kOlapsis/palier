@@ -233,12 +233,13 @@ func (e *Engine) dataPath(ctx context.Context, image string) (string, error) {
 
 // dbMethod holds the commands of one database engine, run in its container through docker compose exec.
 type dbMethod struct {
-	service string
-	env     []string
-	restore []string
-	ready   []string
-	dump    func(ctx context.Context) ([]string, error)
-	summary func(ctx context.Context) ([]string, error)
+	service   string
+	env       []string
+	restore   []string
+	ready     []string
+	dump      func(ctx context.Context) ([]string, error)
+	summary   func(ctx context.Context) ([]string, error)
+	databases func() ([]string, error)
 }
 
 func (m *dbMethod) exec(cmd []string) []string {
@@ -259,6 +260,8 @@ func envValue(env []string, names ...string) string {
 	}
 	return ""
 }
+
+const pgDatabases = `SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY 1`
 
 const mysqlSystem = "('mysql', 'information_schema', 'performance_schema', 'sys')"
 
@@ -281,10 +284,11 @@ func (e *Engine) method(ctx context.Context, p compose.Project, service, engine 
 		m.restore = []string{"psql", "-q", "-v", "ON_ERROR_STOP=0", "-U", user, "-d", "postgres"}
 		m.ready = []string{"pg_isready", "-U", user, "-h", "127.0.0.1"}
 		m.dump = func(context.Context) ([]string, error) { return []string{"pg_dumpall", "-U", user}, nil }
+		m.databases = func() ([]string, error) { return run("psql", "-U", user, "-d", "postgres", "-At", "-c", pgDatabases) }
 		m.summary = func(context.Context) ([]string, error) {
 			return summarize(func(db, sql string) ([]string, error) { return run("psql", "-U", user, "-d", db, "-At", "-c", sql) },
 				`SELECT rolname FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY 1`,
-				`SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY 1`, "postgres",
+				pgDatabases, "postgres",
 				func(db string) []string { return []string{pgTables, pgIndexes, pgConstraints} })
 		}
 	case "mysql", "mariadb":
@@ -301,6 +305,7 @@ func (e *Engine) method(ctx context.Context, p compose.Project, service, engine 
 		m.ready = []string{client, "-uroot", "-h", "127.0.0.1", "--protocol=TCP", "-e", "SELECT 1"}
 		sqlQuery := func(_, sql string) ([]string, error) { return run(client, "-uroot", "-N", "-B", "-e", sql) }
 		databases := "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN " + mysqlSystem + " ORDER BY 1"
+		m.databases = func() ([]string, error) { return sqlQuery("", databases) }
 		m.dump = func(context.Context) ([]string, error) {
 			dbs, err := sqlQuery("", databases)
 			if err != nil || len(dbs) == 0 {

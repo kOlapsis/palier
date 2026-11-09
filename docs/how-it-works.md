@@ -105,7 +105,7 @@ This rule applies at each step, and it sets the order: if a version of the appli
 
 ## 5. Execution
 
-1. The backup hooks (`palier.hook.backup`) run. If one fails, nothing is changed.
+1. The backup hooks (`palier.hook.backup`) run, then the backups of the `palier.backup` labels are made and sent off the machine (see [backups](configuration.md#backups)). If one fails, nothing is changed.
 2. Palier takes a restore point: a copy of the Compose files and their `.env` file, the image and digest of each service, and a copy of the volumes of the services that change.
 
    - Single files, host system paths (`/proc`, `/sys`, `/dev`, `/run`, `/tmp`, `/var/lib/docker`…) and logs under `/var/log` are not copied.

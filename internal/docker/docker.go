@@ -107,6 +107,54 @@ func (c *Client) Logs(ctx context.Context, id string, tail int) (string, error) 
 	return demux(raw), nil
 }
 
+// Stream attaches to the created container id, starts it, then writes stdin to it, or copies its standard output to stdout.
+func (c *Client) Stream(ctx context.Context, id string, stdin io.Reader, stdout io.Writer) error {
+	which := "stdout=1"
+	if stdin != nil {
+		which = "stdin=1"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/containers/"+id+"/attach?stream=1&"+which, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "tcp")
+	resp, err := c.http.Transport.RoundTrip(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	conn, ok := resp.Body.(io.ReadWriteCloser)
+	if resp.StatusCode != http.StatusSwitchingProtocols || !ok {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("docker attach %s: %s: %s", id, resp.Status, bytes.TrimSpace(b))
+	}
+	defer context.AfterFunc(ctx, func() { conn.Close() })()
+	if err := c.Post(ctx, "/containers/"+id+"/start", nil, nil); err != nil {
+		return err
+	}
+	if stdin != nil {
+		_, err = io.Copy(conn, stdin)
+		return err
+	}
+	var head [8]byte
+	for {
+		if _, err := io.ReadFull(conn, head[:]); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		dst := io.Discard
+		if head[0] == 1 {
+			dst = stdout
+		}
+		if _, err := io.CopyN(dst, conn, int64(binary.BigEndian.Uint32(head[4:]))); err != nil {
+			return err
+		}
+	}
+}
+
 // demux strips the 8-byte frame headers of the stdout/stderr stream.
 func demux(raw []byte) string {
 	var out bytes.Buffer

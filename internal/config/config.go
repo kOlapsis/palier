@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -49,6 +50,8 @@ type Config struct {
 	EmailLevel     string
 	PublicURL      string
 	HookSecret     string
+	BackupTo       string
+	BackupKeep     int
 }
 
 // Load reads the environment through getenv and applies the defaults.
@@ -86,6 +89,7 @@ func Load(getenv func(string) string) (Config, error) {
 		EmailLevel:     get("PALIER_EMAIL_LEVEL", "info"),
 		PublicURL:      strings.TrimSuffix(get("PALIER_PUBLIC_URL", ""), "/"),
 		HookSecret:     get("PALIER_REGISTRY_WEBHOOK_SECRET", ""),
+		BackupTo:       get("PALIER_BACKUP_TO", ""),
 	}
 	var errs []error
 	duration := func(name, def string) time.Duration {
@@ -103,6 +107,14 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, fmt.Errorf("PALIER_STABLE_SECONDS: invalid number of seconds %q", get("PALIER_STABLE_SECONDS", "60")))
 	}
 	c.StableSeconds = stable
+	keep, err := strconv.Atoi(get("PALIER_BACKUP_KEEP", "7"))
+	if err != nil || keep <= 0 {
+		errs = append(errs, fmt.Errorf("PALIER_BACKUP_KEEP: invalid number of backups %q", get("PALIER_BACKUP_KEEP", "7")))
+	}
+	c.BackupKeep = keep
+	if c.BackupTo != "" && !rcloneRemote.MatchString(c.BackupTo) {
+		errs = append(errs, fmt.Errorf("PALIER_BACKUP_TO: %q, expected an rclone remote and a path such as offsite:palier, the remote set by RCLONE_CONFIG_OFFSITE_TYPE and the other RCLONE_CONFIG_OFFSITE_ variables", c.BackupTo))
+	}
 	switch c.Auto {
 	case "off", "patch", "minor", "all":
 	default:
@@ -202,6 +214,8 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	return c, errors.Join(errs...)
 }
+
+var rcloneRemote = regexp.MustCompile(`^[A-Za-z0-9_.+@][A-Za-z0-9_.+@-]*:`)
 
 func list(v string) []string {
 	var out []string

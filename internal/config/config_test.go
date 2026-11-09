@@ -115,3 +115,17 @@ func TestChats(t *testing.T) {
 		}
 	}
 }
+
+func TestBackup(t *testing.T) {
+	for to, ok := range map[string]bool{"offsite:palier": true, "minio:": true, "sftp-lab:/srv/backups": true, ":s3,access_key_id=secret:bucket": false, "/var/backups": false, "-v:x": false} {
+		if _, err := Load(env(map[string]string{"PALIER_BACKUP_TO": to})); (err == nil) != ok {
+			t.Errorf("%q: %v", to, err)
+		}
+	}
+	if c, err := Load(env(nil)); err != nil || c.BackupKeep != 7 {
+		t.Fatalf("default keep: %v %d", err, c.BackupKeep)
+	}
+	if _, err := Load(env(map[string]string{"PALIER_BACKUP_KEEP": "0"})); err == nil || !strings.Contains(err.Error(), "PALIER_BACKUP_KEEP") {
+		t.Fatalf("keep 0: %v", err)
+	}
+}

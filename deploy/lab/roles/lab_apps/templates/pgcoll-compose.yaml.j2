@@ -11,6 +11,8 @@ services:
   postgres:
     image: {{ pgcoll.image }}:{{ pgcoll.tag }}
     restart: always
+    labels:
+      palier.backup: dump,volumes
     environment:
       POSTGRES_USER: lab
       POSTGRES_PASSWORD: palier-lab-password

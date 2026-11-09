@@ -37,6 +37,9 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_OIDC_ISSUER` | empty | OpenID Connect provider that signs people in to the web interface. Empty, the web interface has no sign-in. |
 | `PALIER_OIDC_CLIENT_ID`, `PALIER_OIDC_CLIENT_SECRET` | empty | Client registered at the provider. The secret can stay empty for a public client. |
 | `PALIER_OIDC_ADMINS` | empty | Who may use Palier, separated by commas: groups or roles, emails, or `@domain`. Required with `PALIER_OIDC_ISSUER`. |
+| `PALIER_BACKUP_TO` | empty | rclone remote and path where the [`palier.backup`](#palierbackup) labels send their backups, such as `offsite:palier`. See [backups](#backups). |
+| `PALIER_BACKUP_KEEP` | `7` | Backups kept for each service; the older ones are deleted after each new one. |
+| `RCLONE_*` | empty | Passed as they are to rclone, which defines the remote of `PALIER_BACKUP_TO`: `RCLONE_CONFIG_OFFSITE_TYPE=s3` and the other `RCLONE_CONFIG_OFFSITE_` variables. |
 
 ## AI provider
 
@@ -63,6 +66,44 @@ volumes:
 
 !!! warning "Context length"
     The instructions, the Compose files and the release notes of a stack take from a few thousand tokens to more than 35,000 for Outline. Give the model a context of 65,536 tokens: `OLLAMA_CONTEXT_LENGTH` for Ollama, `--max-model-len` for vLLM. When a prompt does not fit, the server refuses it, and Palier keeps a plan computed from versions alone, marked incomplete with the message of the server.
+
+## Backups
+
+Before each update, Palier backs up the services that carry a [`palier.backup`](#palierbackup) label and sends the backups off the machine. If one fails, the run is abandoned and nothing is changed.
+
+Palier runs rclone 1.75.2 in a throwaway container, which supports S3 and compatible stores, SFTP, WebDAV, Backblaze B2, Azure Blob, Google Drive and many others. The remote is defined by the [standard rclone variables](https://rclone.org/docs/#config-file), passed to Palier: every `RCLONE_` variable goes to the container. An S3 bucket:
+
+```yaml
+services:
+  palier:
+    environment:
+      PALIER_BACKUP_TO: offsite:palier
+      RCLONE_CONFIG_OFFSITE_TYPE: s3
+      RCLONE_CONFIG_OFFSITE_PROVIDER: Minio
+      RCLONE_CONFIG_OFFSITE_ENDPOINT: https://s3.example.com
+      RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID: palier
+      RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY: ${S3_SECRET}
+```
+
+An SFTP server, whose password rclone wants in its own obscured form (`docker run --rm rclone/rclone:1.75.2 obscure 'the password'`):
+
+```yaml
+      PALIER_BACKUP_TO: nas:backups
+      RCLONE_CONFIG_NAS_TYPE: sftp
+      RCLONE_CONFIG_NAS_HOST: nas.example.com
+      RCLONE_CONFIG_NAS_USER: palier
+      RCLONE_CONFIG_NAS_PASS: ${NAS_PASS_OBSCURED}
+```
+
+Each backup goes to `<PALIER_BACKUP_TO>/<stack>/<service>/<date>/`, the date in UTC such as `20261109T202416Z`:
+
+- `dump.sql`, the logical export of the database: `pg_dumpall` for PostgreSQL, `mysqldump` or `mariadb-dump` of every database but the system ones for MySQL and MariaDB. It restores with `psql -U postgres -d postgres < dump.sql` or `mariadb -uroot < dump.sql` on the same major version.
+- `volumes.tar`, an archive of the volumes and host directories the service mounts read-write, each under its path in the container (`var/lib/postgresql/data/…`). Host system paths, logs and the bulk data of a catalog card are left out, as for the [restore point](how-it-works.md#5-execution).
+- next to each file, its `.sha256`, in the format of `sha256sum -c`.
+
+The data goes from the container to rclone in a stream, through the memory of Palier: neither the export nor the archive is written to the disk of the machine. To encrypt or compress them, define the remote as a rclone [`crypt`](https://rclone.org/crypt/) or [`compress`](https://rclone.org/compress/) remote over the real one. On S3, rclone sends a stream in parts of 5 MiB by default, which limits one file to about 48 GiB; raise `RCLONE_S3_CHUNK_SIZE` for more.
+
+The database credentials are read in the environment of its container, as for a major upgrade, and never appear in a log or an event. Each backup sends a `backup_done` or `backup_failed` event to [the webhook](usage.md#the-webhook), with the location, size and SHA-256 of the file, for a tool that fetches it and tests its restore.
 
 ## Notification channels
 
@@ -174,11 +215,26 @@ The mirror reduces the requests made to Docker Hub, which limits anonymous acces
 
 ## Labels on your services
 
-Three labels, set in the Compose file of your stacks, change how Palier behaves.
+Four labels, set in the Compose file of your stacks, change how Palier behaves.
+
+### `palier.backup`
+
+What Palier backs up before each update of the stack: `dump`, `volumes`, or `dump,volumes`. Requires `PALIER_BACKUP_TO`; see [backups](#backups).
+
+- `dump` exports the database of a PostgreSQL, MySQL or MariaDB image while it runs.
+- `volumes` stops the service and the services that depend on it, archives its mounts, and starts them again.
+
+```yaml
+services:
+  postgres:
+    image: postgres:16.4
+    labels:
+      palier.backup: dump
+```
 
 ### `palier.hook.backup`
 
-A backup command, run in the container of the service with `sh -c` before any change to the stack. If it fails, the run is abandoned and nothing is changed.
+A backup command of your own, run in the container of the service with `sh -c` before any change to the stack, before the backups of `palier.backup`. If it fails, the run is abandoned and nothing is changed.
 
 ```yaml
 services:
