@@ -191,7 +191,7 @@ The details are in [docs/limitations.md](docs/limitations.md).
 
 ## Documentation
 
-The full documentation is in [`docs/`](docs/index.md): [installation](docs/installation.md), [usage](docs/usage.md), [configuration](docs/configuration.md), [how it works](docs/how-it-works.md). To read it locally:
+The full documentation is in [`docs/`](docs/index.md): [installation](docs/installation.md), [usage](docs/usage.md), [configuration](docs/configuration.md), [how it works](docs/how-it-works.md). The full bench reports: [GitLab CE 16.1 to 19.5](docs/upgrades/gitlab-16-to-19.md) and [Immich v1.105 to v3.3](docs/upgrades/immich-1-105-to-3-3.md). Replacing Watchtower? Read [Coming from Watchtower](docs/watchtower-alternative.md). To read the documentation locally:
 
 ```sh
 docker compose -f docs/compose.yaml up

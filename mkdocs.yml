@@ -19,6 +19,10 @@ nav:
   - Configuration: configuration.md
   - Try a local model: local-model.md
   - How it works: how-it-works.md
+  - Upgrade reports:
+      - GitLab CE 16.1 to 19.5: upgrades/gitlab-16-to-19.md
+      - Immich v1.105 to v3.3: upgrades/immich-1-105-to-3-3.md
+  - Coming from Watchtower: watchtower-alternative.md
   - Limitations: limitations.md
 exclude_docs: |
   compose.yaml

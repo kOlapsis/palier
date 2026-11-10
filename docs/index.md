@@ -21,3 +21,9 @@ For each stack that has a newer version, it reads the release notes of every ski
 3. [Configuration](configuration.md): environment variables and labels.
 4. [How it works](how-it-works.md): what Palier does at each stage.
 5. [Limitations](limitations.md): what Palier does not do.
+
+## Seen on real applications
+
+- [GitLab CE 16.1 to 19.5](upgrades/gitlab-16-to-19.md): 13 required stops, 3 h 43, unattended.
+- [Immich v1.105 to v3.3](upgrades/immich-1-105-to-3-3.md): two Compose breaking changes and a database image swap.
+- [Coming from Watchtower](watchtower-alternative.md): what changes, and when Palier is not the right replacement.
