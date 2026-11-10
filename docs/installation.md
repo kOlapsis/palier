@@ -5,7 +5,7 @@ Palier runs in a container on the machine whose stacks it updates.
 ## The image
 
 ```
-ghcr.io/kolapsis/palier:0.3.0
+ghcr.io/kolapsis/palier:0.4.0
 ```
 
 It is published for `linux/amd64` and `linux/arm64`. It contains only the `palier` binary, the `docker compose` binary and the root certificates, and runs as a non-root user.
@@ -15,15 +15,15 @@ It is published for `linux/amd64` and `linux/arm64`. It contains only the `palie
 Each release image is built by the `release` workflow of this repository, signed with Sigstore, and carries its build provenance and SBOM. Check the signature with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/):
 
 ```sh
-cosign verify ghcr.io/kolapsis/palier:0.3.0 \
+cosign verify ghcr.io/kolapsis/palier:0.4.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity https://github.com/kOlapsis/palier/.github/workflows/release.yml@refs/tags/v0.3.0
+  --certificate-identity https://github.com/kOlapsis/palier/.github/workflows/release.yml@refs/tags/v0.4.0
 ```
 
 And the build provenance with the GitHub CLI:
 
 ```sh
-gh attestation verify oci://ghcr.io/kolapsis/palier:0.3.0 --owner kOlapsis
+gh attestation verify oci://ghcr.io/kolapsis/palier:0.4.0 --owner kOlapsis
 ```
 
 To build it yourself instead: `docker build -t palier:local -f deploy/Dockerfile .`
@@ -41,7 +41,7 @@ docker run -d --name palier --restart unless-stopped \
   -e DOCKER_CONFIG=/etc/palier-docker \
   -e PALIER_AI_KEY=sk-ant-... \
   -e PALIER_GITHUB_TOKEN=ghp_... \
-  ghcr.io/kolapsis/palier:0.3.0
+  ghcr.io/kolapsis/palier:0.4.0
 ```
 
 ## Run with Compose
@@ -51,7 +51,7 @@ name: palier
 
 services:
   palier:
-    image: ghcr.io/kolapsis/palier:0.3.0
+    image: ghcr.io/kolapsis/palier:0.4.0
     restart: unless-stopped
     group_add:
       - ${DOCKER_GID:?}
