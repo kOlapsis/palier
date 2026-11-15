@@ -283,3 +283,20 @@ services:
 ```
 
 A dependency follows its application: its target version depends on what the application declares it supports (see [How it works](how-it-works.md#the-stack-follows-its-application)).
+
+### `palier.role`
+
+The role of this service, `application` or `dependency`, instead of the role Palier infers from `depends_on`. Useful when `depends_on` only sets the start order: a worker, a runner or an exporter that starts after the application it serves would otherwise make that application a dependency, held on its major version. Another value is reported on the stack and the inferred role is kept.
+
+```yaml
+services:
+  n8n:
+    image: n8nio/n8n:2.45.7
+    labels:
+      palier.role: application
+  task-runners:
+    image: n8nio/runners:2.45.7
+    depends_on: [n8n]
+```
+
+Two applications each go to their highest version. When a sidecar must run the same version as its application, take both tags from the same variable of the env file (`n8nio/n8n:${N8N_VERSION}` and `n8nio/runners:${N8N_VERSION}`): Palier then changes them together.

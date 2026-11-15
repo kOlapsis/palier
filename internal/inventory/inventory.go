@@ -70,6 +70,7 @@ type Service struct {
 	current      version.V
 	digests      []string
 	labelVersion string
+	roleLabel    string
 }
 
 // Mount is a volume or a host directory a service mounts read-write.
@@ -213,6 +214,7 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 	svc.Backup = c.Labels["palier.backup"]
 	svc.BackupTo = strings.TrimSpace(c.Labels["palier.backup.to"])
 	svc.Auto = strings.TrimSpace(c.Labels["palier.auto"])
+	svc.roleLabel = strings.TrimSpace(c.Labels["palier.role"])
 	svc.ImageID = c.ImageID
 	for _, m := range d.Mounts {
 		switch {
@@ -303,10 +305,15 @@ func assignRoles(st *Stack) {
 		switch {
 		case st.Observed:
 			s.Role = RoleObserved
+		case s.roleLabel == RoleApplication, s.roleLabel == RoleDependency:
+			s.Role = s.roleLabel
 		case needed[s.Name]:
 			s.Role = RoleDependency
 		default:
 			s.Role = RoleApplication
+		}
+		if s.roleLabel != "" && !st.Observed && s.Role != s.roleLabel {
+			st.Errors = append(st.Errors, fmt.Sprintf("label palier.role of %s: %q, expected application or dependency", s.Name, s.roleLabel))
 		}
 	}
 }

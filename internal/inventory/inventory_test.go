@@ -2,6 +2,7 @@ package inventory
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -48,5 +49,25 @@ services:
 	}
 	if !reflect.DeepEqual(got, map[string]string{"outline": RoleApplication, "worker": RoleApplication, "postgres": RoleDependency, "redis": RoleDependency}) {
 		t.Fatalf("roles = %v", got)
+	}
+}
+
+func TestRoleLabel(t *testing.T) {
+	st := &Stack{Services: []*Service{
+		{Name: "n8n", roleLabel: "application"},
+		{Name: "runners", DependsOn: []string{"n8n"}},
+		{Name: "cache", roleLabel: "dependency"},
+		{Name: "proxy", roleLabel: "sidecar"},
+	}}
+	assignRoles(st)
+	got := map[string]string{}
+	for _, s := range st.Services {
+		got[s.Name] = s.Role
+	}
+	if !reflect.DeepEqual(got, map[string]string{"n8n": RoleApplication, "runners": RoleApplication, "cache": RoleDependency, "proxy": RoleApplication}) {
+		t.Errorf("roles = %v", got)
+	}
+	if len(st.Errors) != 1 || !strings.Contains(st.Errors[0], `palier.role of proxy: "sidecar"`) {
+		t.Errorf("errors = %q", st.Errors)
 	}
 }

@@ -97,7 +97,7 @@ Release notes are written by others, and a compromised account or an unreviewed 
 
 ## The stack follows its application
 
-In a stack, the application is the service that no other service depends on. The services it depends on (database, cache) follow.
+In a stack, the application is the service that no other service depends on. The services it depends on (database, cache) follow. The [`palier.role`](configuration.md#palierrole) label sets the role of a service when `depends_on` only expresses the start order.
 
 The target version of a dependency is not the newest that exists. It is the highest that the application declares it supports, based on a citation from its notes or its entry. With no citation at all, the dependency stays on its major version and only gets patch and minor releases. The plan then says which major versions exist and why they are not proposed.
 

@@ -66,7 +66,7 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 - **Notes are data.** Release notes, image names and logs are never treated as instructions or displayed as HTML.
 - **The Compose file stays the source of truth.** Palier edits it in place, keeps its owner, group and mode, and hides no state on the side.
 - **Emails that do not flood you.** One email when a problem opens, one when it is resolved, and a weekly report only when something happened.
-- **Labels per service.** `palier.auto` sets the automatic apply of one service, `palier.depends_on` adds dependencies.
+- **Labels per service.** `palier.auto` sets the automatic apply of one service, `palier.depends_on` adds dependencies, `palier.role` sets the role of a service when `depends_on` only expresses the start order.
 - **Backups sent off the machine.** The `palier.backup` label has Palier export the database or archive the volumes of a service before each update, and send them to S3, SFTP, WebDAV or any rclone remote, one per service if you like, with their SHA-256, keeping the latest few. If a backup fails, nothing is applied. The `palier.hook.backup` label runs a backup command of your own.
 
 ## Automatic mode
