@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kolapsis/palier/internal/config"
+	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/plan"
 )
 
@@ -73,5 +75,14 @@ func TestColoredUsageKeepsTheText(t *testing.T) {
 	}
 	if strip(colored) != usage {
 		t.Errorf("colored usage differs from the plain one:\n%s", strip(colored))
+	}
+}
+
+func TestInputHashFollowsRoles(t *testing.T) {
+	stack := func(role string) *inventory.Stack {
+		return &inventory.Stack{Services: []*inventory.Service{{Name: "n8n", Version: "2.45.7", Role: role}}}
+	}
+	if inputHash(stack(inventory.RoleApplication), config.Config{}) == inputHash(stack(inventory.RoleDependency), config.Config{}) {
+		t.Error("a role change keeps the stored plan")
 	}
 }

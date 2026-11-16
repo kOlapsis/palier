@@ -282,9 +282,10 @@ var build = func() string {
 
 func inputHash(st *inventory.Stack, cfg config.Config) string {
 	type svc struct {
-		Name, Version string
-		Available     []inventory.Release
-		Notes         []string
+		Name, Version, Role string
+		DependsOn           []string
+		Available           []inventory.Release
+		Notes               []string
 	}
 	in := struct {
 		Provider string
@@ -301,7 +302,7 @@ func inputHash(st *inventory.Stack, cfg config.Config) string {
 		in.Files[f] = string(data)
 	}
 	for _, s := range st.Services {
-		v := svc{Name: s.Name, Version: s.Version, Available: s.Available}
+		v := svc{Name: s.Name, Version: s.Version, Role: s.Role, DependsOn: s.DependsOn, Available: s.Available}
 		for _, n := range s.Notes {
 			v.Notes = append(v.Notes, n.Tag+"\x00"+n.Body)
 		}
