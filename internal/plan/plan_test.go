@@ -284,3 +284,40 @@ func TestQuoted(t *testing.T) {
 		}
 	}
 }
+
+func TestEngineOfTaggedDependency(t *testing.T) {
+	immich := func(min string) (*Plan, *inventory.Stack) {
+		st := &inventory.Stack{Services: []*inventory.Service{
+			{Name: "immich-server", Role: inventory.RoleApplication, Image: "ghcr.io/immich-app/immich-server", Version: "v1.105.1", Available: rel("v1.106.4"),
+				Notes: []notes.Note{{URL: "https://example/docs", Body: "Immich is known to work with Postgres versions >= 14, < 20."}}},
+			{Name: "database", Role: inventory.RoleDependency, Image: "docker.io/tensorchord/pgvecto-rs", Version: "pg14-v0.2.0"},
+		}}
+		s := step(Change{"immich-server", "v1.105.1", "v1.106.4"})
+		s.Facts = []Fact{{Category: "supported_dependency", Service: "immich-server", Dependency: "database", MinVersion: min, MaxVersion: "19", Quote: "Immich is known to work with Postgres versions >= 14, < 20."}}
+		return &Plan{Steps: []Step{s}}, st
+	}
+	p, st := immich("14")
+	Validate(p, st)
+	if strings.Contains(reasons(p), "database") {
+		t.Errorf("pg14-v0.2.0 read as PostgreSQL 14: %s", reasons(p))
+	}
+	p, st = immich("16")
+	Validate(p, st)
+	if !strings.Contains(reasons(p), "requires database 16 at least, the plan leaves it at pg14-v0.2.0") {
+		t.Errorf("PostgreSQL 16 required: %s", reasons(p))
+	}
+}
+
+func TestPostgresTaggedImage(t *testing.T) {
+	if EngineOf("docker.io/tensorchord/pgvecto-rs", "pg14-v0.2.0") != "postgres" || EngineOf("docker.io/library/redis", "7.4.2") != "" {
+		t.Error("engine of a tag naming PostgreSQL")
+	}
+	db := &inventory.Service{Name: "database", Image: "docker.io/tensorchord/pgvecto-rs", Tag: "pg14-v0.2.0"}
+	for to, major := range map[string]bool{"14-vectorchord0.3.0-pgvectors0.2.0": false, "pg14-v0.4.0": false, "pg16-v0.3.0": true} {
+		p := &Plan{}
+		checkDatabase(p, 1, Change{"database", "pg14-v0.2.0", to}, db, &Step{})
+		if got := len(p.Incomplete) > 0; got != major {
+			t.Errorf("pg14-v0.2.0 to %s: dump and restore required %v, want %v", to, got, major)
+		}
+	}
+}

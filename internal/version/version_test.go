@@ -64,3 +64,13 @@ func TestExtends(t *testing.T) {
 		t.Error("latest parsed as a version")
 	}
 }
+
+func TestEngine(t *testing.T) {
+	for tag, want := range map[string]string{"pg14-v0.2.0": "14", "pg16.4-ts2.17.2": "16.4", "2.17.2-pg16": "16", "0.8.0-pg17-bookworm": "17", "pg17": "17", "latest-postgres15": "15",
+		"14-vectorchord0.3.0-pgvectors0.2.0": "", "16.4": "", "16-3.4": ""} {
+		v, ok := Engine(tag)
+		if got := map[bool]string{true: v.Tag}[ok]; got != want {
+			t.Errorf("Engine(%q) = %q, want %q", tag, got, want)
+		}
+	}
+}

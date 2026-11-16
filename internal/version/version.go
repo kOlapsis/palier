@@ -39,6 +39,17 @@ func Parse(tag string) (v V, ok bool) {
 	return v, true
 }
 
+var engineTag = regexp.MustCompile(`(?:^|[-_.])(?:pg|postgres(?:ql)?)(\d+(?:\.\d+)*)(?:[-_.]|$)`)
+
+// Engine reads the PostgreSQL version a tag names beside its own, as 14 in "pg14-v0.2.0" or 16 in "2.17.2-pg16".
+func Engine(tag string) (V, bool) {
+	m := engineTag.FindStringSubmatch(tag)
+	if m == nil {
+		return V{}, false
+	}
+	return Parse(m[1])
+}
+
 // Extends reports whether w is a more precise tag of the line v names, as "2.2.7" extends "2.2".
 func (v V) Extends(w V) bool {
 	return v.Prefix == w.Prefix && v.Suffix == w.Suffix && len(w.Nums) > len(v.Nums) && slices.Equal(v.Nums, w.Nums[:len(v.Nums)])
