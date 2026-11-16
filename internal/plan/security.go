@@ -13,24 +13,21 @@ import (
 )
 
 // SecurityFirst puts first, for each service an advisory touches, a step to the latest patch of its running line that the
-// advisory no longer touches, when the first step of the plan for that service would leave it exposed.
+// advisory no longer touches, when the first step of the plan for that service would leave it exposed. The services of
+// the same release take that step with it, or none of them does.
 func SecurityFirst(p *Plan, st *inventory.Stack) {
 	var first []Step
+	together := Together(st)
+	done := map[string]bool{}
 	for _, s := range st.Services {
 		cur, ok := version.Parse(s.Version)
-		if len(s.Advisories) == 0 || !ok || len(cur.Nums) < 2 {
+		if done[s.Name] || len(s.Advisories) == 0 || !ok || len(cur.Nums) < 2 {
 			continue
 		}
 		exposed := func(v version.V) []notes.Advisory {
 			return slices.DeleteFunc(slices.Clone(s.Advisories), func(a notes.Advisory) bool { return !a.Affects(v) })
 		}
-		step, change := -1, -1
-		for i, ps := range p.Steps {
-			if j := slices.IndexFunc(ps.Changes, func(c Change) bool { return c.Service == s.Name }); j >= 0 {
-				step, change = i, j
-				break
-			}
-		}
+		step, change := firstChange(p, s.Name)
 		if step < 0 {
 			continue
 		}
@@ -48,14 +45,22 @@ func SecurityFirst(p *Plan, st *inventory.Stack) {
 		if best == "" {
 			continue
 		}
-		var closed []string
-		patch := Step{
-			Changes:    []Change{{Service: s.Name, From: s.Version, To: best}},
-			Operations: []Operation{{Op: "set_image", Service: s.Name, Image: s.Image, Tag: best}, {Op: "recreate", Services: []string{s.Name}}},
-			Gate:       &Operation{Op: "none"},
-			Risk:       "attention",
-			Reversible: "yes",
+		patch := Step{Gate: &Operation{Op: "none"}, Risk: "attention", Reversible: "yes"}
+		var names []string
+		for _, m := range append([]*inventory.Service{s}, together[s.Name]...) {
+			tag := sameVersionTag(m, best)
+			if i, _ := firstChange(p, m.Name); tag == "" || i < 0 {
+				break
+			}
+			patch.Changes = append(patch.Changes, Change{Service: m.Name, From: m.Version, To: tag})
+			patch.Operations = append(patch.Operations, Operation{Op: "set_image", Service: m.Name, Image: m.Image, Tag: tag})
+			names = append(names, m.Name)
 		}
+		if len(names) < 1+len(together[s.Name]) {
+			continue
+		}
+		patch.Operations = append(patch.Operations, Operation{Op: "recreate", Services: names})
+		var closed []string
 		for _, a := range s.Advisories {
 			if a.Affects(bestV) {
 				continue
@@ -73,9 +78,25 @@ func SecurityFirst(p *Plan, st *inventory.Stack) {
 		}
 		patch.Why = fmt.Sprintf("%s %s closes %s on the running %d.%d line first, before the longer climb.", s.Name, best, strings.Join(closed, ", "), cur.Nums[0], cur.Nums[1])
 		p.Steps[step].Changes[change].From = best
+		for _, c := range patch.Changes[1:] {
+			i, j := firstChange(p, c.Service)
+			p.Steps[i].Changes[j].From = c.To
+		}
 		first = append(first, patch)
+		for _, n := range names {
+			done[n] = true
+		}
 	}
 	p.Steps = append(first, p.Steps...)
+}
+
+func firstChange(p *Plan, service string) (step, change int) {
+	for i, ps := range p.Steps {
+		if j := slices.IndexFunc(ps.Changes, func(c Change) bool { return c.Service == service }); j >= 0 {
+			return i, j
+		}
+	}
+	return -1, -1
 }
 
 func sameMinor(a, b version.V) bool {

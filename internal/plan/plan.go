@@ -182,6 +182,7 @@ func Validate(p *Plan, st *inventory.Stack) {
 		}
 		checkIntervals(p, i+1, s.Changes, current, services)
 	}
+	checkTogether(p, st)
 	p.Withheld = withheld(p, st, current)
 	for _, svc := range st.Services {
 		checkStops(p, svc)
@@ -592,16 +593,24 @@ func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
 	return kept
 }
 
-// Fallback is the plan without analysis: applications to their highest version, dependencies inside their major.
+// Fallback is the plan without analysis: applications to their highest version, dependencies inside their major, and
+// the services of one release to the highest version they all allow.
 func Fallback(st *inventory.Stack, why string) *Plan {
 	step := Step{Risk: "unknown", Reversible: "unknown", Why: why}
 	var changed []string
+	allowed := func(s *inventory.Service, tag string) bool {
+		cur, _ := version.Parse(s.Version)
+		v, _ := version.Parse(tag)
+		return s.Role != inventory.RoleDependency || v.Nums[0] == cur.Nums[0]
+	}
+	together := Together(st)
 	for _, s := range st.Services {
 		target := ""
-		cur, _ := version.Parse(s.Version)
 		for _, r := range s.Available {
-			v, _ := version.Parse(r.Tag)
-			if s.Role != inventory.RoleDependency || v.Nums[0] == cur.Nums[0] {
+			if allowed(s, r.Tag) && !slices.ContainsFunc(together[s.Name], func(o *inventory.Service) bool {
+				t := sameVersionTag(o, r.Tag)
+				return t == "" || !allowed(o, t)
+			}) {
 				target = r.Tag
 			}
 		}

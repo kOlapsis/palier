@@ -299,4 +299,4 @@ services:
     depends_on: [n8n]
 ```
 
-Two applications each go to their highest version. When a sidecar must run the same version as its application, take both tags from the same variable of the env file (`n8nio/n8n:${N8N_VERSION}` and `n8nio/runners:${N8N_VERSION}`): Palier then changes them together.
+The sidecar keeps the version of its application without any label: see [one release, several images](how-it-works.md#one-release-several-images).

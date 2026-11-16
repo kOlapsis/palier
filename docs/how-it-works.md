@@ -103,6 +103,10 @@ The target version of a dependency is not the newest that exists. It is the high
 
 This rule applies at each step, and it sets the order: if a version of the application requires a newer database, the database goes first.
 
+## One release, several images
+
+Some applications ship as several images that must run the same version: n8n and its task runners, the server and the machine learning of Immich, a web service and its worker built from the same image. Palier treats as one release the services of a stack whose images declare the same source (the `org.opencontainers.image.source` label) and run the same version. They change in the same step, to the same version: the highest that every one of them allows, so a dependency among them holds the others on its major version. A plan that separates them is incomplete and is not applied. This works whether the tags are written in the Compose file or come from the same variable of the env file.
+
 ## 5. Execution
 
 1. The backup hooks (`palier.hook.backup`) run, then the backups of the `palier.backup` labels are made and sent off the machine (see [backups](configuration.md#backups)). If one fails, nothing is changed.
