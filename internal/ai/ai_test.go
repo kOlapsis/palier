@@ -3,6 +3,9 @@ package ai
 import (
 	"strings"
 	"testing"
+
+	"github.com/kolapsis/palier/internal/inventory"
+	"github.com/kolapsis/palier/internal/notes"
 )
 
 func TestSchemaIsStrict(t *testing.T) {
@@ -49,5 +52,17 @@ func TestReadChat(t *testing.T) {
 		if _, err := readChat([]byte(bad)); err == nil {
 			t.Errorf("%s: accepted", bad)
 		}
+	}
+}
+
+func TestNotesBlockWritesSharedNotesOnce(t *testing.T) {
+	shared := notes.Note{Tag: "v3.4.1", URL: "https://example/v3.4.1", Body: "Server and machine learning v3.4.1"}
+	st := &inventory.Stack{Services: []*inventory.Service{
+		{Name: "immich-server", Notes: []notes.Note{shared}},
+		{Name: "immich-machine-learning", Notes: []notes.Note{shared, {Tag: "v3.4.0", URL: "https://example/v3.4.0", Body: "only here"}}},
+	}}
+	block, _ := notesBlock(st)
+	if strings.Count(block, shared.Body) != 1 || !strings.Contains(block, `services="immich-server, immich-machine-learning" version="v3.4.1"`) || !strings.Contains(block, `services="immich-machine-learning" version="v3.4.0"`) {
+		t.Errorf("block:\n%s", block)
 	}
 }
