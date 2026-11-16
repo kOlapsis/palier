@@ -1,4 +1,5 @@
 # n8n with external task runners that depend on it: inferred roles, then the palier.role label, then the major upgrade.
+# TAGS=fixed writes both tags in the Compose file instead of the N8N_VERSION variable of the env file.
 mkdir -p /apps/n8n
 printf 'N8N_VERSION=2.45.7\n' >/apps/n8n/.env
 cat >/apps/n8n/compose.yaml <<'EOF'
@@ -28,13 +29,17 @@ services:
 volumes:
   n8n-data: {}
 EOF
+if [ "${TAGS:-}" = fixed ]; then
+	sed -i 's/\${N8N_VERSION}/2.45.7/' /apps/n8n/compose.yaml
+	rm /apps/n8n/.env
+fi
 up() {
 	(cd /apps/n8n && docker compose up -d --wait >/dev/null 2>&1)
 	for i in $(seq 1 30); do docker exec n8n-n8n-1 wget -qO- http://127.0.0.1:5678/healthz >/dev/null 2>&1 && break; sleep 2; done
 }
 state() {
 	for s in n8n task-runners; do echo "  $s: $(docker inspect n8n-$s-1 --format '{{.Config.Image}} {{.State.Status}} restarts={{.RestartCount}} role-label={{index .Config.Labels "palier.role"}}')"; done
-	echo "  .env: $(cat /apps/n8n/.env)"
+	echo "  .env: $(cat /apps/n8n/.env 2>/dev/null || echo none); compose: $(grep -o 'image: .*' /apps/n8n/compose.yaml | tr '\n' ' ')"
 	echo "  n8n /healthz: $(docker exec n8n-n8n-1 wget -qO- http://127.0.0.1:5678/healthz 2>&1)"
 	echo "  last lines of task-runners:"; docker logs --tail 4 n8n-task-runners-1 2>&1 | sed 's/^/    /'
 	echo "  n8n lines about runners:"; docker logs n8n-n8n-1 2>&1 | grep -i runner | tail -4 | sed 's/^/    /'
