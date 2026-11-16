@@ -49,14 +49,20 @@ func sameVersionTag(s *inventory.Service, tag string) string {
 
 func checkTogether(p *Plan, st *inventory.Stack) {
 	together := Together(st)
+	removed := map[string]bool{}
 	for i, s := range p.Steps {
+		for _, op := range s.Operations {
+			if op.Op == "compose_edit" && slices.ContainsFunc(op.Edits, func(e Edit) bool { return e.Action == "remove_service" }) {
+				removed[op.Service] = true
+			}
+		}
 		to := map[string]string{}
 		for _, c := range s.Changes {
 			to[c.Service] = c.To
 		}
 		for _, c := range s.Changes {
 			for _, o := range together[c.Service] {
-				if _, both := to[o.Name]; both && o.Name < c.Service {
+				if _, both := to[o.Name]; removed[o.Name] || both && o.Name < c.Service {
 					continue
 				}
 				if !sameVersion(to[o.Name], c.To) {

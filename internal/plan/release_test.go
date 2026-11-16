@@ -47,6 +47,12 @@ func TestTogetherValidated(t *testing.T) {
 	if !strings.Contains(reasons(alone), "change together") {
 		t.Errorf("n8n alone: %s", reasons(alone))
 	}
+	gone := &Plan{Steps: []Step{step(Change{"n8n", "2.45.7", "3.2.2"}), step(Change{"n8n", "3.2.2", "3.2.2"})}}
+	gone.Steps[0].Operations = append(gone.Steps[0].Operations, Operation{Op: "compose_edit", Service: "task-runners", Edits: []Edit{{Action: "remove_service"}}})
+	Validate(gone, n8n(inventory.RoleApplication, "3.2.2"))
+	if strings.Contains(reasons(gone), "change together") {
+		t.Errorf("task-runners removed: %s", reasons(gone))
+	}
 	both := &Plan{Steps: []Step{step(Change{"n8n", "2.45.7", "3.2.2"}, Change{"task-runners", "2.45.7", "3.2.2"})}}
 	Validate(both, n8n(inventory.RoleApplication, "3.2.2"))
 	if strings.Contains(reasons(both), "change together") {
