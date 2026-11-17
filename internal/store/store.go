@@ -30,6 +30,11 @@ CREATE TABLE IF NOT EXISTS plans (
 	body TEXT NOT NULL,
 	created TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS digests (
+	key TEXT PRIMARY KEY,
+	body TEXT NOT NULL,
+	created TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS plan_cache (
 	input_hash TEXT PRIMARY KEY,
 	source TEXT NOT NULL,

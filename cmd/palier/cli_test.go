@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -84,5 +85,18 @@ func TestInputHashFollowsRoles(t *testing.T) {
 	}
 	if inputHash(stack(inventory.RoleApplication), config.Config{}) == inputHash(stack(inventory.RoleDependency), config.Config{}) {
 		t.Error("a role change keeps the stored plan")
+	}
+}
+
+func TestAIFailureSaysWhatToDo(t *testing.T) {
+	for msg, want := range map[string]string{
+		`Anthropic API: 401 Unauthorized: {"type":"authentication_error"}`:                                   "check PALIER_AI_KEY",
+		`Anthropic API: 400 Bad Request: {"message":"prompt is too long: 1175981 tokens > 1000000 maximum"}`: "larger context",
+		`AI API http://ollama:11434/v1: 404 Not Found: model "qwen" not found`:                               "check PALIER_AI_MODEL",
+		`Anthropic API: 529 : {"type":"overloaded_error"}`:                                                   "palier scan asks now",
+	} {
+		if got := aiFailure(errors.New(msg)); !strings.Contains(got, want) || !strings.Contains(got, msg) {
+			t.Errorf("%s: %s", msg, got)
+		}
 	}
 }

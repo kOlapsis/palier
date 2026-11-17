@@ -279,8 +279,8 @@ func TestQuoted(t *testing.T) {
 		"authentik 2026.8.2 and 2026.2.7 fix this issue.":           false,
 		"authentik 2026.8.3, 2026.5.7 and 2026.2.7 fix this issue.": false,
 	} {
-		if quoted(body, quote) != want {
-			t.Errorf("quoted(%q) != %v", quote, want)
+		if Quoted(body, quote) != want {
+			t.Errorf("Quoted(%q) != %v", quote, want)
 		}
 	}
 }
@@ -319,5 +319,55 @@ func TestPostgresTaggedImage(t *testing.T) {
 		if got := len(p.Incomplete) > 0; got != major {
 			t.Errorf("pg14-v0.2.0 to %s: dump and restore required %v, want %v", to, got, major)
 		}
+	}
+}
+
+func TestPostgresTaggedLine(t *testing.T) {
+	for from, to := range map[[2]string]string{{"pg14-v0.2.0", "pg16-v0.3.0"}: "major", {"pg14-v0.2.0", "pg14-v0.4.0"}: "minor", {"pg14-v0.2.0", "pg14-v0.2.1"}: "patch", {"pg14-v0.2.0", "14-vectorchord0.3.0-pgvectors0.2.0"}: "minor"} {
+		if got := Level(from[0], from[1]); got != to {
+			t.Errorf("Level(%s, %s) = %s, want %s", from[0], from[1], got, to)
+		}
+	}
+	db := func(role string) *inventory.Stack {
+		return &inventory.Stack{Services: []*inventory.Service{{Name: "db", Role: role, Image: "docker.io/tensorchord/pgvecto-rs", Tag: "pg14-v0.2.0", Version: "pg14-v0.2.0", Available: rel("pg14-v0.4.0", "pg16-v0.3.0")}}}
+	}
+	held := Fallback(db(inventory.RoleDependency), "x")
+	Validate(held, db(inventory.RoleDependency))
+	if c := held.Steps[0].Changes[0]; c.To != "pg14-v0.4.0" || !strings.Contains(strings.Join(held.Withheld, ";"), "db pg16-v0.3.0 exists but is not offered") || !strings.Contains(strings.Join(held.Withheld, ";"), "stays on 14") {
+		t.Errorf("dependency: %+v, withheld %q", c, held.Withheld)
+	}
+	up := Fallback(db(inventory.RoleApplication), "x")
+	Validate(up, db(inventory.RoleApplication))
+	if op := up.Steps[0].Operations[0]; op.Op != "db_dump_restore" || op.ToTag != "pg16-v0.3.0" || op.Engine != "postgres" || len(up.Incomplete) > 0 {
+		t.Errorf("application: %+v, incomplete %q", up.Steps[0].Operations, up.Incomplete)
+	}
+}
+
+func TestBlamed(t *testing.T) {
+	steps := Blamed(&Plan{Incomplete: []string{"step 3: no recreate after the set_image of db", "step 3: x", "step 5: y"}})
+	if len(steps) != 2 || steps[0] != 2 || steps[1] != 4 {
+		t.Errorf("blamed: %v", steps)
+	}
+	if steps := Blamed(&Plan{Incomplete: []string{"step 3: x", "The target cannot be reached"}}); steps != nil {
+		t.Errorf("a reason without a step: %v", steps)
+	}
+}
+
+func TestWithheldNotForMovedImage(t *testing.T) {
+	st := &inventory.Stack{Services: []*inventory.Service{
+		{Name: "app", Role: inventory.RoleApplication, Image: "docker.io/example/app", Version: "1.0.0",
+			Notes: []notes.Note{{URL: "https://example/n", Body: "The database image is now ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.2.0 for everyone."}}},
+		{Name: "database", Role: inventory.RoleDependency, Image: "docker.io/tensorchord/pgvecto-rs", Tag: "pg14-v0.2.0", Version: "pg14-v0.2.0", Available: rel("pg16-v0.4.0")},
+	}}
+	stay := &Plan{}
+	Validate(stay, st)
+	if !strings.Contains(strings.Join(stay.Withheld, ";"), "pg16-v0.4.0") {
+		t.Errorf("held on its image: %q", stay.Withheld)
+	}
+	move := &Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Changes: []Change{{"database", "pg14-v0.2.0", "14-vectorchord0.3.0-pgvectors0.2.0"}},
+		Operations: []Operation{{Op: "set_image", Service: "database", Image: "ghcr.io/immich-app/postgres", Tag: "14-vectorchord0.3.0-pgvectors0.2.0"}, {Op: "recreate", Service: "database"}}}}}
+	Validate(move, st)
+	if len(move.Withheld) != 0 {
+		t.Errorf("moved to another image: %q", move.Withheld)
 	}
 }

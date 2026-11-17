@@ -12,7 +12,7 @@ For each image, Palier reads the tags in the registry: Docker Hub, GHCR or any O
 
 The running version comes, in this order:
 
-1. from the tag, when it is precise: `1.12.0`, `v2.5.5`, `6.2.14-alpine`, or `pg14-v0.2.0`, whose `pg14-v` prefix defines a separate line;
+1. from the tag, when it is precise: `1.12.0`, `v2.5.5`, `6.2.14-alpine`, or `pg14-v0.2.0`, whose `pg14-v` prefix is read as its own line;
 2. otherwise from the digest, compared with that of the precise tags in the registry;
 3. otherwise from the OCI annotation `org.opencontainers.image.version` that the registry gives for this digest;
 4. otherwise from the `org.opencontainers.image.version` label of the image.
@@ -23,13 +23,15 @@ Palier sends at most four requests at a time to the same registry, and when a re
 
 An image built on the machine is not looked up in a registry: a service with a `build` section or `pull_policy: never` in its Compose file, an image without registry digest, or an image its registry does not know (401, 403 or 404 while Palier has no credentials for that registry) shows as built locally, without error. With credentials, the same refusal stays an error, since it points at the credentials.
 
-Newer versions are sorted. Prereleases are excluded, and variants such as `-alpine` are kept: a service on `-alpine` stays on `-alpine`. A tag republished with different content is not a new version. A version younger than `PALIER_MATURATION` waits, unless it fixes a vulnerability in the running version (see below).
+Newer versions are sorted. Prereleases are excluded, and variants such as `-alpine` are kept: a service on `-alpine` stays on `-alpine`. A tag that names the PostgreSQL it is built on, such as `pg14-v0.2.0` or `0.8.0-pg16`, is a PostgreSQL image: `pg16-v0.3.0` is a newer version of it, a PostgreSQL major upgrade done by export and reimport, and the requirements of an application ("PostgreSQL 14 or later") are compared with that PostgreSQL version. A tag republished with different content is not a new version. A version younger than `PALIER_MATURATION` waits, unless it fixes a vulnerability in the running version (see below).
 
 ## 3. Release notes
 
 Palier finds the origin project through the `org.opencontainers.image.source` label of the image, or through the entry in its catalog. It reads the notes of **every** version between the running version and the target, in GitHub releases or gitlab.com, and caches them. If the forge does not answer, Palier reuses the notes it already read.
 
 These notes are treated as untrusted data: the AI is instructed never to follow what they contain, and the interface displays them as text.
+
+Before the plan, the AI reads each note on its own and keeps the facts it states that matter for an upgrade (breaking change, action asked of administrators, configuration change, data migration, security fix, required stop, supported dependency versions), each with its quote. A quote that is not word for word in the note is dropped. Palier stores what was read, so each note is read once, even across stacks; a new release costs only its own note. A note shared by several services, such as the server and the machine learning of Immich, is read once. The plan is then computed from these facts, which keeps the request small however far behind the stack is.
 
 ### Security advisories
 
@@ -56,7 +58,7 @@ The stops of an entry are checked by the code: a plan that skips one is incomple
 
 ## 4. Plan
 
-The AI receives the Compose file, the services, their versions, the dependencies, the catalog entry, the notes and the security advisories. It answers with a plan in steps. For each step, it judges:
+The AI receives the Compose file, the services, their versions, the dependencies, the catalog entry, and the facts read from the notes and the security advisories. It answers with a plan in steps. For each step, it judges:
 
 - **the risk**: "blocking" only if the step needs an action that no operation performs, "attention" if the notes flag a change the stack may feel, "safe" otherwise, "unknown" without notes;
 - **the reversibility**: "no" only if even restoring the files, images and volumes copied before the step would not undo it.
@@ -82,7 +84,9 @@ The AI never writes a command. The code then checks the whole plan before showin
 - at each step, every dependency stays within the range the application declares it supports;
 - every quoted fact is found word for word in the notes.
 
-A fact without a valid citation is removed. A plan that does not pass is marked incomplete, with the reason, and is never applied.
+A fact without a valid citation is removed. A plan that does not pass is marked incomplete, with the reason, and is never applied. When a plan computed from the facts does not hold, Palier computes it once more with the full text of the notes concerned: at once when the plan is incomplete, with the notes of the steps its reasons name, or else those that state a fact; and after two runs of the same plan were rolled back, with the notes of the versions of the step that did not pass. The AI is told which step and what Docker reported (a service that stopped, keeps restarting or is unhealthy), never the logs of a container. The plan then says which notes were read in full, and why.
+
+When the AI gives no plan (wrong key, unknown model, notes too long for the model, service unavailable), the stack shows an incomplete plan computed from versions only, the answer of the AI and what to do; Palier asks again at the next scan.
 
 ## Text written to steer the AI
 
@@ -90,7 +94,7 @@ Release notes are written by others, and a compromised account or an unreviewed 
 
 - **Cleaned before reading.** HTML comments, Markdown comments, hidden elements (`hidden`, `display: none`) and invisible characters are removed before the AI reads the notes. `palier show` and the stack page list what was removed.
 - **Unguessable delimiters.** Each note is sent between tags whose name carries a mark the notes cannot guess. A note that imitates a tag of the prompt (`</release_notes>`, `<system>`…) is flagged.
-- **A second look.** A short, separate call asks the AI for the passages addressed to an AI or trying to change how an automated tool judges or acts. Only passages found word for word in the notes are kept.
+- **A second look.** While it reads each note, the AI also lists the passages addressed to an AI or trying to change how an automated tool judges or acts. Only passages found word for word in the notes are kept.
 - **Flagged plans wait for a person.** A plan with a flagged passage is never applied on its own: `palier show` and the stack page show the passage, and an alert is sent.
 - **Free values must be cited.** A variable, command, healthcheck or mount that the AI writes into the Compose file must appear word for word in the notes of the service or already in the Compose file. A command or healthcheck cannot run shell (`|`, `;`, `&`, `$(`…), a healthcheck cannot reach outside the container, a mount cannot leave the directory of the stack nor target a socket, and a variable cannot read or copy a secret of the stack. Otherwise the plan is incomplete.
 - **Traced.** The run log gives, for each of these values, the note it was written in.

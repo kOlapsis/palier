@@ -8,12 +8,14 @@ import (
 	"strings"
 )
 
-// V is a tag read as a prefix such as "v" or "pg14-v", dotted numbers and a variant suffix such as "-alpine" or "-ce.0".
+// V is a tag read as a prefix such as "v" or "pg14-v", dotted numbers and a variant suffix such as "-alpine" or "-ce.0",
+// with the PostgreSQL version the tag names, if any.
 type V struct {
 	Tag    string
 	Prefix string
 	Nums   []int
 	Suffix string
+	Engine []int
 }
 
 var pattern = regexp.MustCompile(`^(?:(v?)(\d+(?:\.\d+)*)|([A-Za-z][\w.-]*?[-_]v?)(\d+(?:\.\d+)+))(.*)$`)
@@ -36,8 +38,13 @@ func Parse(tag string) (v V, ok bool) {
 		}
 		v.Nums = append(v.Nums, i)
 	}
+	if e, ok := Engine(tag); ok {
+		v.Engine = e.Nums
+	}
 	return v, true
 }
+
+var engineNumber = regexp.MustCompile(`(pg|postgres(?:ql)?)\d+(?:\.\d+)*`)
 
 var engineTag = regexp.MustCompile(`(?:^|[-_.])(?:pg|postgres(?:ql)?)(\d+(?:\.\d+)*)(?:[-_.]|$)`)
 
@@ -55,27 +62,45 @@ func (v V) Extends(w V) bool {
 	return v.Prefix == w.Prefix && v.Suffix == w.Suffix && len(w.Nums) > len(v.Nums) && slices.Equal(v.Nums, w.Nums[:len(v.Nums)])
 }
 
-// SameLine reports whether w is written like v: same prefix, same number of components, same suffix.
+// SameLine reports whether w is written like v: same prefix, same number of components, same suffix, the PostgreSQL
+// version they name aside.
 func (v V) SameLine(w V) bool {
-	return v.Prefix == w.Prefix && len(v.Nums) == len(w.Nums) && v.Suffix == w.Suffix
+	line := func(s string) string { return engineNumber.ReplaceAllString(s, "$1") }
+	return line(v.Prefix) == line(w.Prefix) && len(v.Nums) == len(w.Nums) && line(v.Suffix) == line(w.Suffix)
 }
 
-// Less orders two versions of the same line.
+// Less orders two versions of the same line, by the PostgreSQL version they name first.
 func (v V) Less(w V) bool {
-	for i := range min(len(v.Nums), len(w.Nums)) {
-		if v.Nums[i] != w.Nums[i] {
-			return v.Nums[i] < w.Nums[i]
+	if len(v.Engine) > 0 && len(w.Engine) > 0 && !slices.Equal(v.Engine, w.Engine) {
+		return less(v.Engine, w.Engine)
+	}
+	return less(v.Nums, w.Nums)
+}
+
+// Major is the PostgreSQL major the tag names, else its first number.
+func (v V) Major() int {
+	if len(v.Engine) > 0 {
+		return v.Engine[0]
+	}
+	return v.Nums[0]
+}
+
+func less(a, b []int) bool {
+	for i := range min(len(a), len(b)) {
+		if a[i] != b[i] {
+			return a[i] < b[i]
 		}
 	}
-	return len(v.Nums) < len(w.Nums)
+	return len(a) < len(b)
 }
 
-// Newer returns the tags of the same line as current and above it, in ascending order.
+// Newer returns the tags of the same line as current and above it, in ascending order; a tag that names a newer
+// PostgreSQL but an older version of its own is left out.
 func Newer(current V, tags []string) []V {
 	var out []V
 	for _, t := range tags {
 		w, ok := Parse(t)
-		if ok && current.SameLine(w) && current.Less(w) {
+		if ok && current.SameLine(w) && current.Less(w) && !less(w.Nums, current.Nums) {
 			out = append(out, w)
 		}
 	}

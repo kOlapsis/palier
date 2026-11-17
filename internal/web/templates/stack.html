@@ -67,6 +67,7 @@
 {{if not .Incomplete}}<form method="post" action="/stacks/{{$.Stack.Name}}/apply"><button class="primary">Apply plan</button></form>{{end}}
 </div>{{end}}
 </div>
+{{with .Refined}}<p class="muted">{{.}}</p>{{end}}
 {{if not .Steps}}<p class="muted">Nothing to apply.</p>{{end}}
 {{with .Suspicious}}<div class="notice bad">The release notes contain text that seems written to steer an AI; the plan waits for you:<ul>{{range .}}<li>“{{.}}”</li>{{end}}</ul></div>{{end}}
 {{with .Incomplete}}<div class="notice bad">Incomplete plan, it will not be applied:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}

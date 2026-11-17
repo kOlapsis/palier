@@ -434,6 +434,9 @@ func (c *cli) plan(v web.StackView) {
 	}
 	c.line("")
 	c.line(c.bold("Plan") + c.dim(fmt.Sprintf(" · %s, confirmed %s · %d step%s", source, web.Since(v.Record.Created), len(p.Steps), plural(len(p.Steps)))))
+	if p.Refined != "" {
+		c.line(c.dim(clean(p.Refined)))
+	}
 	switch {
 	case len(p.Steps) == 0:
 		c.line("Nothing to apply.")

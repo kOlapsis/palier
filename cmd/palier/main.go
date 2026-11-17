@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -334,16 +335,25 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 		return nil, err
 	}
 	hash := inputHash(st, a.cfg)
-	if rec, err := a.storedPlan(ctx, st.Name); err != nil || rec != nil && rec.InputHash == hash {
-		if rec != nil {
-			rec.Created = time.Now().UTC()
-			_, err = a.db.ExecContext(ctx, `UPDATE plans SET created = ? WHERE stack = ?`, rec.Created.Format(time.RFC3339), st.Name)
+	stored, err := a.storedPlan(ctx, st.Name)
+	if err != nil {
+		return nil, err
+	}
+	var failed *plan.Plan
+	var blamed []int
+	why := ""
+	if stored != nil && stored.InputHash == hash {
+		step, cause, twice := a.rolledBackTwice(ctx, stored)
+		if !twice {
+			stored.Created = time.Now().UTC()
+			_, err = a.db.ExecContext(ctx, `UPDATE plans SET created = ? WHERE stack = ?`, stored.Created.Format(time.RFC3339), st.Name)
+			return stored, err
 		}
-		return rec, err
+		failed, blamed, why = stored.Plan, []int{step}, cause
 	}
 	rec := &plan.Record{Stack: st.Name, Source: "versions", Created: time.Now().UTC(), InputHash: hash}
 	var cachedSource, cachedBody, cachedAt string
-	if a.db.QueryRowContext(ctx, `SELECT source, body, created FROM plan_cache WHERE input_hash = ?`, hash).Scan(&cachedSource, &cachedBody, &cachedAt) == nil {
+	if failed == nil && a.db.QueryRowContext(ctx, `SELECT source, body, created FROM plan_cache WHERE input_hash = ?`, hash).Scan(&cachedSource, &cachedBody, &cachedAt) == nil {
 		rec.Source = cachedSource
 		cachedAt = rec.Created.Format(time.RFC3339)
 		if err := json.Unmarshal([]byte(cachedBody), &rec.Plan); err != nil {
@@ -354,45 +364,70 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 			st.Name, hash, rec.Source, cachedBody, cachedAt)
 		return rec, err
 	}
+	check := func(p *plan.Plan) {
+		before := len(p.Steps)
+		plan.SecurityFirst(p, st)
+		if added := len(p.Steps) - before; added > 0 {
+			slog.Info("security fix first", "stack", st.Name, "steps added", added, "first", p.Steps[0].Why)
+		}
+		plan.Validate(p, st)
+	}
 	hasNotes := slices.ContainsFunc(st.Services, func(s *inventory.Service) bool { return len(s.Notes) > 0 })
 	switch {
 	case !a.cfg.AI:
 		rec.Plan = plan.Fallback(st, "No AI key: plan computed from versions only.")
+		check(rec.Plan)
 	case !hasNotes:
 		rec.Plan = plan.Fallback(st, "No release notes found: plan computed from versions only.")
+		check(rec.Plan)
 	default:
 		slog.Info("computing plan with AI", "stack", st.Name, "provider", a.cfg.AIProvider, "model", a.cfg.AIModel)
 		model := ai.Endpoint{Provider: a.cfg.AIProvider, URL: a.cfg.AIURL, Key: a.cfg.AIKey, Model: a.cfg.AIModel, Timeout: a.cfg.AITimeout}
-		p, err := ai.Propose(ctx, model, st)
+		digests, err := a.digests(ctx, model, st)
+		propose := func(full []notes.Note, why string) (*plan.Plan, error) {
+			p, err := ai.Propose(ctx, model, st, digests, full, why)
+			if err != nil {
+				return nil, err
+			}
+			for _, d := range digests {
+				p.Suspicious = append(p.Suspicious, d.Passages...)
+			}
+			check(p)
+			return p, nil
+		}
+		p := failed
+		if err == nil && p == nil {
+			if p, err = propose(nil, ""); err == nil {
+				blamed, why = plan.Blamed(p), strings.Join(p.Incomplete, "; ")
+			}
+		}
 		if err != nil {
 			rec.Plan = plan.Fallback(st, "Plan computed from versions only.")
-			rec.Plan.Incomplete = append(rec.Plan.Incomplete, "the AI returned no plan: "+err.Error())
-			plan.SecurityFirst(rec.Plan, st)
-			plan.Validate(rec.Plan, st)
-			return rec, nil
+			rec.Plan.Incomplete = append(rec.Plan.Incomplete, aiFailure(err))
+			rec.InputHash = ""
+			check(rec.Plan)
+			break
 		}
-		if passages, err := ai.Screen(ctx, model, st); err != nil {
-			p.Incomplete = append(p.Incomplete, "the check of the notes for text written to steer an AI failed: "+err.Error())
-		} else {
-			p.Suspicious = passages
+		if full := ai.Suspects(st, model, digests, p, blamed); why != "" && len(full) > 0 {
+			slog.Info("computing plan again with full notes", "stack", st.Name, "notes", len(full), "why", why)
+			if again, err := propose(full, why); err != nil {
+				slog.Warn("plan not computed again", "stack", st.Name, "error", err)
+			} else {
+				again.Refined = refined(full, why)
+				p = again
+			}
 		}
 		rec.Plan, rec.Source = p, "ai"
 	}
-	before := len(rec.Plan.Steps)
-	plan.SecurityFirst(rec.Plan, st)
-	if added := len(rec.Plan.Steps) - before; added > 0 {
-		slog.Info("security fix first", "stack", st.Name, "steps added", added, "first", rec.Plan.Steps[0].Why)
-	}
-	plan.Validate(rec.Plan, st)
 	body, err := json.Marshal(rec.Plan)
 	if err != nil {
 		return nil, err
 	}
 	_, err = a.db.ExecContext(ctx, `INSERT INTO plans (stack, input_hash, source, body, created) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (stack) DO UPDATE SET input_hash = excluded.input_hash, source = excluded.source, body = excluded.body, created = excluded.created`,
-		st.Name, hash, rec.Source, string(body), rec.Created.Format(time.RFC3339))
-	if err == nil {
-		_, err = a.db.ExecContext(ctx, `INSERT OR IGNORE INTO plan_cache (input_hash, source, body, created) VALUES (?, ?, ?, ?)`,
+		st.Name, rec.InputHash, rec.Source, string(body), rec.Created.Format(time.RFC3339))
+	if err == nil && rec.InputHash != "" {
+		_, err = a.db.ExecContext(ctx, `INSERT OR REPLACE INTO plan_cache (input_hash, source, body, created) VALUES (?, ?, ?, ?)`,
 			hash, rec.Source, string(body), rec.Created.Format(time.RFC3339))
 	}
 	if err == nil && len(rec.Plan.Steps) > 0 && len(rec.Plan.Incomplete) == 0 {
@@ -405,6 +440,113 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 		a.notify(map[string]any{"event": "plan_ready", "stack": st.Name, "steps": len(rec.Plan.Steps), "changes": changes})
 	}
 	return rec, err
+}
+
+// refined says which notes a plan computed again read in full, and why.
+func refined(full []notes.Note, why string) string {
+	var tags []string
+	for _, n := range full {
+		tags = append(tags, cmp.Or(n.Tag, "documentation"))
+	}
+	if len(tags) > 8 {
+		tags = append(tags[:8], fmt.Sprintf("and %d more", len(tags)-8))
+	}
+	if r := []rune(why); len(r) > 300 {
+		why = string(r[:300]) + "…"
+	}
+	return fmt.Sprintf("Computed again with the full notes of %s, because a first plan did not hold: %s", strings.Join(tags, ", "), why)
+}
+
+// rolledBackTwice reports whether the last two runs of the plan of rec both ended rolled back or failed, with the step
+// that did not pass and what Palier saw of it, never the logs.
+func (a *app) rolledBackTwice(ctx context.Context, rec *plan.Record) (int, string, bool) {
+	if rec.Source != "ai" || rec.Plan.Refined != "" {
+		return 0, "", false
+	}
+	current, _ := json.Marshal(rec.Plan)
+	rows, err := a.db.QueryContext(ctx, `SELECT plan, status, checkpoint, error FROM runs WHERE stack = ? AND dry_run = 0 ORDER BY id DESC LIMIT 2`, rec.Stack)
+	if err != nil {
+		return 0, "", false
+	}
+	defer rows.Close()
+	runs, step, seen := 0, 0, ""
+	for rows.Next() {
+		var body, status, checkpoint, msg string
+		if rows.Scan(&body, &status, &checkpoint, &msg) != nil || body != string(current) || status != run.RolledBack && status != run.Failed {
+			return 0, "", false
+		}
+		if runs == 0 {
+			var cp run.Checkpoint
+			json.Unmarshal([]byte(checkpoint), &cp)
+			step = cp.Step
+			if before, _, found := strings.Cut(msg, "; last log lines"); found {
+				seen = ": " + before
+			}
+		}
+		runs++
+	}
+	if runs < 2 || step >= len(rec.Plan.Steps) {
+		return 0, "", false
+	}
+	return step, fmt.Sprintf("the run of this plan was rolled back twice at step %d%s", step+1, seen), true
+}
+
+// digests returns the digest of every note of st, read by the model only for the notes it has not read yet.
+func (a *app) digests(ctx context.Context, model ai.Endpoint, st *inventory.Stack) (map[string]ai.Digest, error) {
+	out := map[string]ai.Digest{}
+	var todo []notes.Note
+	unique, _ := ai.Unique(st)
+	for _, n := range unique {
+		var body string
+		var d ai.Digest
+		if a.db.QueryRowContext(ctx, `SELECT body FROM digests WHERE key = ?`, ai.DigestKey(model, n)).Scan(&body) == nil && json.Unmarshal([]byte(body), &d) == nil {
+			out[ai.DigestKey(model, n)] = d
+		} else {
+			todo = append(todo, n)
+		}
+	}
+	if len(todo) > 0 {
+		slog.Info("reading release notes", "stack", st.Name, "new", len(todo), "known", len(out))
+	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var failed error
+	slots := make(chan struct{}, 4)
+	for _, n := range todo {
+		wg.Go(func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			d, err := ai.Read(ctx, model, n)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				failed = cmp.Or(failed, err)
+				return
+			}
+			out[ai.DigestKey(model, n)] = d
+			body, _ := json.Marshal(d)
+			if _, err := a.db.ExecContext(ctx, `INSERT OR REPLACE INTO digests (key, body, created) VALUES (?, ?, ?)`, ai.DigestKey(model, n), string(body), time.Now().UTC().Format(time.RFC3339)); err != nil {
+				failed = cmp.Or(failed, err)
+			}
+		})
+	}
+	wg.Wait()
+	return out, failed
+}
+
+// aiFailure says why the AI gave no plan and what to do about it.
+func aiFailure(err error) string {
+	msg := err.Error()
+	todo := "Palier asks again at the next scan, and palier scan asks now"
+	switch {
+	case strings.Contains(msg, " 401 ") || strings.Contains(msg, " 403 ") || strings.Contains(msg, "authentication_error") || strings.Contains(msg, "permission_error"):
+		todo = "check PALIER_AI_KEY"
+	case strings.Contains(msg, " 404 ") || strings.Contains(msg, "not_found_error"):
+		todo = "check PALIER_AI_MODEL and PALIER_AI_URL"
+	case strings.Contains(msg, "too long") || strings.Contains(msg, "context length") || strings.Contains(msg, "context window"):
+		todo = "the release notes of this stack do not fit in one request to this model; set PALIER_AI_MODEL to a model with a larger context"
+	}
+	return fmt.Sprintf("the AI returned no plan, %s. Its answer: %s", todo, msg)
 }
 
 func (a *app) decide(ctx context.Context, stack, kind, service, version, until, author string) error {

@@ -100,5 +100,5 @@ func firstChange(p *Plan, service string) (step, change int) {
 }
 
 func sameMinor(a, b version.V) bool {
-	return a.SameLine(b) && len(a.Nums) >= 2 && len(b.Nums) >= 2 && a.Nums[0] == b.Nums[0] && a.Nums[1] == b.Nums[1]
+	return a.SameLine(b) && slices.Equal(a.Engine, b.Engine) && len(a.Nums) >= 2 && len(b.Nums) >= 2 && a.Nums[0] == b.Nums[0] && a.Nums[1] == b.Nums[1]
 }

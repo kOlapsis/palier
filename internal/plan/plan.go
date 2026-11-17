@@ -4,7 +4,9 @@ package plan
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -22,6 +24,7 @@ type Plan struct {
 	Incomplete []string          `json:"incomplete"`
 	Withheld   []string          `json:"withheld,omitempty"`
 	Suspicious []string          `json:"suspicious,omitempty"`
+	Refined    string            `json:"refined,omitempty"`
 	Auto       map[string]string `json:"auto,omitempty"`
 }
 
@@ -116,6 +119,24 @@ var (
 
 func (p *Plan) incomplete(format string, args ...any) {
 	p.Incomplete = append(p.Incomplete, fmt.Sprintf(format, args...))
+}
+
+var stepReason = regexp.MustCompile(`^step (\d+):`)
+
+// Blamed returns the steps, counted from 0, that the reasons of an incomplete plan name, or nil when one names none.
+func Blamed(p *Plan) []int {
+	var steps []int
+	for _, r := range p.Incomplete {
+		m := stepReason.FindStringSubmatch(r)
+		if m == nil {
+			return nil
+		}
+		n, _ := strconv.Atoi(m[1])
+		if !slices.Contains(steps, n-1) {
+			steps = append(steps, n-1)
+		}
+	}
+	return steps
 }
 
 // Validate checks p against the stack and the notes of its services, drops the facts whose quote is not in the
@@ -289,17 +310,22 @@ func withheld(p *Plan, st *inventory.Stack, final map[string]string) []string {
 			continue
 		}
 		reached, ok := version.Parse(final[s.Name])
-		if !ok {
+		moved := slices.ContainsFunc(p.Steps, func(step Step) bool {
+			return slices.ContainsFunc(step.Operations, func(o Operation) bool {
+				return o.Op == "set_image" && o.Service == s.Name && registry.ParseRef(o.Image).Name() != s.Image
+			})
+		})
+		if !ok || moved {
 			continue
 		}
 		highest := map[int]string{}
 		var majors []int
 		for _, r := range s.Available {
-			if v, ok := version.Parse(r.Tag); ok && v.Nums[0] > reached.Nums[0] {
-				if _, seen := highest[v.Nums[0]]; !seen {
-					majors = append(majors, v.Nums[0])
+			if v, ok := version.Parse(r.Tag); ok && v.Major() > reached.Major() {
+				if _, seen := highest[v.Major()]; !seen {
+					majors = append(majors, v.Major())
 				}
-				highest[v.Nums[0]] = r.Tag
+				highest[v.Major()] = r.Tag
 			}
 		}
 		if len(majors) == 0 {
@@ -321,7 +347,7 @@ func withheld(p *Plan, st *inventory.Stack, final map[string]string) []string {
 		if len(tags) > 1 {
 			verb = "exist but are not offered"
 		}
-		out = append(out, fmt.Sprintf("%s %s %s: %s; %s stays on %d.", s.Name, strings.Join(tags, ", "), verb, why, s.Name, reached.Nums[0]))
+		out = append(out, fmt.Sprintf("%s %s %s: %s; %s stays on %d.", s.Name, strings.Join(tags, ", "), verb, why, s.Name, reached.Major()))
 	}
 	return out
 }
@@ -562,7 +588,7 @@ func engineVersion(tag string) string {
 }
 
 func checkDatabase(p *Plan, n int, c Change, svc *inventory.Service, s *Step) {
-	if Level(engineVersion(c.From), engineVersion(c.To)) != "major" {
+	if Level(c.From, c.To) != "major" {
 		return
 	}
 	if db := EngineOf(svc.Image, svc.Tag); db != "" && !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service }) {
@@ -570,8 +596,8 @@ func checkDatabase(p *Plan, n int, c Change, svc *inventory.Service, s *Step) {
 	}
 }
 
-// quoted tells whether quote appears word for word in body, a run of spaces and line breaks counting as one space.
-func quoted(body, quote string) bool {
+// Quoted tells whether quote appears word for word in body, a run of spaces and line breaks counting as one space.
+func Quoted(body, quote string) bool {
 	return strings.Contains(body, quote) || strings.Contains(strings.Join(strings.Fields(body), " "), strings.Join(strings.Fields(quote), " "))
 }
 
@@ -586,7 +612,7 @@ func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
 		url, tag := "", ""
 		for _, s := range st.Services {
 			for _, note := range s.Notes {
-				if url == "" && quoted(note.Body, f.Quote) {
+				if url == "" && Quoted(note.Body, f.Quote) {
 					url, tag = note.URL, note.Tag
 				}
 			}
@@ -612,7 +638,7 @@ func Fallback(st *inventory.Stack, why string) *Plan {
 	allowed := func(s *inventory.Service, tag string) bool {
 		cur, _ := version.Parse(s.Version)
 		v, _ := version.Parse(tag)
-		return s.Role != inventory.RoleDependency || v.Nums[0] == cur.Nums[0]
+		return s.Role != inventory.RoleDependency || v.Major() == cur.Major()
 	}
 	together := Together(st)
 	for _, s := range st.Services {
@@ -629,7 +655,7 @@ func Fallback(st *inventory.Stack, why string) *Plan {
 			continue
 		}
 		step.Changes = append(step.Changes, Change{Service: s.Name, From: s.Version, To: target})
-		if db := EngineOf(s.Image, s.Tag); db != "" && Level(engineVersion(s.Version), engineVersion(target)) == "major" {
+		if db := EngineOf(s.Image, s.Tag); db != "" && Level(s.Version, target) == "major" {
 			step.Operations = append(step.Operations, Operation{Op: "db_dump_restore", Service: s.Name, Engine: db, ToImage: s.Image, ToTag: target})
 			continue
 		}
@@ -650,9 +676,9 @@ func Level(from, to string) string {
 	a, ok1 := version.Parse(from)
 	b, ok2 := version.Parse(to)
 	switch {
-	case !ok1 || !ok2 || a.Nums[0] != b.Nums[0]:
+	case !ok1 || !ok2 || a.Major() != b.Major():
 		return "major"
-	case len(a.Nums) > 1 && len(b.Nums) > 1 && a.Nums[1] == b.Nums[1]:
+	case len(a.Nums) > 1 && len(b.Nums) > 1 && a.Nums[0] == b.Nums[0] && a.Nums[1] == b.Nums[1]:
 		return "patch"
 	}
 	return "minor"
