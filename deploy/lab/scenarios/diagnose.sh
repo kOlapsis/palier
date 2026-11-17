@@ -1,4 +1,5 @@
 # A plan whose run is rolled back twice is computed again with the full notes of the step that did not pass.
+# KEEP=1 leaves the stack in place, to look at its page.
 mkdir -p /apps/diag
 cat >/apps/diag/compose.yaml <<'Y'
 services:
@@ -44,5 +45,6 @@ echo "== plan after two rolled back runs"; show
 $PALIER exec -T palier palier show diag 2>/dev/null | sed -n '/^Plan/,/^$/p' | cut -c1-400
 docker logs --since 20m palier-palier-1 2>&1 | grep -E 'computing plan again|plan not computed again' | cut -c1-400
 
+[ -z "${KEEP:-}" ] || exit 0
 (cd /apps/diag && docker compose down -v >/dev/null 2>&1)
 rm -rf /apps/diag
