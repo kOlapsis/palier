@@ -35,6 +35,12 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 
 **Immich v1.105.1 → v3.3.5, with two Compose breaking changes.** Palier removed the `immich-microservices` service, dropped a `command`, set the port variable the notes ask for, and replaced the database image (`pgvecto-rs` → VectorChord) at the step where Immich requires it. Eight steps, all verified. Photos downloaded afterwards have the same SHA-1 as before.
 
+**Immich again, v1.105.1 → v3.4.1, far behind.** Its 128 release notes are read one by one into quoted facts, 61,000 characters instead of 835,000, and the plan is computed from those facts: twelve steps, all verified, same photos.
+
+**n8n and its task runners, 2.45.7 → 3.2.2, together.** The two images come from the same source and run the same version, so Palier moves them in the same step, whether their tags are written in the Compose file or come from one variable.
+
+**PostgreSQL 14 → 17 under a pgvecto-rs image.** The tag `pg14-v0.2.0` names its PostgreSQL. Palier reaches `pg17-v0.4.0` by export and reimport, and the vectors read the same afterwards.
+
 **A failure forced at the second step.** The `docker-compose.yml` file, the `.env` and the four volumes come back identical, the removed service reappears, and the data is intact.
 
 ## How it works
@@ -50,9 +56,9 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 
 1. **Inventory.** Palier reads the containers of the Docker engine, groups the Compose ones into stacks, and records images, digests, HEALTHCHECK, volumes and `depends_on`.
 2. **Versions.** It finds newer versions in the registry (Docker Hub, GHCR, any OCI registry). Prereleases are excluded, variants such as `-alpine` are kept, and a version must have matured for 72 h before it is proposed.
-3. **Notes.** It reads the notes of **every** version between the running one and the target (GitHub, gitlab.com), the GitHub security advisories that affect the running version, and the documentation excerpts from its catalog.
-4. **Plan.** The AI picks operations from a closed list: `set_image`, `compose_edit`, `recreate`, `stop`, `start`, `wait_stable`, `exec_check`, `db_dump_restore`. It never writes a command.
-5. **Validation.** The code rejects any plan that skips a required step, targets a version that does not exist, upgrades a dependency beyond what the application cites as supported, or states something without quoting it word for word from a note.
+3. **Notes.** It reads the notes of **every** version between the running one and the target (GitHub, gitlab.com), the GitHub security advisories that affect the running version, and the documentation excerpts from its catalog. The AI reads each note once, on its own, and keeps the facts that matter for an upgrade, each with its quote.
+4. **Plan.** From those facts, the AI picks operations from a closed list: `set_image`, `compose_edit`, `recreate`, `stop`, `start`, `wait_stable`, `exec_check`, `db_dump_restore`. It never writes a command.
+5. **Validation.** The code rejects any plan that skips a required step, targets a version that does not exist, upgrades a dependency beyond what the application cites as supported, separates the images of one release, or states something without quoting it word for word from a note.
 6. **Apply.** Step by step, with a restore point of the whole stack (Compose files, `.env`, images, volume copies) before each step.
 7. **Verification.** Only what Docker reports: the container is running, stays stable, does not loop, and is `healthy` if it has a HEALTHCHECK.
 
@@ -60,9 +66,11 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 
 - **A rollback on every failure.** A step is never left half applied. If Palier is stopped in the middle of a run, it puts the stack back at the last verified step when it restarts.
 - **The stack follows its application.** A database or cache never goes higher than what the application declares it supports. Without a citation, it stays on its major version.
-- **Database major upgrades that keep the data safe.** PostgreSQL, MySQL and MariaDB change major version by export and reimport on a new volume. The old volume is never touched, and Palier compares roles, databases, tables, rows, indexes and constraints before going on.
+- **One release, several images.** Services whose images come from the same source and run the same version, such as n8n and its task runners or the server and the machine learning of Immich, change together, to the same version.
+- **Database major upgrades that keep the data safe.** PostgreSQL, MySQL and MariaDB change major version by export and reimport on a new volume, including images that name their PostgreSQL in their tag (`pg14-v0.2.0`). The old volume is never touched, and Palier compares roles, databases, tables, rows, indexes and constraints before going on.
 - **PostgreSQL collations.** After a patch release that changes the C library of the image, Palier rebuilds the affected indexes and updates the collation version.
 - **Vulnerabilities first.** A version that fixes a vulnerability in the running version skips the maturation delay, and before a long climb Palier first applies the patch of the running line that closes it.
+- **A second look when a plan does not hold.** An incomplete plan, or a plan whose run was rolled back twice, is computed once more with the full text of the notes concerned. The AI is told which step failed and what Docker reported, never the logs of a container.
 - **Notes are data.** Release notes, image names and logs are never treated as instructions or displayed as HTML.
 - **The Compose file stays the source of truth.** Palier edits it in place, keeps its owner, group and mode, and hides no state on the side.
 - **Emails that do not flood you.** One email when a problem opens, one when it is resolved, and a weekly report only when something happened.
