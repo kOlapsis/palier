@@ -4,9 +4,11 @@ Palier can plan with a model you host, through any API compatible with OpenAI's 
 
 ## What to expect
 
-The model must follow long instructions, answer in a strict JSON schema, and copy quotes word for word from release notes that can exceed 35,000 tokens. Palier checks everything it returns: a plan with an invented operation, a missing step or a quote that is not in the notes is marked incomplete and never applied. A model that is too small therefore costs you nothing but time: its plans are refused.
+The model must follow long instructions, answer in a strict JSON schema, and copy quotes word for word from release notes. Palier reads the notes one at a time, so the context of the model must hold the longest note of the stack: most take a few thousand tokens, a very long one such as Immich v3.0.0 about 25,000, and a note that does not fit stops the AI plan of its stack (see [Context length](configuration.md#ai-provider)). Palier checks everything it returns: a plan with an invented operation, a missing step or a quote that is not in the notes is marked incomplete and never applied. A model that is too small therefore costs you nothing but time: its plans are refused.
 
 On the Palier bench (6 CPU cores, no GPU), `qwen3:4b-instruct-2507-q4_K_M` took 6 to 7 minutes per stack, and every plan it returned was refused: invented checks, a missing `recreate` after `set_image`, facts quoted inexactly. `qwen3:8b` gave a much better plan for a small stack in 16 minutes, refused only for an invented check, and did not answer within 30 minutes for Outline, whose notes take 35,000 tokens. Palier waits 30 minutes per request by default: raise `PALIER_AI_TIMEOUT` (`2h`, for example) for a model on CPU. Claude Sonnet and OpenAI's models take 7 to 50 seconds and their plans pass. Plan on a GPU, then judge on your own stacks.
+
+These figures date from when Palier sent every note of a stack in one request, 35,000 tokens for Outline. Notes are now read one by one: each request is smaller, and there is one per note the first time. The local models have not been measured again since.
 
 ## 1. Start Ollama next to Palier
 
@@ -26,7 +28,7 @@ volumes:
   ollama-models: {}
 ```
 
-`OLLAMA_CONTEXT_LENGTH` matters: below the size of the prompt, Ollama refuses the request, and Palier falls back to a plan computed from versions alone. With an NVIDIA GPU, give the service the GPU as the [Ollama image documentation](https://hub.docker.com/r/ollama/ollama) describes.
+`OLLAMA_CONTEXT_LENGTH` matters: when a request is larger, in practice the longest release note of the stack, Ollama refuses it, and Palier falls back to a plan computed from versions alone. With an NVIDIA GPU, give the service the GPU as the [Ollama image documentation](https://hub.docker.com/r/ollama/ollama) describes.
 
 ```sh
 docker compose up -d ollama

@@ -18,6 +18,7 @@
 - **Volumes not copied.** Bulk data of known applications, mounts of applications without a catalog card above 20 GiB, and copies that would leave the Docker disk short of space are not restored by a rollback.
 - **Services with a `build` section.** Their image is built on the machine and is not in any registry, so Palier does not update them, even when the base image of their Dockerfile has a newer version.
 - **Release notes outside GitHub and gitlab.com.** A self-hosted GitLab instance, Codeberg or another forge is not read; only the catalog entries then complete the notes.
+- **A release note longer than the context of the model.** Palier reads each note whole and never shortens one. The stack then only gets a plan computed from versions, marked incomplete, until the model has a larger context (see [Context length](configuration.md#ai-provider)).
 - **Versions without notes.** Without release notes, the plan has an "unknown" risk level: it is applied on its own, protected by verification and rollback, but nobody has read what changes.
 
 ## Prompt injection

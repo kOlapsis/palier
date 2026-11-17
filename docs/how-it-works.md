@@ -31,7 +31,7 @@ Palier finds the origin project through the `org.opencontainers.image.source` la
 
 These notes are treated as untrusted data: the AI is instructed never to follow what they contain, and the interface displays them as text.
 
-Before the plan, the AI reads each note on its own and keeps the facts it states that matter for an upgrade (breaking change, action asked of administrators, configuration change, data migration, security fix, required stop, supported dependency versions), each with its quote. A quote that is not word for word in the note is dropped. Palier stores what was read, so each note is read once, even across stacks; a new release costs only its own note. A note shared by several services, such as the server and the machine learning of Immich, is read once. The plan is then computed from these facts, which keeps the request small however far behind the stack is.
+Before the plan, the AI reads each note on its own and keeps the facts it states that matter for an upgrade (breaking change, action asked of administrators, configuration change, data migration, security fix, required stop, supported dependency versions), each with its quote. A quote that is not word for word in the note is dropped. Palier stores what was read, so each note is read once, even across stacks; a new release costs only its own note. A note shared by several services, such as the server and the machine learning of Immich, is read once. The plan is then computed from these facts, which keeps the request small however far behind the stack is. Each note still has to fit, whole, in the context of the model: a note longer than that stops the AI plan of its stack (see [Context length](configuration.md#ai-provider)).
 
 ### Security advisories
 

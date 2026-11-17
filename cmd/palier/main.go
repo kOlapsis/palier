@@ -544,7 +544,7 @@ func aiFailure(err error) string {
 	case strings.Contains(msg, " 404 ") || strings.Contains(msg, "not_found_error"):
 		todo = "check PALIER_AI_MODEL and PALIER_AI_URL"
 	case strings.Contains(msg, "too long") || strings.Contains(msg, "context length") || strings.Contains(msg, "context window"):
-		todo = "the release notes of this stack do not fit in one request to this model; set PALIER_AI_MODEL to a model with a larger context"
+		todo = "a request does not fit in the context of this model, most often one very long release note read whole; raise the context of the model or set PALIER_AI_MODEL to one with a larger context"
 	}
 	return fmt.Sprintf("the AI returned no plan, %s. Its answer: %s", todo, msg)
 }

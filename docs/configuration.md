@@ -65,7 +65,13 @@ volumes:
 ```
 
 !!! warning "Context length"
-    The instructions, the Compose files and the release notes of a stack take from a few thousand tokens to more than 35,000 for Outline. Give the model a context of 65,536 tokens: `OLLAMA_CONTEXT_LENGTH` for Ollama, `--max-model-len` for vLLM. When a prompt does not fit, the server refuses it, and Palier keeps a plan computed from versions alone, marked incomplete with the message of the server.
+    The context of the model limits what one request can carry, and Palier sends three kinds of request. The sizes below count about 2 characters per token, which is what release notes full of links measured on the bench.
+
+    - **Reading one note.** Each release note is read alone, with the instructions, so the context must hold the longest note of your stacks. The 128 notes of Immich average 6,500 characters, about 3,000 tokens, but v3.0.0 alone takes 52,671 characters, about 25,000 tokens. One note that does not fit stops the AI plan of its whole stack, since every note has to be read; the notes already read stay stored.
+    - **Computing the plan.** The instructions, the Compose files and the facts read from every note. This stays small however far behind the stack is: from Immich v1.105.1 to v3.4.1, the facts read from 161 texts (release notes, security advisories and documentation) take 61,000 characters, where the release notes alone take 835,000.
+    - **Reading again in full.** When a plan does not hold, Palier sends the notes concerned in full, up to 400,000 characters, about 190,000 tokens. A model with a smaller context refuses that request and Palier keeps the first plan.
+
+    Palier never shortens a note: a model either reads it whole or does not read it. With a model you host, give it a context of 65,536 tokens, `OLLAMA_CONTEXT_LENGTH` for Ollama or `--max-model-len` for vLLM, and more if your stacks have longer notes. When a request does not fit, the server refuses it, and the stack shows an incomplete plan computed from versions alone, with the message of the server: raise the context or choose a model with a larger one. The default Anthropic model accepted up to 1,000,000 tokens per request on the bench, far above any single note.
 
 ## Backups
 
