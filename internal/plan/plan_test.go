@@ -371,3 +371,29 @@ func TestWithheldNotForMovedImage(t *testing.T) {
 		t.Errorf("moved to another image: %q", move.Withheld)
 	}
 }
+
+func TestBuildLineMovesAsOneRelease(t *testing.T) {
+	for from, to := range map[[2]string]string{{"stable-11248-2", "stable-11509"}: "minor", {"stable-11248-2", "stable-11248-3"}: "patch"} {
+		if got := Level(from[0], from[1]); got != to {
+			t.Errorf("Level(%s, %s) = %s, want %s", from[0], from[1], got, to)
+		}
+	}
+	svc := func(name, role string, needs ...string) *inventory.Service {
+		return &inventory.Service{Name: name, Role: role, Image: "ghcr.io/jitsi/" + name, Tag: "stable-11248-2", Version: "stable-11248-2",
+			Source: "https://github.com/jitsi/docker-jitsi-meet", DependsOn: needs, Available: rel("stable-11248-3", "stable-11509")}
+	}
+	st := &inventory.Stack{Services: []*inventory.Service{svc("web", inventory.RoleApplication, "jvb"), svc("jicofo", inventory.RoleApplication, "prosody"),
+		svc("jvb", inventory.RoleDependency, "prosody"), svc("prosody", inventory.RoleDependency)}}
+	p := Fallback(st, "x")
+	got := map[string]string{}
+	for _, s := range p.Steps {
+		for _, c := range s.Changes {
+			got[c.Service] = c.To
+		}
+	}
+	for _, name := range []string{"web", "jicofo", "jvb", "prosody"} {
+		if got[name] != "stable-11509" {
+			t.Errorf("%s goes to %q, want stable-11509: %v", name, got[name], got)
+		}
+	}
+}

@@ -76,3 +76,24 @@ func TestEngine(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildLine(t *testing.T) {
+	for tag, want := range map[string][]int{"stable-11248-2": {0, 11248, 2}, "stable-11509": {0, 11509, 0}} {
+		if v, ok := Parse(tag); !ok || !reflect.DeepEqual(v.Nums, want) || v.Prefix != "stable-" {
+			t.Errorf("Parse(%q) = %+v, %v; want %v", tag, v, ok, want)
+		}
+	}
+	for _, tag := range []string{"stable", "stable-", "stable-11248-2-arm64", "unstable-2026-11-18", "sha-1234567", "pr-123", "jdk-21", "stable-99999999999999999999"} {
+		if _, ok := Parse(tag); ok {
+			t.Errorf("Parse(%q) should not read a version", tag)
+		}
+	}
+	running, _ := Parse("stable-11248-2")
+	registry := []string{"stable", "unstable", "web-1.0.9663-1", "unstable-2026-11-18", "stable-11509", "stable-11146", "stable-11146-2", "stable-11248", "stable-11248-1", "stable-11248-2", "stable-11248-3"}
+	if got, want := tags(Newer(running, registry)), []string{"stable-11248-3", "stable-11509"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("newer than stable-11248-2: %v, want %v", got, want)
+	}
+	if base, _ := Parse("stable-11248"); base.Extends(running) {
+		t.Error("stable-11248 is a release of its own, not a moving tag of its revisions")
+	}
+}

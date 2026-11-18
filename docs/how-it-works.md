@@ -12,7 +12,7 @@ For each image, Palier reads the tags in the registry: Docker Hub, GHCR or any O
 
 The running version comes, in this order:
 
-1. from the tag, when it is precise: `1.12.0`, `v2.5.5`, `6.2.14-alpine`, or `pg14-v0.2.0`, whose `pg14-v` prefix is read as its own line;
+1. from the tag, when it is precise: `1.12.0`, `v2.5.5`, `6.2.14-alpine`, `pg14-v0.2.0`, whose `pg14-v` prefix is read as its own line, or `stable-11248-2`, a build number of the `stable` channel and its revision, where a new build counts as a minor version and a revision as a patch;
 2. otherwise from the digest, compared with that of the precise tags in the registry;
 3. otherwise from the OCI annotation `org.opencontainers.image.version` that the registry gives for this digest;
 4. otherwise from the `org.opencontainers.image.version` label of the image.

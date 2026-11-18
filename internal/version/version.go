@@ -9,7 +9,7 @@ import (
 )
 
 // V is a tag read as a prefix such as "v" or "pg14-v", dotted numbers and a variant suffix such as "-alpine" or "-ce.0",
-// with the PostgreSQL version the tag names, if any.
+// with the PostgreSQL version the tag names, if any; a build number such as "stable-11248-2" is read as 0.11248.2.
 type V struct {
 	Tag    string
 	Prefix string
@@ -24,7 +24,7 @@ var pattern = regexp.MustCompile(`^(?:(v?)(\d+(?:\.\d+)*)|([A-Za-z][\w.-]*?[-_]v
 func Parse(tag string) (v V, ok bool) {
 	m := pattern.FindStringSubmatch(tag)
 	if m == nil {
-		return V{}, false
+		return build(tag)
 	}
 	prefix, nums := m[1], m[2]
 	if m[3] != "" {
@@ -40,6 +40,29 @@ func Parse(tag string) (v V, ok bool) {
 	}
 	if e, ok := Engine(tag); ok {
 		v.Engine = e.Nums
+	}
+	return v, true
+}
+
+// shortcut: only the "stable-" channel is read as a line of builds, add a channel when another project names its releases so.
+var buildLine = regexp.MustCompile(`^(stable-)(\d+)(?:-(\d+))?$`)
+
+// build reads a tag made of a release channel and a build number, as "stable-11248" or its revision "stable-11248-2".
+func build(tag string) (V, bool) {
+	m := buildLine.FindStringSubmatch(tag)
+	if m == nil {
+		return V{}, false
+	}
+	// a line of builds has no major: a build is read as a minor, its revision as a patch
+	v := V{Tag: tag, Prefix: m[1], Nums: []int{0, 0, 0}}
+	for i, n := range m[2:] {
+		if n == "" {
+			continue
+		}
+		var err error
+		if v.Nums[i+1], err = strconv.Atoi(n); err != nil {
+			return V{}, false
+		}
 	}
 	return v, true
 }
