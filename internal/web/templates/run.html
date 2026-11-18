@@ -1,15 +1,30 @@
-{{define "head"}}{{if eq .Status "running"}}<meta http-equiv="refresh" content="3">{{end}}{{end}}
-{{define "content"}}
+{{define "title"}}Palier: run {{.ID}}{{end}}
+{{define "poll"}}{{if eq .Status "running"}}3{{else}}30{{end}}{{end}}
+{{define "content"}}{{$run := eq .Status "running"}}{{$t := or (eq .Status "failed") (eq .Status "rolled_back") (eq .Status "stopped") (eq .Status "abandoned")}}
+<nav class="trail" aria-label="Breadcrumb"><a href="/">Stacks</a><a href="/stacks/{{.Stack}}">{{.Stack}}</a><span>Run {{.ID}}</span></nav>
 <div class="head">
 <h1>{{if .DryRun}}Dry run{{else}}Run{{end}} {{.ID}}</h1>
-<span class="pill {{tone .Status}}">{{label .Status}}</span>
-<p class="meta">Stack <a href="/stacks/{{.Stack}}">{{.Stack}}</a>, started by {{.Author}} on {{when .Started}}{{with .Finished}}, finished on {{when .}}{{end}}.</p>
+{{template "pill" .Status}}
+<p class="about">Stack <a href="/stacks/{{.Stack}}">{{.Stack}}</a> · started by {{.Author}} on {{when .Started}} · {{if $run}}{{elapsed .Started .Finished}} elapsed{{else}}lasted {{elapsed .Started .Finished}}{{end}}</p>
+{{if $run}}<p class="end small-print">You can close this page. The run goes on in Palier.</p>{{end}}
 </div>
+{{if $t}}<section id="outcome" class="panel pad md {{if eq .Status "failed"}}bad tint{{else}}warn{{end}}">
+<h2>{{if eq .Status "failed"}}{{if .DryRun}}The dry run found problems{{else}}The rollback did not complete{{end}}{{else if eq .Status "rolled_back"}}The stack was rolled back{{else if eq .Status "stopped"}}The update stopped after a verified step{{else}}The update was abandoned{{end}}</h2>
+<p class="muted">{{if eq .Status "failed"}}{{if .DryRun}}Nothing was changed.{{else}}The update failed, and Palier could not bring the stack back to its checkpoint. The stack page shows which services are running.{{end}}{{else if eq .Status "rolled_back"}}It is back at its last verified step. The update is still to do.{{else if eq .Status "stopped"}}The steps already verified stay. The next ones wait.{{else}}Nothing was changed.{{end}}</p>
 {{with .Error}}<pre class="error">{{.}}</pre>{{end}}
-{{if and .Steps (not .DryRun)}}{{template "progress" .}}{{end}}
-<div class="panel">
-<table class="log"><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>
-{{range .Events}}<tr><td>{{when .At}}</td><td><pre>{{.Message}}</pre></td></tr>{{end}}
-</tbody></table>
+<div class="actions"><a class="btn" href="/stacks/{{.Stack}}">Open the stack</a></div>
+</section>{{else}}{{with .Error}}<pre class="error">{{.}}</pre>{{end}}{{end}}
+{{if and .Steps (not .DryRun)}}{{$v := .}}<section id="steps" class="panel pad lg steps{{if $run}} run{{end}}">
+<div class="top-row">
+<div class="title"><h2>{{if $run}}Step {{inc .StepsDone}} of {{len .Steps}}{{else}}{{len .Steps}} step{{plural (len .Steps)}}{{end}}</h2>{{if and $run (lt .StepsDone (len .Steps))}}<p class="mono muted">{{index .Steps .StepsDone}}</p>{{end}}</div>
+<p class="muted">{{if $run}}{{.StepsDone}} verified, 1 in progress, {{sub (sub (len .Steps) .StepsDone) 1}} to come{{else}}{{.StepsDone}} of {{len .Steps}} verified{{end}}</p>
 </div>
+{{template "stairs" .}}
+{{if $run}}<p class="muted">If this step fails, Palier puts the whole stack back at its last verified step: Compose files, images and volumes.</p>{{end}}
+<ol class="numbered">{{range $i, $d := .Steps}}<li><span class="no">{{inc $i}}</span><div class="top-row"><span>{{$d}}</span>{{if lt $i $v.StepsDone}}<span class="state done"><svg class="tick" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Verified</span>{{else if eq $i $v.StepsDone}}{{if $run}}<span class="pill run">In progress</span>{{else if or (eq $v.Status "rolled_back") (eq $v.Status "failed")}}<span class="state bad">Failed</span>{{else}}<span class="faint">Not reached</span>{{end}}{{else}}<span class="faint">{{if $run}}To come{{else}}Not reached{{end}}</span>{{end}}</div></li>{{end}}</ol>
+</section>{{end}}
+<section id="events" class="log">
+<div class="bar"><h2>Events</h2>{{if $run}}<span class="live"><span class="dot"></span>Live, times in UTC</span>{{else}}<span class="hint">Times in UTC</span>{{end}}</div>
+<div class="scroll"><div class="body">{{$n := len .Events}}{{range $i, $e := .Events}}<div class="ev{{if and $run (eq (inc $i) $n)}} cur{{end}}"><time title="{{when $e.At}}">{{clock $e.At}}</time><span>{{$e.Message}}</span></div>{{end}}</div></div>
+</section>
 {{end}}

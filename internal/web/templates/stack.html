@@ -1,119 +1,130 @@
-{{define "head"}}<meta http-equiv="refresh" content="{{$busy := false}}{{with .Runs}}{{with index . 0}}{{if eq .Status "running"}}{{$busy = true}}{{end}}{{end}}{{end}}{{if $busy}}5{{else}}60{{end}}">{{end}}
+{{define "title"}}Palier: {{.Stack.Name}}{{end}}
+{{define "poll"}}{{$n := 30}}{{if or scanning .At.IsZero}}{{$n = 3}}{{end}}{{with .Runs}}{{if eq (index . 0).Status "running"}}{{$n = 3}}{{end}}{{end}}{{$n}}{{end}}
 {{define "content"}}
-{{$state := state .Stack}}
+{{$last := false}}{{range .Runs}}{{if and (not $last) (not .DryRun)}}{{$last = .}}{{end}}{{end}}
+{{$live := false}}{{if $last}}{{if eq $last.Status "running"}}{{$live = true}}{{end}}{{end}}
+<nav class="trail" aria-label="Breadcrumb"><a href="/">Stacks</a><span>{{.Stack.Name}}</span></nav>
 <div class="head">
 <h1>{{.Stack.Name}}</h1>
-<span class="pill {{tone $state}}">{{$state}}</span>
-<p class="meta">{{with .Stack.WorkingDir}}<span class="mono">{{.}}</span>, {{end}}{{if .At.IsZero}}first scan in progress{{else}}last scan {{since .At}}{{end}}</p>
+<span class="pill {{tone .State}}">{{if $live}}{{$k := inc $last.StepsDone}}{{if gt $k (len $last.Steps)}}{{$k = len $last.Steps}}{{end}}Updating, step {{$k}} of {{len $last.Steps}}{{else}}{{capital .State}}{{end}}</span>
+{{if $live}}<div class="end follow"><a class="btn primary" href="/runs/{{$last.ID}}">Follow run {{$last.ID}}</a></div>{{end}}
+<p class="meta">{{with .Stack.WorkingDir}}{{.}}{{end}}{{range .Stack.ConfigFiles}} · {{base .}}{{end}} · {{if .At.IsZero}}first scan in progress{{else}}last scan {{since .At}}{{end}}</p>
 </div>
 {{with .Error}}<p class="notice bad">{{.}}</p>{{end}}
 {{with .Postponed}}<p class="notice info">Automatic apply postponed until {{.}}.</p>{{end}}
 {{range .Stack.Errors}}<p class="notice bad">{{.}}</p>{{end}}
 
-<div class="panel">
-<table>
-<thead><tr><th>Service</th><th>Running</th><th>State</th><th>Depends on</th><th class="paths">Upgrade path</th></tr></thead>
-<tbody>
-{{range .Stack.Services}}<tr>
-<td class="name">{{.Name}}<span class="sub">{{label .Role}}</span></td>
-<td><span class="mono">{{.Tag}}</span>
-<span class="sub mono">{{.Image}}</span>
-{{if and .Version (ne .Version .Tag)}}<span class="sub">version {{.Version}}, read from {{if eq .VersionSource "digest"}}the digest{{else if eq .VersionSource "annotation"}}the registry's OCI annotation{{else}}the OCI label{{end}}</span>{{end}}
-{{if .Republished}}<span class="flag muted">Tag republished in the registry with different content: this is not a new version.</span>{{end}}
-</td>
-<td>{{.State}}{{with .Health}}<span class="sub">{{.}}</span>{{end}}{{if .Restarts}}<span class="sub">{{.Restarts}} restart{{if ne .Restarts 1}}s{{end}}</span>{{end}}</td>
-<td>{{with .DependsOn}}{{join .}}{{else}}<span class="muted">none</span>{{end}}</td>
-<td>{{$path := crumbs . $.Record}}{{if .BuiltLocally}}<span class="muted">built locally: no registry to check</span>{{else if .NotInRegistry}}<span class="muted">not in its registry: built locally, or private without credentials</span>{{else if .DetectionError}}<span class="muted">versions unknown</span>{{else if $.At.IsZero}}<span class="muted">checking versions</span>{{else if gt (len $path) 1}}
-<ol class="path" aria-label="Upgrade path of {{.Name}}">{{range $i, $c := $path}}<li class="{{if eq $i 0}}from{{else if $c.Last}}last{{else if $c.Stop}}stop{{end}}"><span{{if $c.Stop}} title="Required stop"{{end}}>{{$c.Tag}}</span></li>{{end}}</ol>
-{{else if and .Available $.Record}}<span class="muted">stays on {{or .Version .Tag}}: the plan does not change it</span>{{else}}<span class="muted">up to date</span>{{end}}
-{{with .Available}}<details class="versions"><summary>{{len .}} newer version{{if gt (len .) 1}}s{{end}}</summary><p>{{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</p></details>{{end}}
-{{with .Maturing}}<span class="flag muted">Maturing: {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>{{end}}
-{{with .DetectionError}}<span class="flag bad">{{.}}</span>{{end}}
-{{with .NotesError}}<span class="flag bad">{{.}}</span>{{end}}
-{{with .Hidden}}<details class="versions"><summary>Removed from the notes before the AI read them</summary><p>{{range $i, $h := .}}{{if $i}}<br>{{end}}{{$h}}{{end}}</p></details>{{end}}</td>
-</tr>
-{{with .Advisories}}<tr class="advisories"><td></td><td colspan="4"><details><summary><span class="pill bad">{{severities .}}</span></summary>
-<ul>{{range worstFirst .}}<li><span class="sev {{.Severity}}">{{or .Severity "unknown"}}</span><a href="{{.URL}}" rel="noreferrer noopener">{{with .CVE}}{{.}}{{else}}{{.ID}}{{end}}</a><span>{{.Summary}}</span></li>{{end}}</ul>
-</details></td></tr>
-{{end}}{{end}}</tbody>
-</table>
-</div>
-{{with .Backups}}
-<h2>Backups</h2>
-<div class="panel">
-<table><thead><tr><th>Service</th><th>Made</th><th>Backup</th></tr></thead><tbody>
-{{range .}}<tr><td class="name">{{.Service}}<span class="sub">{{.Kind}}{{with .Databases}}: {{join .}}{{end}}</span></td>
-<td>{{when .At}}<span class="sub">before run <a href="/runs/{{.Run}}">{{.Run}}</a></span></td>
-<td>{{if .Error}}<span class="pill bad">failed</span><span class="sub">{{.Error}}</span>{{else}}<span class="mono">{{.Location}}</span><span class="sub">{{size .Size}} in {{.Seconds}} s, sha256 <span class="mono">{{.SHA256}}</span></span>{{end}}</td></tr>
-{{end}}</tbody></table>
-</div>
-{{end}}
+{{with $last}}{{if or (eq .Status "failed") (eq .Status "rolled_back") (eq .Status "stopped") (eq .Status "abandoned")}}
+<section id="outcome" class="panel pad {{if eq .Status "failed"}}bad tint{{else}}warn{{end}}"><div class="top-row">
+<div class="grow"><p>{{if eq .Status "failed"}}The update failed and the rollback did not complete: the stack may not be back at its checkpoint.{{else if eq .Status "rolled_back"}}The update was rolled back. The stack is back at its last verified step; the update is still to do.{{else if eq .Status "stopped"}}The update stopped after a verified step. The next steps wait.{{else}}The update was abandoned before anything changed.{{end}}</p>
+{{with firstLine .Error}}<p class="sub wrap">{{.}}</p>{{end}}</div>
+<a class="btn primary" href="/runs/{{.ID}}">Open run {{.ID}}</a>
+</div></section>
+{{end}}{{end}}
 
-{{with .Stack.Unused}}
-<h2>Volumes no container uses</h2>
-<div class="panel">
-<table><thead><tr><th>Volume</th><th>Size</th><th>Location</th></tr></thead><tbody>
-{{range .}}<tr><td class="name">{{.Name}}</td><td>{{if ge .Size 0}}{{size .Size}}{{else}}not measured{{end}}</td><td class="mono">{{.Mountpoint}}</td></tr>
-{{end}}</tbody></table>
+{{if $live}}{{$l := line $}}{{with $last}}
+<section id="path" class="panel pad lg" aria-label="Upgrade path">
+<div class="top-row">
+<div><div class="eyebrow">Upgrade path</div><p class="big">{{$l.Running}}{{with $l.Target}} <span class="faint">→</span> {{.}}{{end}}</p></div>
+<p class="muted">{{.StepsDone}} step{{plural .StepsDone}} verified, 1 in progress, {{$y := sub (sub (len .Steps) .StepsDone) 1}}{{if lt $y 0}}{{$y = 0}}{{end}}{{$y}} to come · started by {{.Author}} {{elapsed .Started ""}} ago</p>
 </div>
-<p class="muted">Palier keeps them and never removes them: for instance the old volume of a database after a major upgrade.</p>
-{{end}}
-
-{{if hasStop .Stack .Record}}<p class="legend"><i></i>required stop from the catalog card; the last version of the path is the target.</p>{{end}}
-
-{{with .Runs}}{{with index . 0}}{{if and (eq .Status "running") (not .DryRun)}}
-<h2>Run <a href="/runs/{{.ID}}">{{.ID}}</a> in progress</h2>
-{{template "progress" .}}
-{{end}}{{end}}{{end}}
-
-{{with .Record}}{{with .Plan}}
-<div class="planhead">
-<div>
-<h2>Plan</h2>
-<p>{{if eq $.Record.Source "ai"}}AI plan{{else}}Plan computed from versions only{{end}}, confirmed {{since $.Record.Created}}. {{if $.Auto}}Automatic apply will pick it up.{{else if $.AutoWhy}}No automatic apply: {{$.AutoWhy}}.{{end}}</p>
+{{template "stairs" .}}
+<div class="cards halves">
+{{with $.Now}}<div><span class="sub">Right now</span><p class="wrap">{{.}}</p></div>{{end}}
+<div><span class="sub">If this step fails</span><p>Palier puts the whole stack back at its last verified step: Compose files, images and volumes.</p></div>
 </div>
-{{if .Steps}}<div class="actions">
-<form method="post" action="/stacks/{{$.Stack.Name}}/dry-run"><button>Dry run</button></form>
-{{if not .Incomplete}}<form method="post" action="/stacks/{{$.Stack.Name}}/apply"><button class="primary">Apply plan</button></form>{{end}}
-</div>{{end}}
-</div>
+</section>
+{{end}}{{end}}
+
+<div class="split">
+{{with .Record}}<section id="plan" class="panel" aria-labelledby="plan-title">
+<div class="bar"><h2 id="plan-title">Plan</h2><span class="hint">{{if eq .Source "ai"}}AI plan{{else}}Plan computed from versions only{{end}}, confirmed {{since .Created}}</span></div>
+{{with .Plan}}<div class="inset">
+{{if or $.Auto $.AutoWhy}}<p class="muted">{{if $.Auto}}Automatic apply will pick it up.{{else}}No automatic apply: {{$.AutoWhy}}.{{end}}</p>{{end}}
 {{with .Refined}}<p class="muted">{{.}}</p>{{end}}
 {{if not .Steps}}<p class="muted">Nothing to apply.</p>{{end}}
 {{with .Suspicious}}<div class="notice bad">The release notes contain text that seems written to steer an AI; the plan waits for you:<ul>{{range .}}<li>“{{.}}”</li>{{end}}</ul></div>{{end}}
 {{with .Incomplete}}<div class="notice bad">Incomplete plan, it will not be applied:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 {{with .Withheld}}<div class="notice info">Versions left out:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
-<ol class="steps">
-{{range $i, $s := .Steps}}<li><div class="step">
-<header><strong>Step {{inc $i}}</strong>
-<span class="pill {{tone .Risk}}">risk: {{label .Risk}}</span>
-<span class="pill {{tone .Reversible}}">reversible: {{label .Reversible}}</span></header>
-{{with .Why}}<p>{{.}}</p>{{end}}
-<ul class="changes">
-{{range .Changes}}<li>{{.Service}}: <code>{{.From}}</code> to <code>{{.To}}</code></li>{{end}}
-{{with .StopDuring}}<li class="muted">Stopped during the step: {{join .}}</li>{{end}}
-</ul>
-<ol class="ops">{{range .Operations}}<li>{{.Op}}{{with .Service}} {{.}}{{end}}{{with .Services}} {{join .}}{{end}}{{with .Image}} {{.}}{{end}}{{with .Tag}}:{{.}}{{end}}{{with .ToImage}} to {{.}}{{end}}{{with .ToTag}}:{{.}}{{end}}{{with .CheckRef}} {{.}}{{end}}{{with .Seconds}} {{.}} s{{end}}{{range .Edits}} · {{.Action}}{{with .Name}} {{.}}{{end}}{{with .Value}} = {{.}}{{end}}{{with .NewName}} → {{.}}{{end}}{{end}}</li>{{end}}</ol>
-{{with .Gate}}{{if eq .Op "exec_check"}}<p class="muted">Gate: {{.CheckRef}} on {{.Service}}.</p>{{end}}{{end}}
+{{if and .Steps (not $live)}}<div class="actions">
+<form method="post" action="/stacks/{{$.Stack.Name}}/dry-run"><button>Dry run</button></form>
+{{if not .Incomplete}}<form method="post" action="/stacks/{{$.Stack.Name}}/apply"><button class="primary">Apply plan</button></form>{{end}}
+</div>{{end}}
+</div>
+{{range $i, $s := .Steps}}<div class="row top{{if and $live (eq $i $last.StepsDone)}} cur{{end}}">
+<span class="no">{{inc $i}}</span>
+<div class="chg">{{range .Changes}}<span>{{.Service}} {{.From}} → {{.To}}</span>{{end}}{{with .StopDuring}}<span class="sub">Stopped during the step: {{join .}}</span>{{end}}</div>
+<div class="grow"><p class="muted">{{.Why}}</p><div class="actions"><span class="pill {{tone .Risk}}">risk: {{label .Risk}}</span><span class="pill {{tone .Reversible}}">reversible: {{label .Reversible}}</span></div></div>
+{{if $live}}{{if lt $i $last.StepsDone}}<span class="state done"><svg class="tick" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Verified</span>{{else if eq $i $last.StepsDone}}<span class="pill run">In progress</span>{{else}}<span class="faint">To come</span>{{end}}{{end}}
+{{if or .Operations .Gate .Facts}}<div class="detail">
+{{with .Operations}}<ol class="ops">{{range .}}<li><code class="chip">{{.Op}}</code><span>{{with .Service}}{{.}}{{end}}{{with .Services}} {{join .}}{{end}}{{with .Image}} {{.}}{{end}}{{with .Tag}}:{{.}}{{end}}{{with .ToImage}} to {{.}}{{end}}{{with .ToTag}}:{{.}}{{end}}{{with .CheckRef}} {{.}}{{end}}{{with .Seconds}} {{.}} s{{end}}{{range .Edits}} · {{.Action}}{{with .Name}} {{.}}{{end}}{{with .Value}} = {{.}}{{end}}{{with .NewName}} → {{.}}{{end}}{{end}}</span></li>{{end}}</ol>{{end}}
+{{with .Gate}}{{if eq .Op "exec_check"}}<p class="small-print">Gate: {{.CheckRef}} on {{.Service}}.</p>{{end}}{{end}}
 {{with .Facts}}<details><summary>{{len .}} quoted fact{{if gt (len .) 1}}s{{end}}</summary>
-{{range .}}<div class="fact"><div><strong>{{.Category}}</strong>, {{.Service}} {{.Version}}{{with .Dependency}}, {{.}}{{end}}{{with .MinVersion}} min {{.}}{{end}}{{with .MaxVersion}} max {{.}}{{end}} · <a href="{{.SourceURL}}" rel="noreferrer noopener">source</a></div>
-<blockquote>{{.Quote}}</blockquote></div>{{end}}
+{{range .}}<figure class="quote"><figcaption>Quoted from the release notes</figcaption><blockquote>{{.Quote}}</blockquote>
+<p class="small-print"><strong>{{.Category}}</strong>, {{.Service}} {{.Version}}{{with .Dependency}}, {{.}}{{end}}{{with .MinVersion}} min {{.}}{{end}}{{with .MaxVersion}} max {{.}}{{end}} · <a href="{{.SourceURL}}" rel="noreferrer noopener">source</a></p></figure>{{end}}
 </details>{{end}}
-</div></li>
-{{end}}</ol>
-{{if .Steps}}
-<div class="decide">
-{{range .Steps}}{{range .Changes}}<form method="post" action="/stacks/{{$.Stack.Name}}/ignore"><input type="hidden" name="service" value="{{.Service}}"><input type="hidden" name="version" value="{{.To}}"><button class="small">Ignore {{.Service}} {{.To}}</button></form>{{end}}{{end}}
-<form method="post" action="/stacks/{{$.Stack.Name}}/postpone"><label>Postpone automatic apply until <input type="date" name="until" required></label> <button class="small">Postpone</button></form>
-</div>
-{{end}}
+</div>{{end}}
+</div>{{end}}{{end}}
+</section>{{end}}
+<aside id="side">
+<section class="panel"><h2>Automation</h2><div class="inset">
+<p class="muted">Automatic apply is on <code class="chip">{{(config).Auto}}</code>. It comes from <code class="chip">PALIER_AUTO</code>; a <code class="chip">palier.auto</code> label on a service overrides it.</p>
+{{with .Record}}{{if .Plan.Steps}}
+<details><summary>Postpone…</summary>
+<form class="field" method="post" action="/stacks/{{$.Stack.Name}}/postpone" hx-post="/stacks/{{$.Stack.Name}}/postpone" hx-replace-url="true"><label>Postpone automatic apply until<input type="date" name="until" required></label><button class="small">Postpone</button></form>
+</details>
+<details><summary>Ignore a version…</summary>
+<div class="actions">{{range .Plan.Steps}}{{range .Changes}}<form method="post" action="/stacks/{{$.Stack.Name}}/ignore" hx-post="/stacks/{{$.Stack.Name}}/ignore" hx-replace-url="true"><input type="hidden" name="service" value="{{.Service}}"><input type="hidden" name="version" value="{{.To}}"><button class="small">Ignore {{.Service}} {{.To}}</button></form>{{end}}{{end}}</div>
+</details>
 {{end}}{{end}}
-
-{{with .Runs}}
-<h2>Runs</h2>
-<div class="panel">
-<table><thead><tr><th>#</th><th>Started</th><th>By</th><th>Result</th></tr></thead><tbody>
-{{range .}}<tr><td><a href="/runs/{{.ID}}">{{.ID}}</a></td><td>{{when .Started}}</td><td>{{.Author}}</td><td>{{if .DryRun}}<span class="muted">dry run</span> {{end}}<span class="pill {{tone .Status}}">{{label .Status}}</span></td></tr>{{end}}
-</tbody></table>
+</div></section>
+{{with .Runs}}<section class="panel"><h2>Runs</h2>
+{{range .}}<a class="row tbl cols-run" href="/runs/{{.ID}}"><span class="mono">{{.ID}}</span><span class="muted">by {{.Author}}<span class="sub">{{when .Started}}{{if .DryRun}} · dry run{{end}}</span></span>{{template "pill" .Status}}</a>
+{{end}}</section>{{end}}
+</aside>
 </div>
-{{end}}
+
+<section id="services" class="section"><h2>Services</h2>
+<div class="panel"><div class="scroll">
+<div class="row tbl cols-services cap"><span>Service</span><span>Running</span><span>State</span><span>Upgrade path</span></div>
+{{range .Stack.Services}}<div class="row tbl cols-services{{if ne .State "running"}} bad{{end}}">
+<div><strong>{{.Name}}</strong><span class="sub">{{label .Role}}</span>{{with .DependsOn}}<span class="sub">depends on {{join .}}</span>{{end}}</div>
+<div><span class="mono">{{.Tag}}</span><span class="sub mono wrap">{{.Image}}</span>
+{{if and .Version (ne .Version .Tag)}}<span class="sub">version {{.Version}}, read from {{if eq .VersionSource "digest"}}the digest{{else if eq .VersionSource "annotation"}}the registry's OCI annotation{{else}}the OCI label{{end}}</span>{{end}}
+{{if .Republished}}<span class="sub">Tag republished in the registry with different content: this is not a new version.</span>{{end}}</div>
+<div><span class="state{{if ne .State "running"}} bad{{end}}">{{.State}}</span>{{with .Health}}<span class="sub">{{.}}</span>{{end}}{{if .Restarts}}<span class="sub">{{.Restarts}} restart{{plural .Restarts}}</span>{{end}}</div>
+<div class="col">{{$path := crumbs . $.Record}}{{if .BuiltLocally}}<span class="muted">built locally: no registry to check</span>{{else if .NotInRegistry}}<span class="muted">not in its registry: built locally, or private without credentials</span>{{else if .DetectionError}}<span class="muted">versions unknown</span>{{else if $.At.IsZero}}<span class="muted">checking versions</span>{{else if gt (len $path) 1}}
+<ol class="path" aria-label="Upgrade path of {{.Name}}">{{range $i, $c := $path}}<li{{if eq $i 0}} class="from"{{else if $c.Last}} class="last"{{else if $c.Stop}} class="stop" title="Required stop"{{end}}>{{$c.Tag}}</li>{{end}}</ol>
+{{else if and .Available $.Record}}<span class="muted">stays on {{or .Version .Tag}}: the plan does not change it</span>{{else}}<span class="muted">up to date</span>{{end}}
+{{with .Available}}<details><summary>{{len .}} newer version{{plural (len .)}}</summary><p class="small-print mono">{{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</p></details>{{end}}
+{{with .Maturing}}<span class="muted">Maturing: {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>{{end}}
+{{with .DetectionError}}<span class="err">{{.}}</span>{{end}}
+{{with .NotesError}}<span class="err">{{.}}</span>{{end}}
+{{with .Hidden}}<details><summary>Removed from the notes before the AI read them</summary><p class="small-print">{{range $i, $h := .}}{{if $i}}<br>{{end}}{{$h}}{{end}}</p></details>{{end}}</div>
+</div>
+{{with .Advisories}}<div class="row"><details><summary><span class="pill bad">{{severities .}}</span></summary>
+<ul class="advs">{{range worstFirst .}}<li><span class="sev {{.Severity}}">{{or .Severity "unknown"}}</span><a href="{{.URL}}" rel="noreferrer noopener">{{with .CVE}}{{.}}{{else}}{{.ID}}{{end}}</a><span>{{.Summary}}</span></li>{{end}}</ul>
+</details></div>{{end}}
+{{end}}</div></div>
+{{if hasStop .Stack .Record}}<div class="legend"><ol class="path"><li class="stop">stop</li></ol><span>required stop from the catalog card; the last version of the path is the target.</span></div>{{end}}
+</section>
+
+{{with .Backups}}<section id="backups" class="section"><h2>Backups</h2>
+<div class="panel"><div class="scroll">
+<div class="row tbl cols-partial cap"><span>Service</span><span>Made</span><span>Backup</span></div>
+{{range .}}<div class="row tbl cols-partial">
+<div><strong>{{.Service}}</strong><span class="sub">{{.Kind}}{{with .Databases}}: {{join .}}{{end}}</span></div>
+<div>{{when .At}}<span class="sub">before run <a href="/runs/{{.Run}}">{{.Run}}</a></span></div>
+<div>{{if .Error}}<span class="pill bad">Failed</span><span class="sub">{{.Error}}</span>{{else}}<span class="mono">{{.Location}}</span><span class="sub">{{size .Size}} in {{.Seconds}} s, sha256 <span class="mono">{{.SHA256}}</span></span>{{end}}</div>
+</div>
+{{end}}</div></div>
+</section>{{end}}
+
+{{with .Stack.Unused}}<section id="volumes" class="section"><h2>Volumes no container uses</h2>
+<div class="panel"><div class="scroll">
+<div class="row tbl cols-partial cap"><span>Volume</span><span>Size</span><span>Location</span></div>
+{{range .}}<div class="row tbl cols-partial"><span class="mono">{{.Name}}</span><span>{{if ge .Size 0}}{{size .Size}}{{else}}not measured{{end}}</span><span class="mono faint">{{.Mountpoint}}</span></div>
+{{end}}</div></div>
+<p class="muted">Palier keeps them and never removes them: for instance the old volume of a database after a major upgrade.</p>
+</section>{{end}}
 {{end}}

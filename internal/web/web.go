@@ -4,19 +4,25 @@ package web
 import (
 	"bytes"
 	"cmp"
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kolapsis/palier/internal/catalog"
@@ -31,6 +37,36 @@ import (
 
 //go:embed templates
 var templates embed.FS
+
+//go:embed static
+var staticFiles embed.FS
+
+var assetVersion = sync.OnceValue(func() string {
+	h := sha256.New()
+	fs.WalkDir(staticFiles, "static", func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		body, _ := staticFiles.ReadFile(name)
+		h.Write([]byte(name))
+		h.Write(body)
+		return nil
+	})
+	return hex.EncodeToString(h.Sum(nil))[:8]
+})
+
+func staticHandler() http.Handler {
+	sub, _ := fs.Sub(staticFiles, "static")
+	files := http.StripPrefix("/static", http.FileServerFS(sub))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if info, err := fs.Stat(sub, strings.TrimPrefix(r.URL.Path, "/static/")); err != nil || info.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		files.ServeHTTP(w, r)
+	})
+}
 
 // Snapshot is the result of the last inspection.
 type Snapshot struct {
@@ -63,6 +99,7 @@ type Deps struct {
 }
 
 type server struct {
+	asked  atomic.Int64
 	author string
 	deps   Deps
 	mux    *http.ServeMux
@@ -184,6 +221,36 @@ func Since(t time.Time) string {
 		return fmt.Sprintf("%d min ago", int(d.Minutes()))
 	}
 	return fmt.Sprintf("%d h ago", int(d.Hours()))
+}
+
+// Elapsed says how long a run lasted, such as "47 s", "12 min" or "1 h 27 min": until now when finished is empty.
+func Elapsed(started, finished string) string { return elapsedAt(started, finished, time.Now()) }
+
+func elapsedAt(started, finished string, now time.Time) string {
+	from, err := time.Parse(time.RFC3339, started)
+	if err != nil {
+		return ""
+	}
+	to := now
+	if finished != "" {
+		if to, err = time.Parse(time.RFC3339, finished); err != nil {
+			return ""
+		}
+	}
+	return span(to.Sub(from))
+}
+
+func span(d time.Duration) string {
+	d = max(d, 0)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%d s", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%d min", int(d.Minutes()))
+	case int(d.Minutes())%60 == 0:
+		return fmt.Sprintf("%d h", int(d.Hours()))
+	}
+	return fmt.Sprintf("%d h %d min", int(d.Hours()), int(d.Minutes())%60)
 }
 
 func severityRank(s string) int {
@@ -330,9 +397,24 @@ func isStop(image, tag string) bool {
 func New(deps Deps) http.Handler {
 	s := &server{author: "interface", deps: deps, mux: http.NewServeMux(), pages: map[string]*template.Template{}}
 	funcs := template.FuncMap{
-		"state":   s.state,
-		"since":   Since,
-		"signout": func() bool { return deps.Config.OIDCIssuer != "" },
+		"state":    s.state,
+		"since":    Since,
+		"signout":  func() bool { return deps.Config.OIDCIssuer != "" },
+		"scanning": func() bool { return s.scanState() != "" },
+		"queued":   func() bool { return s.scanState() == "queued" },
+		"scanned":  func() time.Time { return deps.Current().At },
+		"asset":    func(name string) string { return "/static/" + name + "?v=" + assetVersion() },
+		"plural":   plural,
+		"line":     s.line,
+		"config":   func() config.Config { return deps.Config },
+		"clock": func(v string) string {
+			t, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				return v
+			}
+			return t.UTC().Format("15:04:05")
+		},
+		"elapsed": Elapsed,
 		"label": func(v string) string {
 			if l, ok := labels[v]; ok {
 				return l
@@ -345,6 +427,11 @@ func New(deps Deps) http.Handler {
 		"crumbs":     crumbs,
 		"hasStop":    hasStop,
 		"inc":        func(i int) int { return i + 1 },
+		"sub":        func(a, b int) int { return a - b },
+		"firstLine":  func(v string) string { s, _, _ := strings.Cut(v, "\n"); return s },
+		"span":       span,
+		"base":       path.Base,
+		"capital":    func(v string) string { return strings.ToUpper(v[:min(1, len(v))]) + v[min(1, len(v)):] },
 		"size":       Size,
 		"worstFirst": WorstFirst,
 		"severities": Severities,
@@ -357,14 +444,17 @@ func New(deps Deps) http.Handler {
 		},
 	}
 	for _, p := range []string{"index.html", "stack.html", "run.html", "settings.html", "gate.html"} {
-		s.pages[p] = template.Must(template.New("").Funcs(funcs).ParseFS(templates, "templates/layout.html", "templates/"+p))
+		section := ""
+		pageFuncs := maps.Clone(funcs)
+		pageFuncs["section"] = func() string { return section }
+		t := template.Must(template.New("").Funcs(pageFuncs).ParseFS(templates, "templates/layout.html", "templates/"+p))
+		var name strings.Builder
+		template.Must(t, t.ExecuteTemplate(&name, "section", nil))
+		section = name.String()
+		s.pages[p] = t
 	}
-	s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		s.render(w, http.StatusOK, "index.html", struct {
-			Snapshot
-			Problems
-		}{s.deps.Current(), Summarize(s.incidents())})
-	})
+	s.mux.HandleFunc("GET /{$}", s.overview)
+	s.mux.HandleFunc("POST /scan", s.scan)
 	s.mux.HandleFunc("GET /stacks/{name}", s.stack)
 	s.mux.HandleFunc("POST /stacks/{name}/apply", s.apply(false))
 	s.mux.HandleFunc("POST /stacks/{name}/dry-run", s.apply(true))
@@ -394,13 +484,107 @@ func New(deps Deps) http.Handler {
 	}
 	protected := http.NewCrossOriginProtection().Handler(h)
 	hook := registryHook(deps)
+	assets := staticHandler()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/hooks/registry/") {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/hooks/registry/"):
 			hook.ServeHTTP(w, r)
-			return
+		case strings.HasPrefix(r.URL.Path, "/static/"):
+			assets.ServeHTTP(w, r)
+		default:
+			protected.ServeHTTP(w, r)
 		}
-		protected.ServeHTTP(w, r)
 	})
+}
+
+// Overview is the list of stacks sorted by what they ask of the person.
+type Overview struct {
+	Snapshot
+	Problems
+	Query    string
+	Needs    []StackView
+	Updating []StackView
+	Planned  []StackView
+	Checking []StackView
+	Partial  []StackView
+	Quiet    []StackView
+}
+
+// group sorts stacks by what they ask of the person; q, in lower case, keeps only the matching stacks among the partly tracked and the quiet ones.
+func group(views []StackView, alerting map[string]bool, q string) (o Overview) {
+	for _, v := range views {
+		switch {
+		case v.State == "running":
+			o.Updating = append(o.Updating, v)
+		case alerting[v.Stack.Name]:
+			o.Needs = append(o.Needs, v)
+		case v.State == "awaiting decision" && v.Postponed != "":
+			o.Planned = append(o.Planned, v)
+		case slices.Contains([]string{"failed", "rolled back", "stopped", "abandoned", "incomplete plan", "awaiting decision"}, v.State):
+			o.Needs = append(o.Needs, v)
+		case v.State == "plan ready":
+			o.Planned = append(o.Planned, v)
+		case v.State == "computing plan" || v.State == "checking versions":
+			o.Checking = append(o.Checking, v)
+		case !matches(v.Stack, q):
+		case v.State == "detection incomplete":
+			o.Partial = append(o.Partial, v)
+		default:
+			o.Quiet = append(o.Quiet, v)
+		}
+	}
+	return o
+}
+
+func matches(st *inventory.Stack, q string) bool {
+	if strings.Contains(strings.ToLower(st.Name), q) {
+		return true
+	}
+	return slices.ContainsFunc(st.Services, func(svc *inventory.Service) bool { return strings.Contains(strings.ToLower(svc.Name), q) })
+}
+
+func (s *server) overview(w http.ResponseWriter, r *http.Request) {
+	snap := s.deps.Current()
+	incidents := s.incidents()
+	alerting := map[string]bool{}
+	var global []notify.Incident
+	for _, i := range incidents {
+		switch {
+		case i.Level != notify.Alert:
+		case i.Stack == "":
+			global = append(global, i)
+		default:
+			alerting[i.Stack] = true
+		}
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	views := make([]StackView, 0, len(snap.Stacks))
+	for _, st := range snap.Stacks {
+		views = append(views, s.view(st, snap.At))
+	}
+	o := group(views, alerting, strings.ToLower(query))
+	o.Snapshot, o.Problems, o.Query = snap, Summarize(incidents), query
+	o.Alerts, o.More = shorten(global, 3)
+	s.render(w, http.StatusOK, "index.html", o)
+}
+
+// scanState says whether a scan is "running", "queued" behind what Palier is doing since it was asked for, or "".
+func (s *server) scanState() string {
+	if s.deps.Scanning != nil && s.deps.Scanning() {
+		return "running"
+	}
+	if asked, began := s.asked.Load(), s.deps.Current().Began; asked != 0 && (began.IsZero() || asked > began.UnixNano()) {
+		return "queued"
+	}
+	return ""
+}
+
+func (s *server) scan(w http.ResponseWriter, r *http.Request) {
+	s.asked.Store(time.Now().UnixNano())
+	if s.deps.Rescan != nil {
+		s.deps.Rescan()
+	}
+	http.Redirect(w, r, refererPath(r), http.StatusSeeOther)
 }
 
 // registryHook asks for a scan when a registry announces a new tag, at most once a minute and never while one runs; it reads nothing from the request but its secret.
@@ -461,6 +645,11 @@ func (s *server) stack(w http.ResponseWriter, r *http.Request) {
 	if e := r.URL.Query().Get("error"); e != "" {
 		v.Error = e
 	}
+	if len(v.Runs) > 0 && v.Runs[0].Status == run.Running && s.deps.Run != nil {
+		if current, err := s.deps.Run(v.Runs[0].ID); err == nil && current != nil && len(current.Events) > 0 {
+			v.Now = current.Events[len(current.Events)-1].Message
+		}
+	}
 	s.render(w, http.StatusOK, "stack.html", v)
 }
 
@@ -477,6 +666,7 @@ type StackView struct {
 	Runs      []run.View         `json:"runs"`
 	Backups   []run.Archive      `json:"backups"`
 	Error     string             `json:"error,omitempty"`
+	Now       string             `json:"now,omitempty"`
 }
 
 func (s *server) view(st *inventory.Stack, at time.Time) StackView {

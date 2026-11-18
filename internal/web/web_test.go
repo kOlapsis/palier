@@ -61,7 +61,7 @@ func TestPagesRender(t *testing.T) {
 			return &run.View{ID: 1, Stack: "whoami", Status: "running", Steps: []string{"gitlab 16.1.6 to 16.3.9", "gitlab 16.3.9 to 16.7.10"}, StepsDone: 1, Events: []run.Event{{Message: "step 1"}}}, nil
 		},
 	})
-	for path, want := range map[string]string{"/runs/1?progress": `<li class="done">Step 1: gitlab 16.1.6 to 16.3.9</li><li class="current">Step 2`, "/": "rolled back", "/stacks/whoami": "rename_env SERVER_PORT → IMMICH_PORT", "/runs/1": "step 1", "/settings": "PALIER_AUTO"} {
+	for path, want := range map[string]string{"/runs/1?progress": `<li class="done" style="--i:1"></li><li class="current" style="--i:2"></li>`, "/": "rolled back", "/stacks/whoami": "rename_env SERVER_PORT → IMMICH_PORT", "/runs/1": "step 1", "/settings": "PALIER_AUTO"} {
 		r := httptest.NewRequest("GET", path, nil)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
@@ -225,5 +225,207 @@ func TestMainService(t *testing.T) {
 	st.Services = st.Services[:2]
 	if got := mainService(st); got.Name != "backup" {
 		t.Errorf("with only a backup and a database: %s", got.Name)
+	}
+}
+
+func TestElapsed(t *testing.T) {
+	now := time.Date(2026, 11, 18, 17, 0, 0, 0, time.UTC)
+	for _, c := range []struct{ started, finished, want string }{
+		{"2026-11-18T16:59:13Z", "", "47 s"},
+		{"2026-11-18T16:48:00Z", "", "12 min"},
+		{"2026-11-18T15:33:00Z", "", "1 h 27 min"},
+		{"2026-11-18T15:00:00Z", "", "2 h"},
+		{"2026-11-18T10:32:58Z", "2026-11-18T10:34:18Z", "1 min"},
+		{"2026-11-18T10:32:58Z", "2026-11-18T10:33:03Z", "5 s"},
+		{"2026-11-18T18:00:00Z", "", "0 s"},
+		{"yesterday", "", ""},
+		{"2026-11-18T10:32:58Z", "later", ""},
+	} {
+		if got := elapsedAt(c.started, c.finished, now); got != c.want {
+			t.Errorf("elapsed(%q, %q) = %q, want %q", c.started, c.finished, got, c.want)
+		}
+	}
+}
+
+func TestGroup(t *testing.T) {
+	stack := func(name string, services ...string) *inventory.Stack {
+		st := &inventory.Stack{Name: name}
+		for _, s := range services {
+			st.Services = append(st.Services, &inventory.Service{Name: s})
+		}
+		return st
+	}
+	var views []StackView
+	for _, c := range []struct{ name, state, postponed string }{
+		{"a-running", "running", ""}, {"b-failed", "failed", ""}, {"c-rolled", "rolled back", ""}, {"d-stopped", "stopped", ""},
+		{"e-abandoned", "abandoned", ""}, {"f-incomplete", "incomplete plan", ""}, {"g-awaiting", "awaiting decision", ""},
+		{"h-postponed", "awaiting decision", "2026-12-01"}, {"i-ready", "plan ready", ""}, {"j-computing", "computing plan", ""},
+		{"k-checking", "checking versions", ""}, {"l-partial", "detection incomplete", ""}, {"m-ok", "up to date", ""},
+		{"n-observed", "observed only", ""}, {"o-alert", "up to date", ""}, {"p-alert-running", "running", ""},
+	} {
+		views = append(views, StackView{Stack: stack(c.name, "web", "db-"+c.name), State: c.state, Postponed: c.postponed})
+	}
+	names := func(l []StackView) string {
+		var out []string
+		for _, v := range l {
+			out = append(out, v.Stack.Name[:1])
+		}
+		return strings.Join(out, "")
+	}
+	o := group(views, map[string]bool{"o-alert": true, "p-alert-running": true}, "")
+	for name, got := range map[string]string{"updating": names(o.Updating), "needs": names(o.Needs), "planned": names(o.Planned), "checking": names(o.Checking), "partial": names(o.Partial), "quiet": names(o.Quiet)} {
+		want := map[string]string{"updating": "ap", "needs": "bcdefgo", "planned": "hi", "checking": "jk", "partial": "l", "quiet": "mn"}[name]
+		if got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+	o = group(views, nil, "db-m")
+	if names(o.Quiet) != "m" || len(o.Partial) != 0 || len(o.Needs) != 6 {
+		t.Errorf("filter on a service: quiet %q, partial %d, needs %d", names(o.Quiet), len(o.Partial), len(o.Needs))
+	}
+	if o = group(views, nil, "-l"); names(o.Partial) != "l" || len(o.Quiet) != 0 {
+		t.Errorf("filter on a name: partial %q, quiet %q", names(o.Partial), names(o.Quiet))
+	}
+}
+
+func overviewDeps(stacks ...*inventory.Stack) Deps {
+	return Deps{
+		Current:   func() Snapshot { return Snapshot{Stacks: stacks, At: time.Now()} },
+		Runs:      func(string) ([]run.View, error) { return nil, nil },
+		Plan:      func(string) (*plan.Record, error) { return nil, nil },
+		Postponed: func(string) time.Time { return time.Time{} },
+	}
+}
+
+func get(h http.Handler, path string, header ...string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("GET", path, nil)
+	for i := 0; i+1 < len(header); i += 2 {
+		r.Header.Set(header[i], header[i+1])
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+func TestOverviewFilter(t *testing.T) {
+	h := New(overviewDeps(
+		&inventory.Stack{Name: "immich", Services: []*inventory.Service{{Name: "server", Role: "application"}, {Name: "redis"}}},
+		&inventory.Stack{Name: "whoami", Services: []*inventory.Service{{Name: "whoami"}}},
+	))
+	body := get(h, "/").Body.String()
+	if !strings.Contains(body, "immich") || !strings.Contains(body, "whoami") {
+		t.Fatal("both stacks should be listed without a query")
+	}
+	body = get(h, "/?q=REDIS").Body.String()
+	if !strings.Contains(body, "/stacks/immich") || strings.Contains(body, "/stacks/whoami") {
+		t.Errorf("q=REDIS: %s", body)
+	}
+}
+
+func TestStairsKeepTheirCSSValues(t *testing.T) {
+	h := New(Deps{
+		Current: func() Snapshot { return Snapshot{} },
+		Runs:    func(string) ([]run.View, error) { return nil, nil },
+		Plan:    func(string) (*plan.Record, error) { return nil, nil },
+		Run: func(id int64) (*run.View, error) {
+			return &run.View{ID: id, Stack: "gitlab", Status: "rolled_back", Steps: []string{"a", "b", "c"}, StepsDone: 1}, nil
+		},
+	})
+	body := get(h, "/runs/1").Body.String()
+	want := `<ol class="stairs" aria-hidden="true" style="--n:3"><li class="done" style="--i:1"></li><li class="failed" style="--i:2"></li><li style="--i:3"></li></ol>`
+	if !strings.Contains(body, want) {
+		t.Errorf("stairs markup missing or filtered:\n%s", body)
+	}
+}
+
+func TestScan(t *testing.T) {
+	scans := 0
+	deps := overviewDeps()
+	deps.Rescan = func() { scans++ }
+	var began time.Time
+	deps.Current = func() Snapshot { return Snapshot{Began: began, At: began} }
+	h := New(deps)
+	for referer, want := range map[string]string{
+		"http://example.com/stacks/gitlab?error=x": "/stacks/gitlab?error=x",
+		"http://example.com/settings":              "/settings",
+		"":                                         "/",
+		"https://evil.example/x":                   "/",
+		"//evil.example":                           "/",
+		"http://example.com//evil.example":         "/",
+		"http://example.com/auth/logout":           "/",
+	} {
+		r := httptest.NewRequest("POST", "/scan", nil)
+		if referer != "" {
+			r.Header.Set("Referer", referer)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != want {
+			t.Errorf("referer %q: %d to %q, want %q", referer, w.Code, w.Header().Get("Location"), want)
+		}
+	}
+	if scans != 7 {
+		t.Errorf("%d scans, want 7", scans)
+	}
+	r := httptest.NewRequest("POST", "/scan", nil)
+	r.Header.Set("Sec-Fetch-Site", "cross-site")
+	if w := httptest.NewRecorder(); func() int { h.ServeHTTP(w, r); return w.Code }() != http.StatusForbidden {
+		t.Error("a cross-site scan was not refused")
+	}
+	page := func() string {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "/settings", nil))
+		return w.Body.String()
+	}
+	if !strings.Contains(page(), "Scan queued") {
+		t.Error("a scan asked for and not begun is not shown as queued")
+	}
+	began = time.Now().Add(time.Second)
+	if strings.Contains(page(), "Scan queued") {
+		t.Error("a scan begun after it was asked for is still shown as queued")
+	}
+}
+
+func TestStaticFilesNeedNoSession(t *testing.T) {
+	deps := overviewDeps()
+	deps.Config = config.Config{OIDCIssuer: "https://idp.invalid", OIDCClientID: "palier", OIDCAdmins: []string{"admins"}}
+	h := New(deps)
+	for path, kind := range map[string]string{"/static/app.css": "text/css", "/static/app.js": "text/javascript", "/static/fonts/IBMPlexSans-Regular-Latin1.woff2": "font/woff2"} {
+		w := get(h, path)
+		if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), kind) || !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
+			t.Errorf("%s: %d %q %q", path, w.Code, w.Header().Get("Content-Type"), w.Header().Get("Cache-Control"))
+		}
+	}
+	for _, path := range []string{"/static/", "/static/fonts/", "/static/nope.css", "/static/../web.go"} {
+		if w := get(h, path); w.Code != 404 || w.Header().Get("Cache-Control") != "" {
+			t.Errorf("%s: %d", path, w.Code)
+		}
+	}
+	if w := get(h, "/"); w.Code == http.StatusOK {
+		t.Error("the page itself is reachable without a session")
+	}
+}
+
+func TestHTMXWithoutSessionRefreshes(t *testing.T) {
+	deps := overviewDeps()
+	deps.Config = config.Config{OIDCIssuer: "https://idp.invalid", OIDCClientID: "palier", OIDCAdmins: []string{"admins"}}
+	w := get(New(deps), "/stacks/whoami", "HX-Request", "true")
+	if w.Code != http.StatusUnauthorized || w.Header().Get("HX-Refresh") != "true" || w.Body.Len() != 0 {
+		t.Errorf("%d, HX-Refresh %q, %d bytes", w.Code, w.Header().Get("HX-Refresh"), w.Body.Len())
+	}
+}
+
+func TestPageIsMorphedAndAssetsVersioned(t *testing.T) {
+	body := get(New(overviewDeps()), "/").Body.String()
+	for _, want := range []string{`<div id="page" hx-ext="morph" hx-get="" hx-select="#page" hx-target="this" hx-swap="morph" hx-trigger="every 30s">`, `href="/static/app.css?v=`, `<a href="/" aria-current="page">Stacks</a>`, `<form method="post" action="/scan" hx-post="/scan" hx-replace-url="true">`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("%q missing", want)
+		}
+	}
+	if strings.Contains(body, "http-equiv") {
+		t.Error("the page still refreshes by itself with a meta tag")
+	}
+	if got := get(New(overviewDeps()), "/settings").Body.String(); !strings.Contains(got, `<a href="/settings" aria-current="page">Settings</a>`) || strings.Contains(got, `<a href="/" aria-current`) {
+		t.Error("the settings page does not mark its own link")
 	}
 }

@@ -1,24 +1,44 @@
-{{define "head"}}<meta http-equiv="refresh" content="60">{{end}}
+{{define "title"}}Palier: stacks{{end}}
+{{define "mainclass"}}roomy{{end}}
+{{define "poll"}}{{if or .Updating .Checking scanning .At.IsZero}}3{{else}}30{{end}}{{end}}
+{{define "be"}}{{if eq . 1}}is{{else}}are{{end}}{{end}}
+{{define "names"}}{{range $i, $s := .}}{{if $i}}, {{end}}{{$s.Name}}{{end}}{{end}}
+{{define "who"}}<div class="title grow"><a class="plain" href="/stacks/{{.Stack.Name}}">{{.Stack.Name}}</a>{{with .Stack.WorkingDir}}<span class="where">{{.}}</span>{{end}}</div>{{end}}
 {{define "content"}}
-<div class="head">
-<h1>Stacks</h1>
-<p class="meta">{{if .At.IsZero}}First scan in progress.{{else}}Last scan {{since .At}}.{{end}}</p>
+<div class="head lead">
+<p class="kicker">{{len .Stacks}} stack{{plural (len .Stacks)}} on this Docker engine</p>
+<h1>{{if .Needs}}{{len .Needs}} stack{{plural (len .Needs)}} need{{if eq (len .Needs) 1}}s{{end}} you.{{else}}Nothing needs you.{{end}}</h1>
+{{if or .Query .Partial .Quiet}}<form method="get" action="/" class="field end"><label for="find">Filter the quiet stacks</label><input type="search" name="q" id="find" value="{{.Query}}" placeholder="Stack or service name" hx-get="/" hx-trigger="input changed delay:250ms, search" hx-replace-url="true"></form>{{end}}
+{{if and (not .Query) (or .Updating .Planned .Checking .Partial .Quiet)}}<p class="lede">{{with len .Updating}}{{.}} {{template "be" .}} updating right now. {{end}}{{with len .Planned}}{{.}} {{if eq . 1}}has{{else}}have{{end}} an update planned. {{end}}{{with len .Checking}}{{.}} {{template "be" .}} being checked. {{end}}{{with len .Quiet}}{{.}} {{template "be" .}} up to date{{end}}{{if and .Quiet .Partial}} and {{end}}{{with len .Partial}}{{.}} {{template "be" .}} only partly tracked{{end}}{{if or .Quiet .Partial}}.{{end}}</p>{{end}}
 </div>
 {{with .Err}}<p class="notice bad">{{.}}</p>{{end}}
 {{with .Alerts}}<p class="notice bad"><strong>Alert{{if or (gt (len .) 1) $.More}}s{{end}}:</strong> {{range $i, $a := .}}{{if $i}} · {{end}}{{if $a.Stack}}<a href="/stacks/{{$a.Stack}}">{{$a.Title}}</a>{{else}}{{$a.Title}}{{end}}{{end}}{{with $.More}} · and {{.}} more{{end}}</p>{{end}}
-{{if .Stacks}}
-<div class="panel">
-<table>
-<thead><tr><th>Stack</th><th>Status</th><th>Services</th></tr></thead>
-<tbody>
-{{range .Stacks}}{{$state := state .}}<tr>
-<td class="name"><a href="/stacks/{{.Name}}">{{.Name}}</a>{{with .WorkingDir}}<span class="sub mono">{{.}}</span>{{end}}</td>
-<td><span class="pill {{tone $state}}">{{$state}}</span>{{range index $.ByStack .Name}}<span class="sub problem level-{{.Level}}">{{.Title}}</span>{{end}}{{with index $.MoreStack .Name}}<span class="sub">and {{.}} more</span>{{end}}</td>
-<td>{{range $i, $s := .Services}}{{if $i}}, {{end}}{{$s.Name}}{{end}}</td>
-</tr>
-{{end}}</tbody>
-</table>
-</div>
-{{else if .At.IsZero}}<div class="panel empty">First scan in progress. The page updates by itself.</div>
-{{else}}<div class="panel empty">No containers on this Docker engine. Compose stacks will appear here as soon as they are started.</div>{{end}}
+{{if .Needs}}<section class="section" aria-labelledby="needs"><h2 class="eyebrow" id="needs">Needs you <span class="count">{{len .Needs}}</span></h2>
+<div class="cards">{{range .Needs}}{{$v := .}}{{$tone := "warn"}}{{if eq (tone .State) "bad"}}{{$tone = "bad"}}{{end}}
+<article class="panel pad md {{$tone}}">
+<div class="top-row">{{template "pill" .State}}{{with .Runs}}{{with index . 0}}<span class="when">run {{.ID}} · started {{when .Started}}</span>{{end}}{{end}}</div>
+<div class="title"><h3 class="name">{{.Stack.Name}}</h3>{{with .Stack.WorkingDir}}<span class="where">{{.}}</span>{{end}}</div>
+{{if eq .State "failed"}}<p class="say">The update failed and the rollback did not complete: the stack may not be back at its checkpoint.</p>{{else if eq .State "rolled back"}}<p class="say">The update was rolled back. The stack is back at its last verified step; the update is still to do.</p>{{else if eq .State "stopped"}}<p class="say">The update stopped after a verified step. The next steps wait.</p>{{else if eq .State "abandoned"}}<p class="say">The update was abandoned before anything changed.</p>{{else if eq .State "incomplete plan"}}<p class="say">The plan is incomplete and will not be applied.</p>{{else if eq .State "awaiting decision"}}<p class="say">A plan is ready and waits for your decision.</p>{{end}}
+{{if eq .State "failed" "rolled back" "stopped" "abandoned"}}{{with index .Runs 0}}{{with .Error}}<p class="sub wrap">{{firstLine .}}</p>{{end}}{{end}}{{else if eq .State "incomplete plan"}}{{with .Record}}{{with .Plan}}{{with .Incomplete}}<p class="sub wrap">{{index . 0}}</p>{{end}}{{end}}{{end}}{{else if and (eq .State "awaiting decision") .AutoWhy}}<p class="sub wrap">No automatic apply: {{.AutoWhy}}.</p>{{end}}
+{{with index $.ByStack .Stack.Name}}<p class="notice {{$tone}}">{{range $i, $a := .}}{{if $i}} · {{end}}{{$a.Title}}{{end}}{{with index $.MoreStack $v.Stack.Name}} · and {{.}} more{{end}}</p>{{end}}
+<div class="actions">{{if eq .State "failed" "rolled back" "stopped" "abandoned"}}<a class="btn primary" href="/runs/{{(index .Runs 0).ID}}">Open run {{(index .Runs 0).ID}}</a><a class="btn" href="/stacks/{{.Stack.Name}}">Open the stack</a>{{else if eq .State "incomplete plan" "awaiting decision"}}<a class="btn primary" href="/stacks/{{.Stack.Name}}#plan">Review the plan</a>{{else}}<a class="btn" href="/stacks/{{.Stack.Name}}">Open the stack</a>{{end}}</div>
+</article>{{end}}</div></section>{{end}}
+{{if .Updating}}<section class="section" aria-labelledby="updating"><h2 class="eyebrow" id="updating">Updating now <span class="count">{{len .Updating}}</span></h2>
+{{range .Updating}}{{$v := .}}{{with .Runs}}{{with index . 0}}{{$k := inc .StepsDone}}{{if gt $k (len .Steps)}}{{$k = len .Steps}}{{end}}
+<article class="panel run run-card">
+<div class="title grow"><span class="pill run">Step {{$k}} of {{len .Steps}}</span><a class="plain name" href="/stacks/{{$v.Stack.Name}}">{{$v.Stack.Name}}</a>{{with $v.Stack.WorkingDir}}<span class="where">{{.}}</span>{{end}}</div>
+<div class="progress">{{template "stairs" .}}<p>{{if lt .StepsDone (len .Steps)}}{{index .Steps .StepsDone}} · {{end}}run {{.ID}}, started by {{.Author}} {{elapsed .Started ""}} ago</p></div>
+<a class="btn accent" href="/runs/{{.ID}}">Follow the run</a>
+</article>{{end}}{{end}}{{end}}</section>{{end}}
+{{if .Planned}}<section class="section" aria-labelledby="planned"><h2 class="eyebrow" id="planned">Update planned <span class="count">{{len .Planned}}</span></h2>
+<div class="panel">{{range .Planned}}<div class="row">{{template "who" .}}{{template "pill" .State}}{{with line .}}{{if .Target}}<span class="mono">{{.Running}} → {{.Target}}</span>{{end}}{{end}}{{with .Record}}{{with .Plan.Steps}}<span class="muted">{{len .}} step{{plural (len .)}}</span>{{end}}{{end}}{{with .Postponed}}<span class="muted">postponed until {{.}}</span>{{end}}</div>{{end}}</div></section>{{end}}
+{{if .Checking}}<section class="section" aria-labelledby="checking"><h2 class="eyebrow" id="checking">Being checked <span class="count">{{len .Checking}}</span></h2>
+<div class="panel">{{range .Checking}}<div class="row">{{template "who" .}}{{template "pill" .State}}</div>{{end}}</div></section>{{end}}
+{{if or .Partial .Query}}<section class="section" aria-labelledby="partial"><h2 class="eyebrow" id="partial">Partly tracked <span class="count">{{len .Partial}}</span></h2>
+<p class="intro">Palier cannot tell which version these services run, so it leaves them alone and keeps updating the rest of the stack. Pin a precise tag, or add the <code>org.opencontainers.image.version</code> label to the image.</p>
+{{if .Partial}}<div class="panel scroll"><div class="row tbl cols-partial cap"><span>Stack</span><span>Services</span><span>Not tracked</span></div>
+{{range .Partial}}<div class="row tbl cols-partial slim">{{template "who" .}}<span class="muted">{{template "names" .Stack.Services}}</span><div>{{range .Stack.Services}}{{if .DetectionError}}<div class="wrap"><span class="mono">{{.Name}}</span> <span class="faint">{{.DetectionError}}</span></div>{{end}}{{end}}</div></div>{{end}}</div>{{else}}<p class="faint">No stack matches.</p>{{end}}</section>{{end}}
+{{if or .Quiet .Query}}<section class="section" aria-labelledby="quiet"><h2 class="eyebrow" id="quiet">Up to date <span class="count">{{len .Quiet}}</span></h2>
+{{if .Quiet}}<div class="cards tiles">{{range .Quiet}}<a class="tile" href="/stacks/{{.Stack.Name}}"><span class="name">{{.Stack.Name}}{{if eq .State "observed only"}}<span class="small-print">observed only</span>{{else}}<svg class="tick" role="img" aria-label="Up to date" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>{{end}}</span>{{with .Stack.WorkingDir}}<span class="where">{{.}}</span>{{end}}<span class="names">{{template "names" .Stack.Services}}</span></a>{{end}}</div>{{else}}<p class="faint">No stack matches.</p>{{end}}</section>{{end}}
+{{if not .Stacks}}{{if .At.IsZero}}<div class="panel empty">First scan in progress. The page updates by itself.</div>{{else}}<div class="panel empty">No containers on this Docker engine. Compose stacks will appear here as soon as they are started.</div>{{end}}{{end}}
 {{end}}

@@ -93,6 +93,11 @@ func (g *gate) wrap(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, id)))
 			return
 		}
+		if r.Header.Get("HX-Request") != "" {
+			w.Header().Set("HX-Refresh", "true")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		if r.Method != http.MethodGet {
 			g.page(w, http.StatusUnauthorized, "Signed out", "Your session has ended. Reload the page to sign in again.")
 			return
@@ -163,10 +168,24 @@ func (g *gate) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, g.cookie(r, sessionCookie, g.seal(identity{Name: name, Exp: time.Now().Add(sessionLength).Unix()}), "/", int(sessionLength.Seconds())))
 	next := p.Next
-	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.ContainsRune(next, '\\') || strings.HasPrefix(next, "/auth/") {
+	if !localPath(next) {
 		next = "/"
 	}
 	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+func localPath(p string) bool {
+	return strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "//") && !strings.ContainsRune(p, '\\') && !strings.HasPrefix(p, "/auth/")
+}
+
+// refererPath is the path and query of the page that sent r when it is on this site, else "/".
+func refererPath(r *http.Request) string {
+	ref, err := url.Parse(r.Referer())
+	home, _ := url.Parse(base(r))
+	if err != nil || ref.Host != "" && ref.Host != home.Host || !localPath(ref.RequestURI()) {
+		return "/"
+	}
+	return ref.RequestURI()
 }
 
 // exchange returns the claims of the ID token, checked but not its signature since it comes straight from the token endpoint over TLS (OpenID Connect Core 3.1.3.7).

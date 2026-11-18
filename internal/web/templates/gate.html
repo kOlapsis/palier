@@ -1,9 +1,7 @@
 {{define "section"}}gate{{end}}
-{{define "content"}}
-<div class="gate">
-<span class="brand">Palier</span>
+{{define "page"}}<main class="gate">
+<a class="brand" href="/"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"><path d="M2 19h5v-5h5V9h5V4h3"/></svg>Palier</a>
 <h1>{{.Title}}</h1>
 <p>{{.Message}}</p>
-<p><a href="/">Open Palier again</a> · <a href="/auth/logout">Sign out</a></p>
-</div>
-{{end}}
+<p class="actions"><a class="btn primary" href="/">Open Palier again</a><a class="btn" href="/auth/logout">Sign out</a></p>
+</main>{{end}}

@@ -1,76 +1,73 @@
+{{define "title"}}Palier: settings{{end}}
 {{define "section"}}settings{{end}}
+{{define "mainclass"}}roomy{{end}}
+{{define "hidden"}}<span class="state"><svg class="tick" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Set, value hidden</span>{{end}}
+{{define "val"}}{{with .}}<span class="mono">{{.}}</span>{{else}}<span class="faint">Not set</span>{{end}}{{end}}
+{{define "sec"}}{{if .}}{{template "hidden"}}{{else}}<span class="faint">Not set</span>{{end}}{{end}}
 {{define "content"}}
 <div class="head">
 <h1>Settings</h1>
-<p class="meta">Read from the environment at startup. To change one, edit the variable and restart Palier.</p>
+<p class="lede">Read from the environment at startup. To change one, edit the variable and restart Palier.</p>
 </div>
-<h2>AI</h2>
-<div class="panel"><dl class="settings">
-<dt>PALIER_AI_PROVIDER</dt><dd>{{.AIProvider}}{{if not .AI}}<span class="sub">No AI: plans are computed from versions only. Set PALIER_AI_KEY.</span>{{end}}</dd>
-<dt>PALIER_AI_URL</dt><dd>{{with .AIURL}}{{.}}{{else}}<span class="muted">not set</span>{{end}}</dd>
-<dt>PALIER_AI_MODEL</dt><dd>{{.AIModel}}</dd>
-<dt>PALIER_AI_KEY</dt><dd>{{if .AIKey}}set{{else}}<span class="muted">not set</span>{{end}}</dd>
-<dt>PALIER_AI_TIMEOUT</dt><dd>{{.AITimeout}}<span class="sub">Longest wait for one answer of the model.</span></dd>
-</dl></div>
-
-<h2>Updates</h2>
-<div class="panel"><dl class="settings">
-<dt>PALIER_AUTO</dt><dd>{{.Auto}}<span class="sub">Updates applied without a decision; the palier.auto label overrides it for one service.</span></dd>
-<dt>PALIER_SCAN_INTERVAL</dt><dd>{{.ScanInterval}}</dd>
-<dt>PALIER_MATURATION</dt><dd>{{.Maturation}}<span class="sub">Minimum age of a version before it is proposed.</span></dd>
-<dt>PALIER_STABLE_SECONDS</dt><dd>{{.StableSeconds}}<span class="sub">Time a service must stay stable at each verification.</span></dd>
-</dl></div>
-
-<h2>Backups</h2>
-<div class="panel"><dl class="settings">
-<dt>PALIER_BACKUP_TO</dt><dd>{{with .BackupTo}}{{.}}<span class="sub">Where the palier.backup labels send their backups, through rclone.</span>{{else}}<span class="muted">not set: a service with a palier.backup label and no palier.backup.to is not updated</span>{{end}}</dd>
-<dt>PALIER_BACKUP_KEEP</dt><dd>{{.BackupKeep}}<span class="sub">Backups kept for each service.</span></dd>
-</dl></div>
-
-<h2>Registries and release notes</h2>
-<div class="panel"><dl class="settings">
-<dt>DOCKER_CONFIG</dt><dd>{{.DockerConfig}}<span class="sub">Credentials of private registries.</span></dd>
-<dt>PALIER_REGISTRY_MIRROR</dt><dd>{{with .RegistryMirror}}{{.}}{{else}}<span class="muted">not set</span>{{end}}</dd>
-<dt>PALIER_REGISTRY_WEBHOOK_SECRET</dt><dd>{{if .HookSecret}}set{{else}}<span class="muted">not set: registries cannot announce new tags</span>{{end}}</dd>
-<dt>PALIER_GITHUB_TOKEN</dt><dd>{{if .GitHubToken}}set{{else}}<span class="muted">not set: 60 requests per hour to GitHub</span>{{end}}</dd>
-<dt>PALIER_GITLAB_TOKEN</dt><dd>{{if .GitLabToken}}set{{else}}<span class="muted">not set</span>{{end}}</dd>
-</dl></div>
-
-<h2>Web interface and sign-in</h2>
-<div class="panel"><dl class="settings">
-<dt>PALIER_LISTEN</dt><dd>{{.Listen}}</dd>
-<dt>PALIER_PUBLIC_URL</dt><dd>{{with .PublicURL}}{{.}}{{else}}<span class="muted">not set: messages give the command to run instead of a link</span>{{end}}</dd>
-<dt>PALIER_OIDC_ISSUER</dt><dd>{{with .OIDCIssuer}}{{.}}{{else}}<span class="muted">not set: no sign-in</span>{{end}}</dd>
-<dt>PALIER_OIDC_CLIENT_ID</dt><dd>{{with .OIDCClientID}}{{.}}{{else}}<span class="muted">not set</span>{{end}}</dd>
-<dt>PALIER_OIDC_ADMINS</dt><dd>{{with .OIDCAdmins}}{{join .}}{{else}}<span class="muted">not set</span>{{end}}</dd>
-</dl></div>
-
-<h2>Engine and data</h2>
-<div class="panel"><dl class="settings">
-<dt>PALIER_DOCKER_HOST</dt><dd>{{.DockerHost}}</dd>
-<dt>PALIER_DATA_DIR</dt><dd>{{.DataDir}}</dd>
-</dl></div>
-
-<h2>Notification settings</h2>
-<div class="panel"><dl class="settings">
-<dt>PALIER_SMTP_HOST</dt><dd>{{with .SMTPHost}}{{.}}:{{$.SMTPPort}}{{else}}<span class="muted">not set: no email</span>{{end}}</dd>
-{{if .SMTPHost}}<dt>PALIER_SMTP_USER</dt><dd>{{with .SMTPUser}}{{.}}{{else}}<span class="muted">not set</span>{{end}}</dd>
-<dt>PALIER_SMTP_FROM</dt><dd>{{.SMTPFrom}}</dd>
-<dt>PALIER_EMAIL_TO</dt><dd>{{join .EmailTo}}</dd>
-<dt>PALIER_EMAIL_LEVEL</dt><dd>{{.EmailLevel}}</dd>
-{{end}}{{range .Chats}}<dt>PALIER_{{upper .Type}}_URL</dt><dd>{{.Describe}}</dd>
-{{end}}<dt>PALIER_WEBHOOK_URL</dt><dd>{{if .WebhookURL}}set{{else}}<span class="muted">not set</span>{{end}}</dd>
-{{if .WebhookURL}}<dt>PALIER_WEBHOOK_SECRET</dt><dd>{{if .WebhookSecret}}set: requests are signed{{else}}<span class="muted">not set: requests are not signed</span>{{end}}</dd>
-{{end}}</dl></div>
-
-<h2>Notification channels</h2>
+<section class="section">
+<h2 class="eyebrow">Notification channels</h2>
 {{with .Error}}<p class="notice bad">{{.}}</p>{{end}}
 {{if .Tested}}<p class="notice info">Test message accepted by every channel.</p>{{end}}
-<div class="panel">
-{{if .Channels}}<table><thead><tr><th>Channel</th><th>Last message</th></tr></thead><tbody>
-{{range .Channels}}<tr><td class="name">{{.Name}}<span class="sub">{{.Describe}}</span></td>
-<td>{{with .Last}}{{.Subject}}<span class="sub">{{if .Sent}}sent {{when .Sent}}{{else if .Error}}failed {{.Attempts}} time(s): {{.Error}}{{else}}waiting to be sent{{end}}</span>{{else}}<span class="muted">nothing sent yet</span>{{end}}</td></tr>
-{{end}}</tbody></table>{{else}}<p class="empty">No channel: set <code>PALIER_SMTP_HOST</code> and <code>PALIER_EMAIL_TO</code>, or <code>PALIER_NTFY_URL</code>, <code>PALIER_SLACK_URL</code>, <code>PALIER_DISCORD_URL</code> or <code>PALIER_TELEGRAM_URL</code>.</p>{{end}}
+{{range .Channels}}<article class="panel chan">
+<div><strong>{{.Name}}</strong><span class="sub wrap">{{.Describe}}</span></div>
+<div>{{with .Last}}{{.Subject}}<span class="sub">{{if .Sent}}sent {{when .Sent}}{{else if .Error}}failed {{.Attempts}} time(s): {{.Error}}{{else}}waiting to be sent{{end}}</span>{{else}}<span class="faint">nothing sent yet</span>{{end}}</div>
+</article>
+{{else}}<p class="panel empty">No channel: set <code>PALIER_SMTP_HOST</code> and <code>PALIER_EMAIL_TO</code>, or <code>PALIER_NTFY_URL</code>, <code>PALIER_SLACK_URL</code>, <code>PALIER_DISCORD_URL</code> or <code>PALIER_TELEGRAM_URL</code>.</p>{{end}}
+{{if .Channels}}<form class="actions" method="post" action="/settings/test" hx-post="/settings/test" hx-replace-url="true"><button type="submit">Send a test</button></form>{{end}}
+</section>
+<section class="section">
+<h2 class="eyebrow">Environment</h2>
+<div class="columns">
+<article class="panel"><h2>Updates</h2>
+<div class="row tbl cols-setting"><div><strong>Automatic apply</strong><span class="env sub">PALIER_AUTO</span></div><div><span class="mono">{{.Auto}}</span><span class="sub">Updates applied without a decision; the palier.auto label overrides it for one service.</span></div></div>
+<div class="row tbl cols-setting"><div><strong>Scan interval</strong><span class="env sub">PALIER_SCAN_INTERVAL</span></div><div><span class="mono">{{span .ScanInterval}}</span></div></div>
+<div class="row tbl cols-setting"><div><strong>Maturation</strong><span class="env sub">PALIER_MATURATION</span></div><div><span class="mono">{{span .Maturation}}</span><span class="sub">Minimum age of a version before it is proposed.</span></div></div>
+<div class="row tbl cols-setting"><div><strong>Stability time</strong><span class="env sub">PALIER_STABLE_SECONDS</span></div><div><span class="mono">{{.StableSeconds}} s</span><span class="sub">Time a service must stay stable at each verification.</span></div></div>
+</article>
+<article class="panel"><h2>AI</h2>
+<div class="row tbl cols-setting"><div><strong>Provider</strong><span class="env sub">PALIER_AI_PROVIDER</span></div><div>{{template "val" .AIProvider}}{{if not .AI}}<span class="sub">No AI: plans are computed from versions only. Set PALIER_AI_KEY.</span>{{end}}</div></div>
+<div class="row tbl cols-setting"><div><strong>Model</strong><span class="env sub">PALIER_AI_MODEL</span></div><div>{{template "val" .AIModel}}</div></div>
+<div class="row tbl cols-setting"><div><strong>API key</strong><span class="env sub">PALIER_AI_KEY</span></div><div>{{template "sec" .AIKey}}</div></div>
+<div class="row tbl cols-setting"><div><strong>API URL</strong><span class="env sub">PALIER_AI_URL</span></div><div>{{template "val" .AIURL}}</div></div>
+<div class="row tbl cols-setting"><div><strong>Timeout</strong><span class="env sub">PALIER_AI_TIMEOUT</span></div><div><span class="mono">{{span .AITimeout}}</span><span class="sub">Longest wait for one answer of the model.</span></div></div>
+</article>
+<article class="panel"><h2>Registries and release notes</h2>
+<div class="row tbl cols-setting"><div><strong>Registry credentials</strong><span class="env sub">DOCKER_CONFIG</span></div><div>{{template "val" .DockerConfig}}<span class="sub">Credentials of private registries.</span></div></div>
+<div class="row tbl cols-setting"><div><strong>GitHub token</strong><span class="env sub">PALIER_GITHUB_TOKEN</span></div><div>{{template "sec" .GitHubToken}}{{if not .GitHubToken}}<span class="sub">60 requests per hour to GitHub.</span>{{end}}</div></div>
+<div class="row tbl cols-setting"><div><strong>GitLab token</strong><span class="env sub">PALIER_GITLAB_TOKEN</span></div><div>{{template "sec" .GitLabToken}}</div></div>
+<div class="row tbl cols-setting"><div><strong>Docker Hub mirror</strong><span class="env sub">PALIER_REGISTRY_MIRROR</span></div><div>{{template "val" .RegistryMirror}}</div></div>
+<div class="row tbl cols-setting"><div><strong>Registry webhook secret</strong><span class="env sub">PALIER_REGISTRY_WEBHOOK_SECRET</span></div><div>{{template "sec" .HookSecret}}{{if not .HookSecret}}<span class="sub">Registries cannot announce new tags.</span>{{end}}</div></div>
+</article>
+<article class="panel"><h2>Backups</h2>
+<div class="row tbl cols-setting"><div><strong>Destination</strong><span class="env sub">PALIER_BACKUP_TO</span></div><div>{{template "val" .BackupTo}}<span class="sub">{{if .BackupTo}}Where the palier.backup labels send their backups, through rclone.{{else}}A service with a palier.backup label and no palier.backup.to is not updated.{{end}}</span></div></div>
+<div class="row tbl cols-setting"><div><strong>Backups kept</strong><span class="env sub">PALIER_BACKUP_KEEP</span></div><div><span class="mono">{{.BackupKeep}}</span><span class="sub">For each service.</span></div></div>
+</article>
+<article class="panel"><h2>Notifications</h2>
+<div class="row tbl cols-setting"><div><strong>SMTP host</strong><span class="env sub">PALIER_SMTP_HOST</span></div><div>{{with .SMTPHost}}<span class="mono">{{.}}:{{$.SMTPPort}}</span>{{else}}<span class="faint">Not set</span><span class="sub">No email.</span>{{end}}</div></div>
+{{if .SMTPHost}}<div class="row tbl cols-setting"><div><strong>SMTP user</strong><span class="env sub">PALIER_SMTP_USER</span></div><div>{{template "val" .SMTPUser}}</div></div>
+<div class="row tbl cols-setting"><div><strong>From</strong><span class="env sub">PALIER_SMTP_FROM</span></div><div>{{template "val" .SMTPFrom}}</div></div>
+<div class="row tbl cols-setting"><div><strong>To</strong><span class="env sub">PALIER_EMAIL_TO</span></div><div>{{template "val" (join .EmailTo)}}</div></div>
+<div class="row tbl cols-setting"><div><strong>Email level</strong><span class="env sub">PALIER_EMAIL_LEVEL</span></div><div>{{template "val" .EmailLevel}}</div></div>
+{{end}}{{range .Chats}}<div class="row tbl cols-setting"><div><strong>{{.Type}} URL</strong><span class="env sub">PALIER_{{upper .Type}}_URL</span></div><div>{{template "val" .Describe}}</div></div>
+{{end}}<div class="row tbl cols-setting"><div><strong>Webhook</strong><span class="env sub">PALIER_WEBHOOK_URL</span></div><div>{{template "sec" .WebhookURL}}</div></div>
+{{if .WebhookURL}}<div class="row tbl cols-setting"><div><strong>Webhook secret</strong><span class="env sub">PALIER_WEBHOOK_SECRET</span></div><div>{{template "sec" .WebhookSecret}}<span class="sub">{{if .WebhookSecret}}Requests are signed.{{else}}Requests are not signed.{{end}}</span></div></div>
+{{end}}</article>
+<article class="panel"><h2>Web interface and sign-in</h2>
+<div class="row tbl cols-setting"><div><strong>Listen address</strong><span class="env sub">PALIER_LISTEN</span></div><div>{{template "val" .Listen}}</div></div>
+<div class="row tbl cols-setting"><div><strong>Public URL</strong><span class="env sub">PALIER_PUBLIC_URL</span></div><div>{{template "val" .PublicURL}}{{if not .PublicURL}}<span class="sub">Messages give the command to run instead of a link.</span>{{end}}</div></div>
+<div class="row tbl cols-setting"><div><strong>OIDC issuer</strong><span class="env sub">PALIER_OIDC_ISSUER</span></div><div>{{template "val" .OIDCIssuer}}{{if not .OIDCIssuer}}<span class="sub">No sign-in.</span>{{end}}</div></div>
+<div class="row tbl cols-setting"><div><strong>OIDC client</strong><span class="env sub">PALIER_OIDC_CLIENT_ID</span></div><div>{{template "val" .OIDCClientID}}</div></div>
+<div class="row tbl cols-setting"><div><strong>Admins</strong><span class="env sub">PALIER_OIDC_ADMINS</span></div><div>{{template "val" (join .OIDCAdmins)}}</div></div>
+</article>
+<article class="panel"><h2>Engine and data</h2>
+<div class="row tbl cols-setting"><div><strong>Docker host</strong><span class="env sub">PALIER_DOCKER_HOST</span></div><div>{{template "val" .DockerHost}}</div></div>
+<div class="row tbl cols-setting"><div><strong>Data directory</strong><span class="env sub">PALIER_DATA_DIR</span></div><div>{{template "val" .DataDir}}</div></div>
+</article>
 </div>
-{{if .Channels}}<form method="post" action="/settings/test" class="actions"><button>Send a test</button></form>{{end}}
+</section>
 {{end}}
