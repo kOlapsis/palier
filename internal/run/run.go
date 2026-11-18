@@ -808,7 +808,7 @@ func (e *Engine) restore(ctx context.Context, id int64, cp *Checkpoint) error {
 		}
 	}
 	e.event(id, "original images retagged, recreating the stack")
-	if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "up", "-d"); err != nil {
+	if _, err := compose.Run(ctx, e.DockerHost, cp.Project, "up", "-d", "--pull", "missing"); err != nil {
 		return err
 	}
 	for _, v := range cp.CreatedVolumes {
