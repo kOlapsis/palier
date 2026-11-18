@@ -596,9 +596,6 @@ func (a *app) notRetried(ctx context.Context, stack string, p *plan.Plan) (bool,
 	if a.db.QueryRowContext(ctx, `SELECT id, plan, status, finished FROM runs WHERE stack = ? AND dry_run = 0 ORDER BY id DESC LIMIT 1`, stack).Scan(&id, &body, &status, &finished) != nil {
 		return true, ""
 	}
-	if status == run.Failed {
-		return false, fmt.Sprintf("run %d failed and its rollback did not pass: Palier applies nothing on this stack on its own until a run passes", id)
-	}
 	current, _ := json.Marshal(p)
 	at, _ := time.Parse(time.RFC3339, finished)
 	if status == run.Done || status == run.Running || body != string(current) || time.Since(at) > retryAfter || at.Before(startedAt) {

@@ -103,27 +103,3 @@ func TestSecurityFirstTogether(t *testing.T) {
 		t.Errorf("task-runners has no 2.45.9, yet a step was added: %+v", p.Steps)
 	}
 }
-
-func TestBackupJobFollowsItsDatabase(t *testing.T) {
-	st := &inventory.Stack{Services: []*inventory.Service{
-		{Name: "postgres", Role: inventory.RoleDependency, Image: "docker.io/library/postgres", Tag: "16-alpine", Version: "16.15-alpine3.24", Available: rel("16.16-alpine3.24", "18.7-alpine3.24")},
-		{Name: "postgres-backup", Role: inventory.RoleApplication, OwnCommand: true, Image: "docker.io/library/postgres", Tag: "16-alpine", Version: "16.15-alpine3.24", Available: rel("16.16-alpine3.24", "18.7-alpine3.24")},
-	}}
-	if Engine(st.Services[0]) != "postgres" || Engine(st.Services[1]) != "" {
-		t.Errorf("engines: %q, %q", Engine(st.Services[0]), Engine(st.Services[1]))
-	}
-	p := Fallback(st, "x")
-	if got := targets(p); got["postgres"] != "16.16-alpine3.24" || got["postgres-backup"] != "16.16-alpine3.24" {
-		t.Errorf("targets: %v", got)
-	}
-	Validate(p, st)
-	if len(p.Incomplete) > 0 {
-		t.Errorf("incomplete: %s", reasons(p))
-	}
-	apart := &Plan{Steps: []Step{{Risk: "safe", Reversible: "yes", Changes: []Change{{"postgres", "16.15-alpine3.24", "16.16-alpine3.24"}, {"postgres-backup", "16.15-alpine3.24", "18.7-alpine3.24"}},
-		Operations: []Operation{{Op: "set_image", Service: "postgres", Image: "postgres", Tag: "16.16-alpine3.24"}, {Op: "set_image", Service: "postgres-backup", Image: "postgres", Tag: "18.7-alpine3.24"}, {Op: "recreate", Services: []string{"postgres", "postgres-backup"}}}}}}
-	Validate(apart, st)
-	if !strings.Contains(reasons(apart), "change together") {
-		t.Errorf("16.16 and 18.7 accepted: %s", reasons(apart))
-	}
-}

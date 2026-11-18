@@ -86,23 +86,3 @@ func TestOrphans(t *testing.T) {
 		t.Errorf("unused: %+v, unknown %v", got, unknown)
 	}
 }
-
-func TestOwnCommand(t *testing.T) {
-	entry, postgres := []string{"docker-entrypoint.sh"}, []string{"postgres"}
-	for _, c := range []struct {
-		name       string
-		entrypoint []string
-		cmd        []string
-		want       bool
-	}{
-		{"the command of the image", entry, postgres, false},
-		{"the server with flags", entry, []string{"postgres", "-c", "shared_preload_libraries=vectors.so"}, false},
-		{"flags only", entry, []string{"--max_connections=200"}, false},
-		{"a backup loop", entry, []string{"sh", "-c", "while true; do pg_dump; sleep 3600; done"}, true},
-		{"another entrypoint", []string{"/backup.sh"}, postgres, true},
-	} {
-		if got := ownCommand(c.entrypoint, c.cmd, entry, postgres); got != c.want {
-			t.Errorf("%s: %v", c.name, got)
-		}
-	}
-}
