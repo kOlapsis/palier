@@ -24,3 +24,9 @@ updates:
     ignore:
       - dependency-name: docker/compose-bin
         update-types: [version-update:semver-major]
+  - package-ecosystem: pip
+    directory: /docs
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

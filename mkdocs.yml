@@ -1,28 +1,85 @@
 site_name: Palier
-site_description: Docker Compose stack updates in steps, with a restore point and rollback.
+site_description: Docker Compose updates that read the release notes first, apply in verified steps and go back to the last good step if something breaks.
+site_url: https://kolapsis.github.io/palier/
+repo_url: https://github.com/kOlapsis/palier
+repo_name: kOlapsis/palier
+edit_uri: edit/main/docs/
 docs_dir: docs
 theme:
   name: material
+  custom_dir: docs/theme
   language: en
+  logo: assets/icon.svg
+  favicon: assets/icon.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: palier-day
+      toggle:
+        icon: material/weather-night
+        name: Switch to the dark theme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to the light theme
   features:
+    - navigation.tabs
     - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - toc.follow
+    - search.suggest
+    - search.highlight
     - content.code.copy
+    - content.action.edit
+plugins:
+  - search
+  - privacy
+extra_css:
+  - stylesheets/palier.css
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kOlapsis/palier
+      name: Palier on GitHub
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - tables
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
   - toc:
       permalink: true
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Usage: usage.md
-  - Configuration: configuration.md
-  - Try a local model: local-model.md
-  - How it works: how-it-works.md
-  - Upgrade reports:
+  - Get started:
+      - Installation: installation.md
+      - Usage: usage.md
+      - Coming from Watchtower: watchtower-alternative.md
+  - Reference:
+      - Configuration: configuration.md
+      - How it works: how-it-works.md
+      - Try a local model: local-model.md
+      - Limitations: limitations.md
+  - Seen on real applications:
       - GitLab CE 16.1 to 19.5: upgrades/gitlab-16-to-19.md
       - Immich v1.105 to v3.3: upgrades/immich-1-105-to-3-3.md
-  - Coming from Watchtower: watchtower-alternative.md
-  - Limitations: limitations.md
 exclude_docs: |
   compose.yaml
+  requirements.in
+  requirements.txt
+  theme/

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Palier">
+{% if page %}
+<meta property="og:title" content="{% if page.is_homepage %}Palier: {{ page.meta.title or page.title }}{% else %}{{ page.title }} - Palier{% endif %}">
+<meta property="og:description" content="{{ page.meta.description or config.site_description }}">
+{% endif %}
+<meta property="og:image" content="{{ config.site_url }}assets/hero.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="560">
+<meta name="twitter:card" content="summary_large_image">
+{% endblock %}

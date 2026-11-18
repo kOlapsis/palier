@@ -1,3 +1,5 @@
 /deploy/lab/lab.env
 /palier
 /.playwright-mcp/
+/.cache/
+/site/
