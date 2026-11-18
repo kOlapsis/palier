@@ -63,6 +63,13 @@ func (c *Client) Advisories(ctx context.Context, repo string) ([]Advisory, error
 		return nil, err
 	}
 	defer resp.Body.Close()
+	// GitHub answers 404 for every private repository, which cannot publish advisories.
+	if resp.StatusCode == http.StatusNotFound {
+		advisoryMu.Lock()
+		advisoryCache[repo] = cachedAdvisories{at: time.Now()}
+		advisoryMu.Unlock()
+		return nil, nil
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("security advisories of %s: GET %s: %s", repo, url, resp.Status)
 	}
