@@ -40,7 +40,7 @@ Rules:
 - In dependency facts, "service" is the client service and "dependency" the dependency service, both named as in the stack. "version" is the version of the client from which the fact holds; leave it empty for documentation valid for every version. A range without an upper bound (for example "v14+") supports every available major from its minimum on.
 - Use only the operations of the schema. Each change needs a set_image of that service to that tag with the same image, followed by a recreate of the service. Add a wait_stable when the service needs time to settle. Never write a command.
 - A tag that names the PostgreSQL it is built on, such as pg14-v0.2.0 or 0.8.0-pg16, is a PostgreSQL image, and a tag naming a higher PostgreSQL (pg17-v0.4.0) is a newer version of it, chosen like any other: its PostgreSQL major is the major of the service.
-- A major upgrade of PostgreSQL, MySQL or MariaDB needs db_dump_restore. It changes the image, mounts a new volume, stops the clients during the export and restarts everything itself: the step has no set_image nor recreate for that service.
+- A major upgrade of a service whose "database" is given (postgres, mysql or mariadb) needs db_dump_restore. It changes the image, mounts a new volume, stops the clients during the export and restarts everything itself: the step has no set_image nor recreate for that service. A service on a database image without "database" runs another command, a backup job for instance: it holds no database and changes by set_image.
 - When a card lists required upgrade stops, the service goes through each stop between its running version and its target, at the latest available patch of that minor, one step each. When a card offers a check named background_migrations, every step that changes that service has the gate {"op": "exec_check", "service": <service>, "check_ref": "background_migrations"}.
 - When the notes change the Compose file of the stack (a service removed, a command or a healthcheck to drop, a variable renamed, a port or a path changed), the step carries compose_edit operations that keep the file in service working, each followed by a recreate of the edited service. set_env value, set_command and set_healthcheck values are YAML, for example ["start.sh"].
 - The edits cannot change a published port. When the notes move the port a container listens on, keep it on its previous port with set_env of the variable the notes name for that port, so that the published port keeps working.
@@ -236,6 +236,7 @@ type serviceInput struct {
 	Available []string `json:"available_versions"`
 	DependsOn []string `json:"depends_on"`
 	Together  []string `json:"same_release_as,omitempty"`
+	Database  string   `json:"database,omitempty"`
 }
 
 const fullNotesBudget = 400_000
@@ -305,7 +306,7 @@ func Propose(ctx context.Context, e Endpoint, st *inventory.Stack, digests map[s
 	var services []serviceInput
 	together := plan.Together(st)
 	for _, s := range st.Services {
-		in := serviceInput{Name: s.Name, Role: s.Role, Image: s.Image, Running: s.Version, DependsOn: s.DependsOn}
+		in := serviceInput{Name: s.Name, Role: s.Role, Image: s.Image, Running: s.Version, DependsOn: s.DependsOn, Database: plan.Engine(s)}
 		for _, o := range together[s.Name] {
 			in.Together = append(in.Together, o.Name)
 		}

@@ -187,6 +187,8 @@ type ContainerDetail struct {
 	Config       struct {
 		Image       string
 		Env         []string
+		Cmd         []string
+		Entrypoint  []string
 		Labels      map[string]string
 		Healthcheck *struct {
 			Test        []string
@@ -201,6 +203,9 @@ type ContainerDetail struct {
 		ExitCode int
 		Health   *struct{ Status string }
 	}
+	HostConfig struct {
+		RestartPolicy struct{ Name string }
+	}
 	Mounts []struct {
 		Type        string
 		Name        string
@@ -213,5 +218,9 @@ type ContainerDetail struct {
 // Image is the part of an image inspection Palier reads.
 type Image struct {
 	RepoDigests []string
-	Config      struct{ Labels map[string]string }
+	Config      struct {
+		Labels     map[string]string
+		Cmd        []string
+		Entrypoint []string
+	}
 }

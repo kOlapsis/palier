@@ -72,6 +72,7 @@ type Service struct {
 	NotesError      string           `json:"notes_error,omitempty"`
 	Hidden          []string         `json:"hidden,omitempty"`
 	BuiltLocally    bool             `json:"built_locally,omitempty"`
+	OwnCommand      bool             `json:"own_command,omitempty"`
 	NotInRegistry   bool             `json:"not_in_registry,omitempty"`
 	RegistryRefused bool             `json:"registry_refused,omitempty"`
 
@@ -226,6 +227,7 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 		svc.Digest = svc.digests[0]
 	}
 	svc.BuiltLocally = imgErr == nil && len(img.RepoDigests) == 0
+	svc.OwnCommand = imgErr == nil && ownCommand(d.Config.Entrypoint, d.Config.Cmd, img.Config.Entrypoint, img.Config.Cmd)
 	svc.labelVersion = img.Config.Labels["org.opencontainers.image.version"]
 	svc.Source = img.Config.Labels["org.opencontainers.image.source"]
 	svc.BackupHook = c.Labels["palier.hook.backup"]
@@ -308,6 +310,14 @@ func parseDependsOn(data []byte) (map[string][]string, map[string]bool, error) {
 		}
 	}
 	return deps, local, nil
+}
+
+// ownCommand reports a container that runs another program than the one of its image, as a backup job on a database image.
+func ownCommand(entrypoint, cmd, imageEntrypoint, imageCmd []string) bool {
+	if !slices.Equal(entrypoint, imageEntrypoint) {
+		return true
+	}
+	return len(cmd) > 0 && len(imageCmd) > 0 && cmd[0] != imageCmd[0] && !strings.HasPrefix(cmd[0], "-")
 }
 
 type dockerVolume struct {

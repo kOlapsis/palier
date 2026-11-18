@@ -65,7 +65,7 @@ func (e *Engine) backups(ctx context.Context, id int64, st *inventory.Stack) err
 			case to == "":
 				err = errors.New("palier.backup asks for a backup, but neither palier.backup.to nor PALIER_BACKUP_TO is set")
 			case kind == "dump":
-				a.Engine, a.Location = plan.EngineOf(s.Image, s.Tag), remotePath(to, st.Name, s.Name, stamp, "dump.sql")
+				a.Engine, a.Location = plan.Engine(s), remotePath(to, st.Name, s.Name, stamp, "dump.sql")
 				err = e.dump(ctx, ProjectOf(st), s, &a)
 			default:
 				a.Location = remotePath(to, st.Name, s.Name, stamp, "volumes.tar")

@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 
@@ -8,15 +9,15 @@ import (
 	"github.com/kolapsis/palier/internal/version"
 )
 
-// Together returns, for each service, the other services of the stack whose image declares the same OCI source and runs the same version.
+// Together returns, for each service, the other services of the stack that run the same version of the same OCI source, or without a source of the same image.
 func Together(st *inventory.Stack) map[string][]*inventory.Service {
 	groups := map[string][]*inventory.Service{}
 	for _, s := range st.Services {
 		v, ok := version.Parse(s.Version)
-		if s.Source == "" || !ok {
+		if !ok {
 			continue
 		}
-		key := s.Source + " " + fmt.Sprint(v.Nums)
+		key := cmp.Or(s.Source, s.Image) + " " + fmt.Sprint(v.Nums)
 		groups[key] = append(groups[key], s)
 	}
 	out := map[string][]*inventory.Service{}
@@ -66,7 +67,7 @@ func checkTogether(p *Plan, st *inventory.Stack) {
 					continue
 				}
 				if !sameVersion(to[o.Name], c.To) {
-					p.incomplete("step %d: %s and %s come from %s at the same version; they change together, to the same version", i+1, c.Service, o.Name, o.Source)
+					p.incomplete("step %d: %s and %s come from %s at the same version; they change together, to the same version", i+1, c.Service, o.Name, cmp.Or(o.Source, o.Image))
 				}
 			}
 		}
