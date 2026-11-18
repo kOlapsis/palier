@@ -38,6 +38,7 @@
 {{end}}{{end}}
 
 <div class="split">
+<div class="main">
 {{with .Record}}<section id="plan" class="panel" aria-labelledby="plan-title">
 <div class="bar"><h2 id="plan-title">Plan</h2><span class="hint">{{if eq .Source "ai"}}AI plan{{else}}Plan computed from versions only{{end}}, confirmed {{since .Created}}</span></div>
 {{with .Plan}}<div class="inset">
@@ -67,24 +68,6 @@
 </div>{{end}}
 </div>{{end}}{{end}}
 </section>{{end}}
-<aside id="side">
-<section class="panel"><h2>Automation</h2><div class="inset">
-<p class="muted">Automatic apply is on <code class="chip">{{(config).Auto}}</code>. It comes from <code class="chip">PALIER_AUTO</code>; a <code class="chip">palier.auto</code> label on a service overrides it.</p>
-{{with .Record}}{{if .Plan.Steps}}
-<details><summary>Postpone…</summary>
-<form class="field" method="post" action="/stacks/{{$.Stack.Name}}/postpone" hx-post="/stacks/{{$.Stack.Name}}/postpone" hx-replace-url="true"><label>Postpone automatic apply until<input type="date" name="until" required></label><button class="small">Postpone</button></form>
-</details>
-<details><summary>Ignore a version…</summary>
-<div class="actions">{{range .Plan.Steps}}{{range .Changes}}<form method="post" action="/stacks/{{$.Stack.Name}}/ignore" hx-post="/stacks/{{$.Stack.Name}}/ignore" hx-replace-url="true"><input type="hidden" name="service" value="{{.Service}}"><input type="hidden" name="version" value="{{.To}}"><button class="small">Ignore {{.Service}} {{.To}}</button></form>{{end}}{{end}}</div>
-</details>
-{{end}}{{end}}
-</div></section>
-{{with .Runs}}<section class="panel"><h2>Runs</h2>
-{{range .}}<a class="row tbl cols-run" href="/runs/{{.ID}}"><span class="mono">{{.ID}}</span><span class="muted">by {{.Author}}<span class="sub">{{when .Started}}{{if .DryRun}} · dry run{{end}}</span></span>{{template "pill" .Status}}</a>
-{{end}}</section>{{end}}
-</aside>
-</div>
-
 <section id="services" class="section"><h2>Services</h2>
 <div class="panel"><div class="scroll">
 <div class="row tbl cols-services cap"><span>Service</span><span>Running</span><span>State</span><span>Upgrade path</span></div>
@@ -110,7 +93,24 @@
 {{end}}</div></div>
 {{if hasStop .Stack .Record}}<div class="legend"><ol class="path"><li class="stop">stop</li></ol><span>required stop from the catalog card; the last version of the path is the target.</span></div>{{end}}
 </section>
-
+</div>
+<aside id="side">
+<section class="panel"><h2>Automation</h2><div class="inset">
+<p class="muted">Automatic apply is on <code class="chip">{{(config).Auto}}</code>. It comes from <code class="chip">PALIER_AUTO</code>; a <code class="chip">palier.auto</code> label on a service overrides it.</p>
+{{with .Record}}{{if .Plan.Steps}}
+<details><summary>Postpone…</summary>
+<form class="field" method="post" action="/stacks/{{$.Stack.Name}}/postpone" hx-post="/stacks/{{$.Stack.Name}}/postpone" hx-replace-url="true"><label>Postpone automatic apply until<input type="date" name="until" required></label><button class="small">Postpone</button></form>
+</details>
+<details><summary>Ignore a version…</summary>
+<div class="actions">{{range .Plan.Steps}}{{range .Changes}}<form method="post" action="/stacks/{{$.Stack.Name}}/ignore" hx-post="/stacks/{{$.Stack.Name}}/ignore" hx-replace-url="true"><input type="hidden" name="service" value="{{.Service}}"><input type="hidden" name="version" value="{{.To}}"><button class="small">Ignore {{.Service}} {{.To}}</button></form>{{end}}{{end}}</div>
+</details>
+{{end}}{{end}}
+</div></section>
+{{with .Runs}}<section class="panel runs"><h2>Runs</h2>
+{{range .}}<a class="row tbl cols-run" href="/runs/{{.ID}}"><span class="mono">{{.ID}}</span><span class="muted">by {{.Author}}<span class="sub">{{when .Started}}{{if .DryRun}} · dry run{{end}}</span></span>{{template "pill" .Status}}</a>
+{{end}}</section>{{end}}
+</aside>
+</div>
 {{with .Backups}}<section id="backups" class="section"><h2>Backups</h2>
 <div class="panel"><div class="scroll">
 <div class="row tbl cols-partial cap"><span>Service</span><span>Made</span><span>Backup</span></div>
@@ -122,7 +122,7 @@
 {{end}}</div></div>
 </section>{{end}}
 
-{{with .Stack.Unused}}<section id="volumes" class="section"><h2>Volumes no container uses</h2>
+{{with .Stack.Unused}}<section id="volumes" class="section"><h2>Unused volumes</h2>
 <div class="panel"><div class="scroll">
 <div class="row tbl cols-partial cap"><span>Volume</span><span>Size</span><span>Location</span></div>
 {{range .}}<div class="row tbl cols-partial"><span class="mono">{{.Name}}</span><span>{{if ge .Size 0}}{{size .Size}}{{else}}not measured{{end}}</span><span class="mono faint">{{.Mountpoint}}</span></div>

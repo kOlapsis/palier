@@ -394,7 +394,7 @@ func (c *cli) show(stack string) error {
 	}
 	if len(v.Stack.Unused) > 0 {
 		c.line("")
-		c.line(c.bold("Volumes no container uses") + c.dim(" · kept, never removed by Palier"))
+		c.line(c.bold("Unused volumes") + c.dim(" · kept, never removed by Palier"))
 		rows := [][]cell{}
 		for _, u := range v.Stack.Unused {
 			measured := "not measured"
