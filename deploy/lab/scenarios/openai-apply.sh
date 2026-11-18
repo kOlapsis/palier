@@ -8,7 +8,7 @@ $PALIER run -d --name palier-openai --no-deps -v palier_openai-data:/var/lib/pal
 	-e PALIER_LISTEN= -e PALIER_AUTO=off -e PALIER_WEBHOOK_URL= -e PALIER_WEBHOOK_SECRET= -e PALIER_SMTP_HOST= \
 	-e PALIER_NTFY_URL= -e PALIER_SLACK_URL= -e PALIER_DISCORD_URL= -e PALIER_TELEGRAM_URL= -e PALIER_OIDC_ISSUER= \
 	palier serve >/dev/null
-until docker exec palier-openai palier show "$STACK" 2>/dev/null | grep -q "AI plan"; do sleep 10; done
+for i in $(seq 1 90); do docker exec palier-openai palier show "$STACK" 2>/dev/null | grep -q -E "AI plan|Incomplete plan" && break; sleep 10; done
 docker exec palier-openai palier show "$STACK" | sed -n '/^Plan/,/^$/p' | head -20
 echo "before:"; outline_state
 docker exec palier-openai palier apply "$STACK" --yes --json </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("run", v["id"], v["status"], (v.get("error") or "")[:300]); [print("  ", e["at"][11:19], e["message"].splitlines()[0][:160]) for e in v["events"]]' || true
