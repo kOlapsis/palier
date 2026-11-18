@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
-  <a href="docs/index.md">Documentation</a>
+  <a href="https://kolapsis.github.io/palier/">Documentation</a>
 </p>
 
 Palier updates the Docker Compose stacks of a machine on its own. It does more than bump a tag: it reads the release notes of every skipped version, has an AI build a plan, checks that plan, then applies it in steps. If a step fails, the whole stack goes back to the last step that worked.
