@@ -9,4 +9,4 @@ echo "verified steps kept: $(sql "SELECT json_extract(checkpoint, '$.step') FROM
 echo "copy volumes left: $(docker volume ls -q --filter label=palier.run | grep -c . || true)"
 grep -n 'image:' /apps/immich/docker-compose.yml
 grep -n 'IMMICH_VERSION' /apps/immich/.env
-docker rmi "$FAKE" >/dev/null
+docker rmi "$FAKE" >/dev/null 2>&1 || true

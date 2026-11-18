@@ -9,4 +9,4 @@ $PALIER exec -T palier palier apply whoami --yes --json </dev/null || true
 echo "duration: $(( $(date +%s) - start )) s"
 echo "after: $(whoami_image)"
 grep image: /apps/whoami/compose.yaml
-docker rmi "docker.io/traefik/whoami:$target" >/dev/null
+docker rmi "docker.io/traefik/whoami:$target" >/dev/null 2>&1 || true

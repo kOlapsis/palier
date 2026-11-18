@@ -11,4 +11,4 @@ $PALIER exec -T palier palier apply outline --yes --json </dev/null | python3 -c
 echo "duration: $(( $(date +%s) - start )) s"
 echo "after:"; outline_state
 grep image: /apps/outline/compose.yaml
-docker rmi "$repo:$2" >/dev/null
+docker rmi "$repo:$2" >/dev/null 2>&1 || true

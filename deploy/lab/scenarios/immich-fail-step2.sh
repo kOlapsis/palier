@@ -8,4 +8,4 @@ echo "duration: $(( $(date +%s) - start )) s"
 echo "after:"; immich_state
 diff /tmp/immich-compose-before.yml /apps/immich/docker-compose.yml >/dev/null && echo "docker-compose.yml identical to the original" || echo "docker-compose.yml differs from the original"
 diff /tmp/immich-env-before /apps/immich/.env >/dev/null && echo ".env identical to the original" || echo ".env differs from the original"
-docker rmi "$FAKE" >/dev/null
+docker rmi "$FAKE" >/dev/null 2>&1 || true

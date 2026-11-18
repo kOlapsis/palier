@@ -6,4 +6,4 @@ apply_and_report gitlab
 echo "duration: $(( $(date +%s) - start )) s"
 echo "after:"; gitlab_state
 grep image: /apps/gitlab/compose.yaml
-docker rmi "$FAKE" >/dev/null
+docker rmi "$FAKE" >/dev/null 2>&1 || true

@@ -71,3 +71,18 @@ func TestRoleLabel(t *testing.T) {
 		t.Errorf("errors = %q", st.Errors)
 	}
 }
+
+func TestOrphans(t *testing.T) {
+	project := func(name string) map[string]string { return map[string]string{labelProject: name} }
+	stacks := map[string]*Stack{"mariadb": {Name: "mariadb"}, "\x00lab-observed": {Name: "lab-observed", Observed: true}}
+	unknown := orphans([]dockerVolume{
+		{Name: "mariadb_data-13", Mountpoint: "/var/lib/docker/volumes/mariadb_data-13/_data", Labels: project("mariadb")},
+		{Name: "mariadb_data", Mountpoint: "/var/lib/docker/volumes/mariadb_data/_data", Labels: project("mariadb")},
+		{Name: "gone_data", Labels: project("gone")},
+		{Name: "palier-run7-step0-db-0", Labels: map[string]string{"palier.run": "7"}},
+	}, map[string]bool{"mariadb_data-13": true}, stacks)
+	got := stacks["mariadb"].Unused
+	if !unknown || len(got) != 1 || got[0].Name != "mariadb_data" || got[0].Size != -1 || got[0].Mountpoint == "" {
+		t.Errorf("unused: %+v, unknown %v", got, unknown)
+	}
+}

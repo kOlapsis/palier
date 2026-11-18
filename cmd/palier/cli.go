@@ -387,6 +387,19 @@ func (c *cli) show(stack string) error {
 		}
 		c.table([]string{"SERVICE", "KIND", "MADE", "RUN", "LOCATION"}, rows)
 	}
+	if len(v.Stack.Unused) > 0 {
+		c.line("")
+		c.line(c.bold("Volumes no container uses") + c.dim(" · kept, never removed by Palier"))
+		rows := [][]cell{}
+		for _, u := range v.Stack.Unused {
+			measured := "not measured"
+			if u.Size >= 0 {
+				measured = web.Size(u.Size)
+			}
+			rows = append(rows, []cell{{text: clean(u.Name), bold: true}, {text: measured}, {text: clean(u.Mountpoint)}})
+		}
+		c.table([]string{"VOLUME", "SIZE", "LOCATION"}, rows)
+	}
 	c.plan(v)
 	if len(v.Runs) > 0 {
 		c.line("")

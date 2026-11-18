@@ -49,6 +49,16 @@
 </div>
 {{end}}
 
+{{with .Stack.Unused}}
+<h2>Volumes no container uses</h2>
+<div class="panel">
+<table><thead><tr><th>Volume</th><th>Size</th><th>Location</th></tr></thead><tbody>
+{{range .}}<tr><td class="name">{{.Name}}</td><td>{{if ge .Size 0}}{{size .Size}}{{else}}not measured{{end}}</td><td class="mono">{{.Mountpoint}}</td></tr>
+{{end}}</tbody></table>
+</div>
+<p class="muted">Palier keeps them and never removes them: for instance the old volume of a database after a major upgrade.</p>
+{{end}}
+
 {{if hasStop .Stack .Record}}<p class="legend"><i></i>required stop from the catalog card; the last version of the path is the target.</p>{{end}}
 
 {{with .Runs}}{{with index . 0}}{{if and (eq .Status "running") (not .DryRun)}}

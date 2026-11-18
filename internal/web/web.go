@@ -345,7 +345,7 @@ func New(deps Deps) http.Handler {
 		"crumbs":     crumbs,
 		"hasStop":    hasStop,
 		"inc":        func(i int) int { return i + 1 },
-		"size":       size,
+		"size":       Size,
 		"worstFirst": WorstFirst,
 		"severities": Severities,
 		"when": func(v string) string {
@@ -428,7 +428,8 @@ func registryHook(deps Deps) http.Handler {
 	})
 }
 
-func size(n int64) string {
+// Size writes a number of bytes in KiB, MiB or GiB.
+func Size(n int64) string {
 	switch {
 	case n >= 1<<30:
 		return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))

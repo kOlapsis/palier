@@ -121,6 +121,9 @@ Some applications ship as several images that must run the same version: n8n and
    - Before each copy, Palier measures it and the free space on the Docker disk. It does not copy when less than 10% of the disk, or 2 GiB, would stay free, nor when an application without a catalog card has more than 20 GiB to copy. The run log says so, and a rollback does not restore that mount.
 3. Each step applies its operations in order. Clients are stopped in reverse dependency order and restarted in order.
 4. Verification follows each step. Once the step is verified, Palier takes a new restore point of the stack as it is, then deletes the previous one, and moves to the next step.
+5. At the end of the run, the last restore point is deleted, and so are the images the run replaced: the one each service started from and those of the steps in between. After a rollback, the images pulled for the step that did not pass go too. Docker keeps any image a container still uses, so an image shared with another stack stays.
+
+What a run leaves on the disk is therefore the images in service, and nothing of its own. When Palier starts, it also removes the throwaway containers and the volume copies that a Palier stopped in the middle of a run left behind, except the copies of a run whose rollback did not pass.
 
 Modified Compose files keep their owner, group and mode. An image given by a variable (`image: postgres:${PG_TAG}`) is changed in the `.env` file.
 
@@ -152,7 +155,7 @@ A major version change of PostgreSQL, MySQL or MariaDB always goes through `db_d
 5. it compares before and after: roles, databases, tables, row counts, indexes and constraints;
 6. the clients restart.
 
-The old volume is never modified. If the reimport or the comparison fails, the stack goes back to the previous step, on the old major version and the old volume.
+The old volume is never modified. If the reimport or the comparison fails, the stack goes back to the previous step, on the old major version and the old volume. After a successful upgrade the old volume stays on the disk: Palier never removes it, and `palier show` and the stack page list the volumes of a stack that no container mounts any more, with their size and location.
 
 After a PostgreSQL patch release that changes the C library of the image, Palier rebuilds the indexes of the affected databases and updates their collation version, as PostgreSQL requires.
 

@@ -8,4 +8,4 @@ echo "before: $(coll)"
 apply_and_report pgcoll
 echo "after: $(coll)"
 grep image: /apps/pgcoll/compose.yaml
-docker rmi "$FAKE" >/dev/null
+docker rmi "$FAKE" >/dev/null 2>&1 || true

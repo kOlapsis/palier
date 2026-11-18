@@ -31,6 +31,14 @@ type Stack struct {
 	EnvFiles    []string   `json:"env_files,omitempty"`
 	Services    []*Service `json:"services"`
 	Errors      []string   `json:"errors,omitempty"`
+	Unused      []Volume   `json:"unused_volumes,omitempty"`
+}
+
+// Volume is a Docker volume of a stack that no container mounts, such as the old volume of a database after a major upgrade.
+type Volume struct {
+	Name       string `json:"name"`
+	Mountpoint string `json:"mountpoint"`
+	Size       int64  `json:"size"` // -1 when Docker did not measure it
 }
 
 // Service is one service of a stack, as it runs.
@@ -154,6 +162,16 @@ func Scan(ctx context.Context, dc *docker.Client) ([]*Stack, error) {
 			}
 		}
 		st.Services = append(st.Services, svc)
+	}
+	mounted := map[string]bool{}
+	for _, c := range containers {
+		for _, m := range c.Mounts {
+			mounted[m.Name] = mounted[m.Name] || m.Type == "volume"
+		}
+	}
+	var volumes struct{ Volumes []dockerVolume }
+	if dc.Get(ctx, "/volumes", &volumes) == nil && orphans(volumes.Volumes, mounted, stacks) {
+		measure(ctx, dc, stacks)
 	}
 	var out []*Stack
 	for _, st := range stacks {
@@ -290,6 +308,57 @@ func parseDependsOn(data []byte) (map[string][]string, map[string]bool, error) {
 		}
 	}
 	return deps, local, nil
+}
+
+type dockerVolume struct {
+	Name, Mountpoint string
+	Labels           map[string]string
+	UsageData        struct{ Size int64 }
+}
+
+var (
+	volumeSizes   = map[string]int64{}
+	volumeSizesMu sync.Mutex
+)
+
+// orphans gives each stack its volumes that no container mounts, and reports whether one of them has no known size yet.
+func orphans(volumes []dockerVolume, mounted map[string]bool, stacks map[string]*Stack) bool {
+	volumeSizesMu.Lock()
+	defer volumeSizesMu.Unlock()
+	unknown := false
+	slices.SortFunc(volumes, func(a, b dockerVolume) int { return cmp.Compare(a.Name, b.Name) })
+	for _, v := range volumes {
+		st := stacks[v.Labels[labelProject]]
+		if v.Labels[labelProject] == "" || st == nil || st.Observed || mounted[v.Name] {
+			continue
+		}
+		size, known := volumeSizes[v.Name]
+		if !known {
+			size, unknown = -1, true
+		}
+		st.Unused = append(st.Unused, Volume{Name: v.Name, Mountpoint: v.Mountpoint, Size: size})
+	}
+	return unknown
+}
+
+// measure asks Docker once for the size of the volumes, kept afterwards: a volume nothing mounts does not change.
+func measure(ctx context.Context, dc *docker.Client, stacks map[string]*Stack) {
+	var df struct{ Volumes []dockerVolume }
+	if dc.Get(ctx, "/system/df?type=volume", &df) != nil {
+		return
+	}
+	volumeSizesMu.Lock()
+	defer volumeSizesMu.Unlock()
+	for _, v := range df.Volumes {
+		volumeSizes[v.Name] = v.UsageData.Size
+	}
+	for _, st := range stacks {
+		for i, v := range st.Unused {
+			if size, ok := volumeSizes[v.Name]; ok {
+				st.Unused[i].Size = size
+			}
+		}
+	}
 }
 
 func assignRoles(st *Stack) {

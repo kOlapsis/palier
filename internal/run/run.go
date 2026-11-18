@@ -184,6 +184,7 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 		return
 	}
 	e.event(id, "checkpoint: %d Compose files, %d services, %d volume copies", len(cp.Files), len(cp.Services), len(cp.Snapshots))
+	replaced := images(cp)
 	for i, step := range p.Steps {
 		e.event(id, "step %d of %d: %s", i+1, len(p.Steps), describe(step))
 		if err := e.step(ctx, id, st, cp, step); err != nil {
@@ -191,6 +192,7 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 			if errors.As(err, &expired) {
 				e.event(id, "step %d is applied and verified, but %v", i+1, err)
 				e.dropSnapshots(ctx, id, cp)
+				e.dropImages(ctx, id, replaced)
 				if i+1 == len(p.Steps) {
 					e.finish(id, Done, nil)
 				} else {
@@ -202,7 +204,9 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 				err = fmt.Errorf("Palier was stopped during step %d", i+1)
 			}
 			e.event(id, "step %d failed: %v", i+1, err)
-			e.rollback(context.WithoutCancel(ctx), id, cp, err)
+			if e.rollback(context.WithoutCancel(ctx), id, cp, err) {
+				e.dropImages(context.WithoutCancel(ctx), id, append(replaced, targets(step)...))
+			}
 			return
 		}
 		e.event(id, "step %d verified", i+1)
@@ -214,10 +218,46 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 				return
 			}
 			cp = next
+			replaced = append(replaced, images(cp)...)
 		}
 	}
 	e.dropSnapshots(ctx, id, cp)
+	e.dropImages(ctx, id, replaced)
 	e.finish(id, Done, nil)
+}
+
+func images(cp *Checkpoint) []string {
+	var ids []string
+	for _, s := range cp.Services {
+		ids = append(ids, s.ImageID)
+	}
+	return ids
+}
+
+func targets(step plan.Step) []string {
+	var refs []string
+	for _, op := range step.Operations {
+		switch op.Op {
+		case "set_image":
+			refs = append(refs, op.Image+":"+op.Tag)
+		case "db_dump_restore":
+			refs = append(refs, op.ToImage+":"+op.ToTag)
+		}
+	}
+	return refs
+}
+
+// dropImages removes the images a run replaced or pulled in vain; Docker keeps those a container still uses.
+func (e *Engine) dropImages(ctx context.Context, id int64, images []string) {
+	removed := 0
+	for i, image := range images {
+		if image != "" && !slices.Contains(images[:i], image) && e.Docker.Delete(ctx, "/images/"+image) == nil {
+			removed++
+		}
+	}
+	if removed > 0 {
+		e.event(id, "images no longer used removed: %d", removed)
+	}
 }
 
 // advance replaces prev by a checkpoint of the stack as the first done steps left it, with fresh copies of the volumes rest changes.
@@ -714,7 +754,8 @@ func (e *Engine) check(ctx context.Context, project string, services []string, r
 	return "", nil
 }
 
-func (e *Engine) rollback(ctx context.Context, id int64, cp *Checkpoint, cause error) {
+// rollback puts the stack back at cp and reports whether it could.
+func (e *Engine) rollback(ctx context.Context, id int64, cp *Checkpoint, cause error) bool {
 	if cp.Step > 0 {
 		e.event(id, "rolling back the whole stack to the last verified step, after step %d", cp.Step)
 		cause = fmt.Errorf("%v; the stack stays at the last verified step, after step %d", cause, cp.Step)
@@ -728,10 +769,11 @@ func (e *Engine) rollback(ctx context.Context, id int64, cp *Checkpoint, cause e
 	if err != nil {
 		e.event(id, "rollback failed: %v", err)
 		e.finish(id, Failed, fmt.Errorf("%v; rollback: %w", cause, err))
-		return
+		return false
 	}
 	e.dropSnapshots(ctx, id, cp)
 	e.finish(id, RolledBack, cause)
+	return true
 }
 
 func (e *Engine) restore(ctx context.Context, id int64, cp *Checkpoint) error {
@@ -787,6 +829,7 @@ func (e *Engine) Recover(ctx context.Context) error {
 		list = append(list, p)
 	}
 	rows.Close()
+	defer e.sweep(ctx)
 	for _, p := range list {
 		cause := errors.New("Palier stopped during the run")
 		if !p.modified {
@@ -803,6 +846,37 @@ func (e *Engine) Recover(ctx context.Context) error {
 		e.rollback(ctx, p.id, &cp, cause)
 	}
 	return nil
+}
+
+// sweep removes what a stopped Palier left behind: its throwaway containers, and the volume copies of runs that ended
+// without needing them. The copies of a failed run stay: its rollback did not pass.
+func (e *Engine) sweep(ctx context.Context) {
+	var helpers []docker.Container
+	if e.Docker.Get(ctx, "/containers/json?all=1&filters="+url.QueryEscape(`{"label":["palier.helper"]}`), &helpers) == nil {
+		for _, c := range helpers {
+			if e.Docker.Delete(ctx, "/containers/"+c.ID+"?force=1") == nil {
+				slog.Info("throwaway container left by a stopped Palier removed", "container", c.ID[:12])
+			}
+		}
+	}
+	var copies struct {
+		Volumes []struct {
+			Name   string
+			Labels map[string]string
+		}
+	}
+	if e.Docker.Get(ctx, "/volumes?filters="+url.QueryEscape(`{"label":["palier.run"]}`), &copies) != nil {
+		return
+	}
+	for _, v := range copies.Volumes {
+		var status string
+		if e.DB.QueryRowContext(ctx, `SELECT status FROM runs WHERE id = ?`, v.Labels["palier.run"]).Scan(&status) == nil && (status == Failed || status == Running) {
+			continue
+		}
+		if e.Docker.Delete(ctx, "/volumes/"+url.PathEscape(v.Name)) == nil {
+			slog.Info("volume copy left by a stopped Palier removed", "volume", v.Name)
+		}
+	}
 }
 
 func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *plan.Plan) {

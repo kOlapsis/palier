@@ -5,7 +5,7 @@
 - No accounts or roles: the web interface lets in the admins of an OpenID Connect provider, or, without one, whoever reaches its port.
 - No agent or remote machine: one Palier per Docker machine.
 - Channels: email, ntfy, Slack, Discord, Telegram and one webhook. No Microsoft Teams, Matrix or Gotify yet, one channel of each type, and no choice of events per channel beyond its level.
-- No cleanup of old images.
+- No removal of the volumes Palier leaves unused: the old volume of a database after a major upgrade stays on the disk, and Palier shows it with its size and location.
 - No update of Palier itself.
 - No translation of release notes.
 - No local catalog entries: only the built-in entries are read.

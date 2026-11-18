@@ -29,11 +29,12 @@ print("  refined:", p.get("refined") or "no")
 print("  incomplete:", p.get("incomplete") or "none")'; }
 echo "== first plan"; show
 target=$(record 'import json,sys; print(json.load(sys.stdin)["record"]["plan"]["steps"][0]["changes"][0]["to"])')
-printf 'FROM busybox:1.37.0\nCMD ["sh", "-c", "echo kuma broken; exit 1"]\n' | docker build -q -t "docker.io/louislam/uptime-kuma:$target" - >/dev/null
-echo "local image docker.io/louislam/uptime-kuma:$target that exits at once"
+echo "local image docker.io/louislam/uptime-kuma:$target that exits at once, built again before each run: Palier removes it after the rollback"
 for n in 1 2; do
+	printf 'FROM busybox:1.37.0\nCMD ["sh", "-c", "echo kuma broken; exit 1"]\n' | docker build -q -t "docker.io/louislam/uptime-kuma:$target" - >/dev/null
 	for i in $(seq 1 30); do record 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("record") else 1)' && break; sleep 5; done
-	$PALIER exec -T palier palier apply diag --yes --json </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("run", v["id"], v["status"], "|", (v.get("error") or "").splitlines()[0][:160])' || true
+	$PALIER exec -T palier palier apply diag --yes --json </dev/null | python3 -c 'import json,sys; v=json.load(sys.stdin); print("run", v["id"], v["status"], "|", (v.get("error") or "").splitlines()[0][:160], "|", [e["message"] for e in v["events"] if "images" in e["message"]])' || true
+	echo "  broken image still there: $(docker images -q "docker.io/louislam/uptime-kuma:$target" | wc -l)"
 done
 echo "kuma: $(docker inspect diag-kuma-1 --format '{{.Config.Image}} {{.State.Status}}')"
 docker rmi -f "docker.io/louislam/uptime-kuma:$target" >/dev/null 2>&1 || true

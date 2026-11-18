@@ -71,6 +71,7 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 - **PostgreSQL collations.** After a patch release that changes the C library of the image, Palier rebuilds the affected indexes and updates the collation version.
 - **Vulnerabilities first.** A version that fixes a vulnerability in the running version skips the maturation delay, and before a long climb Palier first applies the patch of the running line that closes it.
 - **A second look when a plan does not hold.** An incomplete plan, or a plan whose run was rolled back twice, is computed once more with the full text of the notes concerned. The AI is told which step failed and what Docker reported, never the logs of a container.
+- **A disk that does not fill up.** The volume copies of a step are removed as soon as the next step has its own, and at the end of the run. The images a run replaced are removed once it is verified, unless a container still uses them. The old volume of a database after a major upgrade is kept, and shown with its size and location.
 - **Notes are data.** Release notes, image names and logs are never treated as instructions or displayed as HTML.
 - **The Compose file stays the source of truth.** Palier edits it in place, keeps its owner, group and mode, and hides no state on the side.
 - **Emails that do not flood you.** One email when a problem opens, one when it is resolved, and a weekly report only when something happened.
@@ -193,7 +194,7 @@ The web interface is optional: set `PALIER_LISTEN=:8080` and publish the port. W
 - Databases other than PostgreSQL, MySQL and MariaDB stay blocked on their major version.
 - Notes outside GitHub and gitlab.com are not read.
 - Containers started outside Compose are only observed.
-- No cleanup of old images, no update of Palier itself.
+- No update of Palier itself.
 
 The details are in [docs/limitations.md](docs/limitations.md).
 

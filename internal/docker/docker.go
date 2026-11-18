@@ -176,6 +176,7 @@ type Container struct {
 	ImageID string
 	State   string
 	Labels  map[string]string
+	Mounts  []struct{ Type, Name string }
 }
 
 // ContainerDetail is the part of a container inspection Palier reads.
