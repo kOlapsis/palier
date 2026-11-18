@@ -87,7 +87,7 @@ type Deps struct {
 	Run       func(id int64) (*run.View, error)
 	Runs      func(stack string) ([]run.View, error)
 	Backups   func(stack string) ([]run.Archive, error)
-	Rescan    func()
+	Rescan    func(stack string)
 	Scanning  func() bool
 
 	Incidents    func() []notify.Incident
@@ -457,6 +457,7 @@ func New(deps Deps) http.Handler {
 	}
 	s.mux.HandleFunc("GET /{$}", s.overview)
 	s.mux.HandleFunc("POST /scan", s.scan)
+	s.mux.HandleFunc("POST /stacks/{name}/scan", s.scan)
 	s.mux.HandleFunc("GET /stacks/{name}", s.stack)
 	s.mux.HandleFunc("POST /stacks/{name}/apply", s.apply(false))
 	s.mux.HandleFunc("POST /stacks/{name}/dry-run", s.apply(true))
@@ -582,9 +583,18 @@ func (s *server) scanState() string {
 }
 
 func (s *server) scan(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if st, _ := s.find(name); name != "" && st == nil {
+		http.NotFound(w, r)
+		return
+	}
 	s.asked.Store(time.Now().UnixNano())
 	if s.deps.Rescan != nil {
-		s.deps.Rescan()
+		s.deps.Rescan(name)
+	}
+	if name != "" {
+		back(w, r, nil)
+		return
 	}
 	http.Redirect(w, r, refererPath(r), http.StatusSeeOther)
 }
@@ -608,7 +618,7 @@ func registryHook(deps Deps) http.Handler {
 		mu.Unlock()
 		if due && deps.Rescan != nil {
 			slog.Info("registry webhook: scan requested", "from", r.RemoteAddr)
-			deps.Rescan()
+			deps.Rescan("")
 		}
 		w.WriteHeader(http.StatusAccepted)
 	})
@@ -631,7 +641,7 @@ func (s *server) find(name string) (*inventory.Stack, time.Time) {
 	snap := s.deps.Current()
 	for _, st := range snap.Stacks {
 		if st.Name == name {
-			return st, snap.At
+			return st, st.Scanned
 		}
 	}
 	return nil, snap.At

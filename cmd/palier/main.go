@@ -233,6 +233,9 @@ func (a *app) scan(ctx context.Context, only string) ([]*inventory.Stack, error)
 		stacks = slices.DeleteFunc(stacks, func(st *inventory.Stack) bool { return st.Name != only || st.Observed })
 	}
 	inventory.Detect(ctx, stacks, a.reg, a.nc, a.cfg.Maturation)
+	for _, st := range stacks {
+		st.Scanned = time.Now()
+	}
 	rows, err := a.db.QueryContext(ctx, `SELECT stack, service, version FROM decisions WHERE kind = 'ignore'`)
 	if err != nil {
 		return nil, err
@@ -254,6 +257,18 @@ func (a *app) scan(ctx context.Context, only string) ([]*inventory.Stack, error)
 		}
 	}
 	return stacks, rows.Err()
+}
+
+// merge returns old with the stacks of names replaced by their fresh scan: a Compose stack that is gone leaves the list.
+func merge(old []*inventory.Stack, names []string, fresh []*inventory.Stack) []*inventory.Stack {
+	out := slices.Clone(fresh)
+	for _, st := range old {
+		if !slices.Contains(names, st.Name) || st.Observed {
+			out = append(out, st)
+		}
+	}
+	slices.SortFunc(out, func(a, b *inventory.Stack) int { return cmp.Compare(a.Name, b.Name) })
+	return out
 }
 
 func (a *app) stack(ctx context.Context, name string) (*inventory.Stack, error) {
@@ -641,7 +656,7 @@ func retry(last int64, statuses []string, at, now time.Time) (bool, string) {
 
 // waitForScan returns at the next scan interval, on a rescan request, or as soon as a run started by another process has finished.
 func (a *app) waitForScan(ctx context.Context, rescan <-chan struct{}, last time.Time) {
-	deadline := time.After(a.cfg.ScanInterval)
+	deadline := time.After(time.Until(last.Add(a.cfg.ScanInterval)))
 	tick := time.NewTicker(5 * time.Second)
 	defer tick.Stop()
 	for {
@@ -714,6 +729,21 @@ func serve() error {
 		return snap
 	}
 	rescan := make(chan struct{}, 1)
+	var all bool
+	var only []string
+	ask := func(stack string) {
+		mu.Lock()
+		if stack == "" {
+			all = true
+		} else if !slices.Contains(only, stack) {
+			only = append(only, stack)
+		}
+		mu.Unlock()
+		select {
+		case rescan <- struct{}{}:
+		default:
+		}
+	}
 	var scanning atomic.Bool
 	start := func(st *inventory.Stack, author string, dryRun bool) (int64, error) {
 		id, p, err := a.begin(ctx, st, author, dryRun)
@@ -722,10 +752,7 @@ func serve() error {
 		}
 		go func() {
 			a.eng.Execute(ctx, id, st, p, dryRun)
-			select {
-			case rescan <- struct{}{}:
-			default:
-			}
+			ask("")
 		}()
 		return id, nil
 	}
@@ -736,11 +763,34 @@ func serve() error {
 			mu.Unlock()
 		}
 		for {
+			mu.Lock()
+			names := only
+			if all {
+				names = nil
+			}
+			all, only = false, nil
+			mu.Unlock()
 			began := time.Now()
 			scanning.Store(true)
-			stacks, err := a.scan(ctx, "")
+			var stacks []*inventory.Stack
+			var err error
+			for _, name := range names {
+				one, err := a.scan(ctx, name)
+				if err != nil {
+					names = nil
+					break
+				}
+				stacks = append(stacks, one...)
+			}
+			if names == nil {
+				stacks, err = a.scan(ctx, "")
+			}
 			scanning.Store(false)
 			next := web.Snapshot{Stacks: stacks, Began: began, At: time.Now()}
+			if names != nil {
+				prev := current()
+				next = web.Snapshot{Stacks: merge(prev.Stacks, names, stacks), Began: began, At: prev.At, Err: prev.Err}
+			}
 			if err != nil {
 				next.Err = err.Error()
 				slog.Error("scan", "err", err)
@@ -819,10 +869,7 @@ func serve() error {
 			if err := a.decide(ctx, stack, kind, service, version, until, author); err != nil {
 				return err
 			}
-			select {
-			case rescan <- struct{}{}:
-			default:
-			}
+			ask("")
 			return nil
 		},
 		Postponed: func(stack string) time.Time { return a.postponed(ctx, stack) },
@@ -840,12 +887,7 @@ func serve() error {
 		Runs:     func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 20) },
 		Backups:  func(stack string) ([]run.Archive, error) { return run.LastBackups(ctx, a.db, stack) },
 		Scanning: scanning.Load,
-		Rescan: func() {
-			select {
-			case rescan <- struct{}{}:
-			default:
-			}
-		},
+		Rescan:   ask,
 		Incidents: func() []notify.Incident {
 			list, err := a.notifier.Incidents(ctx, true)
 			if err != nil {

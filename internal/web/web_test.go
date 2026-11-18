@@ -149,7 +149,7 @@ func TestRegistryHook(t *testing.T) {
 		Current:  func() Snapshot { return Snapshot{} },
 		Runs:     func(string) ([]run.View, error) { return nil, nil },
 		Plan:     func(string) (*plan.Record, error) { return nil, nil },
-		Rescan:   func() { scans++ },
+		Rescan:   func(string) { scans++ },
 		Scanning: func() bool { return running },
 		Config:   config.Config{HookSecret: secret, OIDCIssuer: "https://idp.invalid", OIDCClientID: "palier", OIDCAdmins: []string{"admins"}},
 	}
@@ -341,7 +341,7 @@ func TestStairsKeepTheirCSSValues(t *testing.T) {
 func TestScan(t *testing.T) {
 	scans := 0
 	deps := overviewDeps()
-	deps.Rescan = func() { scans++ }
+	deps.Rescan = func(string) { scans++ }
 	var began time.Time
 	deps.Current = func() Snapshot { return Snapshot{Began: began, At: began} }
 	h := New(deps)
@@ -456,5 +456,29 @@ func TestStateForgetsARunThatNoLongerMatters(t *testing.T) {
 		if got := s.state(c.st); got != c.want {
 			t.Errorf("last run %s, plan pending %t, healthy %t: %q, want %q", c.status, c.rec != nil, c.st.Healthy(), got, c.want)
 		}
+	}
+}
+
+func TestScanOneStack(t *testing.T) {
+	var asked []string
+	deps := overviewDeps(&inventory.Stack{Name: "whoami"}, &inventory.Stack{Name: "outside", Observed: true})
+	deps.Rescan = func(stack string) { asked = append(asked, stack) }
+	h := New(deps)
+	post := func(path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("POST", path, nil))
+		return w
+	}
+	if w := post("/stacks/whoami/scan"); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/stacks/whoami" || !slices.Equal(asked, []string{"whoami"}) {
+		t.Errorf("scan of whoami: %d to %q, asked %v", w.Code, w.Header().Get("Location"), asked)
+	}
+	if w := post("/stacks/nope/scan"); w.Code != http.StatusNotFound || len(asked) != 1 {
+		t.Errorf("scan of an unknown stack: %d, asked %v", w.Code, asked)
+	}
+	if body := get(h, "/stacks/whoami").Body.String(); !strings.Contains(body, `action="/stacks/whoami/scan"`) {
+		t.Error("the page of a Compose stack has no scan button")
+	}
+	if body := get(h, "/stacks/outside").Body.String(); strings.Contains(body, "/scan\" hx-post=\"/stacks/outside/scan") {
+		t.Error("the page of an observed stack offers a scan")
 	}
 }

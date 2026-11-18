@@ -86,7 +86,7 @@ func API(deps Deps) http.Handler {
 	})
 	mux.HandleFunc("POST /scan", func(w http.ResponseWriter, r *http.Request) {
 		asked := time.Now()
-		s.deps.Rescan()
+		s.deps.Rescan("")
 		reply(w, map[string]time.Time{"asked": asked}, nil)
 	})
 	return mux

@@ -32,6 +32,7 @@ type Stack struct {
 	Services    []*Service `json:"services"`
 	Errors      []string   `json:"errors,omitempty"`
 	Unused      []Volume   `json:"unused_volumes,omitempty"`
+	Scanned     time.Time  `json:"scanned,omitzero"`
 }
 
 // Healthy reports whether every service of the stack runs and none is unhealthy.

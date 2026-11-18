@@ -7,7 +7,7 @@
 <div class="head">
 <h1>{{.Stack.Name}}</h1>
 <span class="pill {{tone .State}}">{{if $live}}{{$k := inc $last.StepsDone}}{{if gt $k (len $last.Steps)}}{{$k = len $last.Steps}}{{end}}Updating, step {{$k}} of {{len $last.Steps}}{{else}}{{capital .State}}{{end}}</span>
-{{if $live}}<div class="end follow"><a class="btn primary" href="/runs/{{$last.ID}}">Follow run {{$last.ID}}</a></div>{{end}}
+{{if $live}}<div class="end follow"><a class="btn primary" href="/runs/{{$last.ID}}">Follow run {{$last.ID}}</a></div>{{else if not .Stack.Observed}}<form class="end follow" method="post" action="/stacks/{{.Stack.Name}}/scan" hx-post="/stacks/{{.Stack.Name}}/scan" hx-replace-url="true"><button{{if scanning}} disabled{{end}}>Scan this stack</button></form>{{end}}
 <p class="meta">{{with .Stack.WorkingDir}}{{.}}{{end}}{{range .Stack.ConfigFiles}} · {{base .}}{{end}} · {{if .At.IsZero}}first scan in progress{{else}}last scan {{since .At}}{{end}}</p>
 </div>
 {{with .Error}}<p class="notice bad">{{.}}</p>{{end}}

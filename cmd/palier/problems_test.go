@@ -88,3 +88,21 @@ func TestSummarizeGroupsByStack(t *testing.T) {
 		t.Errorf("%q / %q", m.Subject, m.Summary)
 	}
 }
+
+func TestMergeOneStackScan(t *testing.T) {
+	st := func(name, tag string, observed bool) *inventory.Stack {
+		return &inventory.Stack{Name: name, Observed: observed, Services: []*inventory.Service{{Name: name, Tag: tag}}}
+	}
+	old := []*inventory.Stack{st("a", "1", false), st("b", "1", false), st("c", "1", false), st("d", "1", true)}
+	got := merge(old, []string{"b", "c", "d", "e"}, []*inventory.Stack{st("b", "2", false), st("e", "1", false)})
+	var list []string
+	for _, s := range got {
+		list = append(list, s.Name+s.Services[0].Tag)
+	}
+	if want := "a1 b2 d1 e1"; strings.Join(list, " ") != want {
+		t.Errorf("merged %q, want %q", strings.Join(list, " "), want)
+	}
+	if old[1].Services[0].Tag != "1" || len(old) != 4 {
+		t.Error("the list being read by the interface was changed in place")
+	}
+}
