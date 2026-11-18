@@ -131,7 +131,7 @@ Modified Compose files keep their owner, group and mode. An image whose tag hold
 
 Palier verifies only what Docker reports:
 
-- the container is running;
+- the container is running, or ended with exit code 0 when it has no restart policy, as a migration service does;
 - it stays stable for `PALIER_STABLE_SECONDS`;
 - it does not loop in restarts;
 - it is `healthy` if its image has a HEALTHCHECK.
@@ -142,7 +142,9 @@ No HTTP probe and no application test is added.
 
 If a step fails, the whole stack goes back to the last restore point: that of the last verified step, or the initial one if the first step fails. Files, images and volumes are restored, then verified again. If GitLab fails at its sixth stop, it stays at the fifth, already verified and running, and the next run starts from there. A step is never left half applied.
 
-If Palier is stopped in the middle of a run, it resumes it at restart: the stack goes back to the last verified step. In automatic mode, a new run starts from there at the next scan.
+If Palier is stopped in the middle of a run, it resumes it at restart: the stack goes back to the last verified step.
+
+Palier does not insist. After a run that did not pass, it applies nothing on that stack on its own for a day, whatever the plan has become and even if Palier restarts. After three rollbacks in a row, or one rollback that did not pass, it stops until a run passes: `palier apply` or the Apply button, once the stack is in order. `palier status` and the stack page say why.
 
 ## Databases
 

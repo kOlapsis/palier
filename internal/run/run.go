@@ -226,6 +226,12 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 	e.finish(id, Done, nil)
 }
 
+// completed reports a job that ended well: exit code 0 and no restart policy, as a migration service does.
+func completed(d docker.ContainerDetail) bool {
+	policy := d.HostConfig.RestartPolicy.Name
+	return d.State.Status == "exited" && d.State.ExitCode == 0 && (policy == "" || policy == "no")
+}
+
 func images(cp *Checkpoint) []string {
 	var ids []string
 	for _, s := range cp.Services {
@@ -734,6 +740,9 @@ func (e *Engine) check(ctx context.Context, project string, services []string, r
 		if !seen {
 			restarts[name] = d.RestartCount
 			base = d.RestartCount
+		}
+		if completed(d) {
+			continue
 		}
 		fail := ""
 		switch {

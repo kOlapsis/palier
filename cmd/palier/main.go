@@ -585,23 +585,58 @@ func (a *app) begin(ctx context.Context, st *inventory.Stack, author string, dry
 	return id, rec.Plan, err
 }
 
-const retryAfter = 24 * time.Hour
+const (
+	retryAfter = 24 * time.Hour
+	strikes    = 3
+)
 
-var startedAt = time.Now()
-
-// notRetried keeps the automatic loop from applying again, within a day and the same Palier process, the plan whose last run did not finish done.
-func (a *app) notRetried(ctx context.Context, stack string, p *plan.Plan) (bool, string) {
-	var id int64
-	var body, status, finished string
-	if a.db.QueryRowContext(ctx, `SELECT id, plan, status, finished FROM runs WHERE stack = ? AND dry_run = 0 ORDER BY id DESC LIMIT 1`, stack).Scan(&id, &body, &status, &finished) != nil {
+// notRetried keeps the automatic loop from applying again on a stack whose last run did not pass.
+func (a *app) notRetried(ctx context.Context, stack string) (bool, string) {
+	rows, err := a.db.QueryContext(ctx, `SELECT id, status, finished FROM runs WHERE stack = ? AND dry_run = 0 ORDER BY id DESC LIMIT ?`, stack, strikes)
+	if err != nil {
 		return true, ""
 	}
-	current, _ := json.Marshal(p)
+	defer rows.Close()
+	var last int64
+	var finished string
+	var statuses []string
+	for rows.Next() {
+		var id int64
+		var status, at string
+		if rows.Scan(&id, &status, &at) != nil {
+			break
+		}
+		if len(statuses) == 0 {
+			last, finished = id, at
+		}
+		statuses = append(statuses, status)
+	}
 	at, _ := time.Parse(time.RFC3339, finished)
-	if status == run.Done || status == run.Running || body != string(current) || time.Since(at) > retryAfter || at.Before(startedAt) {
+	return retry(last, statuses, at, time.Now())
+}
+
+// retry decides from the last runs of a stack, newest first: a day of wait after a run that did not pass, whatever the
+// plan has become, and a full stop after a failed rollback or three rollbacks in a row.
+func retry(last int64, statuses []string, at, now time.Time) (bool, string) {
+	if len(statuses) == 0 || statuses[0] == run.Done || statuses[0] == run.Running {
 		return true, ""
 	}
-	return false, fmt.Sprintf("the same plan ended \"%s\" in run %d; retry on %s, or sooner if the plan changes", status, id, at.Add(retryAfter).Format("Jan 2 3:04 PM"))
+	rolledBack := 0
+	for _, s := range statuses {
+		if s != run.RolledBack && s != run.Failed {
+			break
+		}
+		rolledBack++
+	}
+	switch {
+	case statuses[0] == run.Failed:
+		return false, fmt.Sprintf("run %d failed and its rollback did not pass: Palier applies nothing on this stack on its own until a run passes", last)
+	case rolledBack >= strikes:
+		return false, fmt.Sprintf("the last %d runs were rolled back: Palier applies nothing on this stack on its own until a run passes", rolledBack)
+	case now.Sub(at) <= retryAfter:
+		return false, fmt.Sprintf("run %d ended \"%s\"; next automatic try on %s", last, statuses[0], at.Add(retryAfter).Format("Jan 2 3:04 PM"))
+	}
+	return true, ""
 }
 
 // waitForScan returns at the next scan interval, on a rescan request, or as soon as a run started by another process has finished.
@@ -731,7 +766,7 @@ func serve() error {
 					ok, why = false, "postponed until "+until.Format("2006-01-02")
 				}
 				if ok {
-					ok, why = a.notRetried(ctx, st.Name, rec.Plan)
+					ok, why = a.notRetried(ctx, st.Name)
 				}
 				if !ok {
 					slog.Info("automatic apply skipped", "stack", st.Name, "auto", a.cfg.Auto, "reason", why)
@@ -797,7 +832,7 @@ func serve() error {
 				ok, why = false, "postponed until "+until.Format("2006-01-02")
 			}
 			if ok {
-				ok, why = a.notRetried(ctx, stack, p)
+				ok, why = a.notRetried(ctx, stack)
 			}
 			return ok, why
 		},

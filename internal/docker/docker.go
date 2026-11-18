@@ -201,6 +201,9 @@ type ContainerDetail struct {
 		ExitCode int
 		Health   *struct{ Status string }
 	}
+	HostConfig struct {
+		RestartPolicy struct{ Name string }
+	}
 	Mounts []struct {
 		Type        string
 		Name        string

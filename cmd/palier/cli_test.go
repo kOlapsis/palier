@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kolapsis/palier/internal/config"
 	"github.com/kolapsis/palier/internal/inventory"
@@ -97,6 +98,31 @@ func TestAIFailureSaysWhatToDo(t *testing.T) {
 	} {
 		if got := aiFailure(errors.New(msg)); !strings.Contains(got, want) || !strings.Contains(got, msg) {
 			t.Errorf("%s: %s", msg, got)
+		}
+	}
+}
+
+func TestRetryStopsLoops(t *testing.T) {
+	now := time.Date(2026, 11, 18, 13, 0, 0, 0, time.UTC)
+	hour, twoDays := now.Add(-time.Hour), now.Add(-48*time.Hour)
+	for _, c := range []struct {
+		name     string
+		statuses []string
+		at       time.Time
+		ok       bool
+		why      string
+	}{
+		{"no run yet", nil, now, true, ""},
+		{"last run passed", []string{"done", "rolled_back"}, hour, true, ""},
+		{"rolled back an hour ago", []string{"rolled_back", "done"}, hour, false, "next automatic try on"},
+		{"rolled back two days ago", []string{"rolled_back", "done"}, twoDays, true, ""},
+		{"abandoned an hour ago", []string{"abandoned"}, hour, false, "next automatic try on"},
+		{"three rollbacks in a row, even long ago", []string{"rolled_back", "rolled_back", "rolled_back"}, twoDays, false, "last 3 runs were rolled back"},
+		{"a rollback that failed, even long ago", []string{"failed", "done"}, twoDays, false, "its rollback did not pass"},
+	} {
+		ok, why := retry(7, c.statuses, c.at, now)
+		if ok != c.ok || !strings.Contains(why, c.why) {
+			t.Errorf("%s: %v %q", c.name, ok, why)
 		}
 	}
 }
