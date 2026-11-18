@@ -219,17 +219,21 @@
 
 .pl-step {
   animation: pl-rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  animation-delay: calc(var(--i) * 130ms + 150ms);
+  animation-delay: calc(var(--i) * 150ms + 2s);
 }
 
-.pl-refused {
-  animation: pl-show 0.5s ease both;
-  animation-delay: 1.35s;
+.pl-step.pl-from {
+  animation-delay: 150ms;
+}
+
+.pl-refused > * {
+  animation: pl-show 0.4s ease both;
+  animation-delay: 1.3s;
 }
 
 .pl-refused path.arc {
-  animation: pl-draw 0.9s ease both;
-  animation-delay: 1.2s;
+  animation: pl-draw 0.7s ease both;
+  animation-delay: 0.6s;
   stroke-dasharray: 7 7;
 }
 
@@ -254,7 +258,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .pl-step,
-  .pl-refused,
+  .pl-refused > *,
   .pl-refused path.arc {
     animation: none;
   }
