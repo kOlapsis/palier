@@ -125,7 +125,7 @@ Some applications ship as several images that must run the same version: n8n and
 
 What a run leaves on the disk is therefore the images in service, and nothing of its own. When Palier starts, it also removes the throwaway containers and the volume copies that a Palier stopped in the middle of a run left behind, except the copies of a run whose rollback did not pass.
 
-Modified Compose files keep their owner, group and mode. An image given by a variable (`image: postgres:${PG_TAG}`) is changed in the `.env` file.
+Modified Compose files keep their owner, group and mode. An image whose tag holds a variable is changed in the `.env` file: `image: postgres:${PG_TAG}`, or with text around the variable, as `image: app:${APP_VERSION}-slim`, where Palier writes the version without the `-slim`.
 
 ## 6. Verification
 

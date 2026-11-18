@@ -557,12 +557,16 @@ func (e *Engine) setImage(id int64, cp *Checkpoint, op plan.Operation) error {
 		if err != nil {
 			return err
 		}
-		if current, _ := compose.EnvVar([]byte(env.Data), variable); current == op.Tag {
-			e.event(id, "%s: %s is already %s", env.Path, variable, op.Tag)
+		value, fits := compose.VariableValue(raw, op.Tag)
+		if !fits {
+			return fmt.Errorf("the image of %s is written %s: the tag %s does not fit it", op.Service, raw, op.Tag)
+		}
+		if current, _ := compose.EnvVar([]byte(env.Data), variable); current == value {
+			e.event(id, "%s: %s is already %s", env.Path, variable, value)
 			return nil
 		}
-		env.Data = string(compose.SetEnvVar([]byte(env.Data), variable, op.Tag))
-		e.event(id, "%s: %s set to %s (image of %s)", env.Path, variable, op.Tag, op.Service)
+		env.Data = string(compose.SetEnvVar([]byte(env.Data), variable, value))
+		e.event(id, "%s: %s set to %s (image of %s)", env.Path, variable, value, op.Service)
 		return compose.Write(env)
 	}
 	ref, err := currentImage([]byte(fs.Data), op.Service)
@@ -909,7 +913,12 @@ func (e *Engine) dryRun(ctx context.Context, id int64, st *inventory.Stack, p *p
 			}
 			if raw, _ := compose.ImageValue(files[file], op.Service); err == nil {
 				if _, variable, ok := compose.ImageVariable(raw); ok {
-					e.event(id, "would do: %s set to %s (image of %s, present in the registry)", variable, op.Tag, op.Service)
+					value, fits := compose.VariableValue(raw, op.Tag)
+					if !fits {
+						problems = append(problems, fmt.Sprintf("the image of %s is written %s: the tag %s does not fit it", op.Service, raw, op.Tag))
+						continue
+					}
+					e.event(id, "would do: %s set to %s (image of %s, present in the registry)", variable, value, op.Service)
 					continue
 				}
 				files[file], err = compose.SetImage(files[file], op.Service, ref+":"+op.Tag)

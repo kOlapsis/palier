@@ -138,6 +138,20 @@ services:
 	if repo, v, ok := ImageVariable("ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}"); !ok || repo != "ghcr.io/immich-app/immich-server" || v != "IMMICH_VERSION" {
 		t.Fatalf("ImageVariable: %s %s %v", repo, v, ok)
 	}
+	if repo, v, ok := ImageVariable("luka1thb/tymeslot:${TYMESLOT_VERSION}-slim"); !ok || repo != "luka1thb/tymeslot" || v != "TYMESLOT_VERSION" {
+		t.Fatalf("ImageVariable with a suffix: %s %s %v", repo, v, ok)
+	}
+	for _, c := range []struct{ image, tag, want string }{
+		{"luka1thb/tymeslot:${TYMESLOT_VERSION}-slim", "1.5.0-slim", "1.5.0"},
+		{"luka1thb/tymeslot:${TYMESLOT_VERSION}-slim", "1.5.0", ""},
+		{"docker.io/n8nio/n8n:${N8N_VERSION}", "3.3.0", "3.3.0"},
+		{"postgres:pg${PG_MAJOR:-16}-alpine", "pg17-alpine", "17"},
+		{"postgres:16.4", "16.5", ""},
+	} {
+		if got, ok := VariableValue(c.image, c.tag); got != c.want || ok != (c.want != "") {
+			t.Errorf("VariableValue(%s, %s) = %q, %v", c.image, c.tag, got, ok)
+		}
+	}
 	out, err := Edit([]byte(in), func(root *yaml.Node) error {
 		for _, e := range [][]string{
 			{"immich-microservices", "remove_service", "", "", ""},

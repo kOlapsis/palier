@@ -270,15 +270,24 @@ func ReplaceMount(root *yaml.Node, service, oldTarget, volume, target string) er
 	return nil
 }
 
-var imageVar = regexp.MustCompile(`^([^$]+):\$\{(\w+)(?::?-[^}]*)?\}$`)
+var imageVar = regexp.MustCompile(`^([^$]+):([^$]*)\$\{(\w+)(?::?-[^}]*)?\}([^$]*)$`)
 
-// ImageVariable returns the repository and the variable that holds the tag of an image written repo:${VAR}.
+// ImageVariable returns the repository and the variable of an image whose tag holds one, as repo:${VAR} or repo:${VAR}-slim.
 func ImageVariable(image string) (repo, variable string, ok bool) {
 	m := imageVar.FindStringSubmatch(image)
 	if m == nil {
 		return "", "", false
 	}
-	return m[1], m[2], true
+	return m[1], m[3], true
+}
+
+// VariableValue returns what the variable of image must hold for its tag to be tag; ok is false when tag does not fit.
+func VariableValue(image, tag string) (value string, ok bool) {
+	m := imageVar.FindStringSubmatch(image)
+	if m == nil || len(tag) <= len(m[2])+len(m[4]) || !strings.HasPrefix(tag, m[2]) || !strings.HasSuffix(tag, m[4]) {
+		return "", false
+	}
+	return tag[len(m[2]) : len(tag)-len(m[4])], true
 }
 
 // ImageValue returns the image of service as written in the file.
