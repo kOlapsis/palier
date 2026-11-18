@@ -429,3 +429,32 @@ func TestPageIsMorphedAndAssetsVersioned(t *testing.T) {
 		t.Error("the settings page does not mark its own link")
 	}
 }
+
+func TestStateForgetsARunThatNoLongerMatters(t *testing.T) {
+	up := &inventory.Stack{Name: "app", Services: []*inventory.Service{{Name: "app", State: "running"}}}
+	down := &inventory.Stack{Name: "app", Services: []*inventory.Service{{Name: "app", State: "exited"}}}
+	pending := &plan.Record{Plan: &plan.Plan{Steps: []plan.Step{{}}}}
+	for _, c := range []struct {
+		status string
+		st     *inventory.Stack
+		rec    *plan.Record
+		want   string
+	}{
+		{"failed", up, nil, "up to date"},
+		{"failed", down, nil, "failed"},
+		{"failed", up, pending, "failed"},
+		{"rolled_back", up, nil, "up to date"},
+		{"rolled_back", up, pending, "rolled back"},
+		{"abandoned", down, nil, "up to date"},
+		{"running", up, nil, "running"},
+	} {
+		s := &server{deps: Deps{
+			Current: func() Snapshot { return Snapshot{At: time.Now()} },
+			Runs:    func(string) ([]run.View, error) { return []run.View{{ID: 1, Status: c.status}}, nil },
+			Plan:    func(string) (*plan.Record, error) { return c.rec, nil },
+		}}
+		if got := s.state(c.st); got != c.want {
+			t.Errorf("last run %s, plan pending %t, healthy %t: %q, want %q", c.status, c.rec != nil, c.st.Healthy(), got, c.want)
+		}
+	}
+}

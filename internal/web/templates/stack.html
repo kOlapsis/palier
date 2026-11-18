@@ -14,7 +14,7 @@
 {{with .Postponed}}<p class="notice info">Automatic apply postponed until {{.}}.</p>{{end}}
 {{range .Stack.Errors}}<p class="notice bad">{{.}}</p>{{end}}
 
-{{with $last}}{{if or (eq .Status "failed") (eq .Status "rolled_back") (eq .Status "stopped") (eq .Status "abandoned")}}
+{{with $last}}{{if or (eq $.State "failed") (eq $.State "rolled back") (eq $.State "stopped") (eq $.State "abandoned")}}
 <section id="outcome" class="panel pad {{if eq .Status "failed"}}bad tint{{else}}warn{{end}}"><div class="top-row">
 <div class="grow"><p>{{if eq .Status "failed"}}The update failed and the rollback did not complete: the stack may not be back at its checkpoint.{{else if eq .Status "rolled_back"}}The update was rolled back. The stack is back at its last verified step; the update is still to do.{{else if eq .Status "stopped"}}The update stopped after a verified step. The next steps wait.{{else}}The update was abandoned before anything changed.{{end}}</p>
 {{with firstLine .Error}}<p class="sub wrap">{{.}}</p>{{end}}</div>

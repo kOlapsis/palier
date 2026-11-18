@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/notify"
 	"github.com/kolapsis/palier/internal/plan"
 	"github.com/kolapsis/palier/internal/run"
@@ -62,7 +61,7 @@ func problems(snap web.Snapshot, last map[string]run.View, plans map[string]*pla
 			path := fmt.Sprintf("/runs/%d", r.ID)
 			cause := r.Error
 			switch {
-			case r.Status == run.Failed && (pending || !healthy(st)):
+			case r.Status == run.Failed && (pending || !st.Healthy()):
 				out = append(out, notify.Problem{Key: st.Name + ":failed", Stack: st.Name, Level: notify.Alert, Title: st.Name + ": rollback failed",
 					Detail: cause, Action: "Palier could not put the stack back as it was, and does not touch it any more. The run log says what is left in the modified state." + log, Path: path})
 			case r.Status == run.RolledBack && pending:
@@ -121,15 +120,6 @@ func problems(snap web.Snapshot, last map[string]run.View, plans map[string]*pla
 		}
 	}
 	return out
-}
-
-func healthy(st *inventory.Stack) bool {
-	for _, s := range st.Services {
-		if s.State != "running" || s.Health == "unhealthy" {
-			return false
-		}
-	}
-	return true
 }
 
 // report sums up, stack by stack, the versions the runs between since and until moved, and the runs that did not go through.

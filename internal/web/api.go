@@ -12,7 +12,6 @@ import (
 
 	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/notify"
-	"github.com/kolapsis/palier/internal/run"
 )
 
 // Line is one stack of the status list.
@@ -167,7 +166,7 @@ func (s *server) line(v StackView) Line {
 	if v.Postponed != "" {
 		notes = append(notes, "postponed until "+v.Postponed)
 	}
-	if len(v.Runs) > 0 && !v.Runs[0].DryRun && v.Runs[0].Status != run.Done && v.Runs[0].Error != "" {
+	if len(v.Runs) > 0 && !v.Runs[0].DryRun && v.State == stateNames[v.Runs[0].Status] && v.Runs[0].Error != "" {
 		cause, _, _ := strings.Cut(v.Runs[0].Error, "\n")
 		if r := []rune(cause); len(r) > 80 {
 			cause = string(r[:80]) + "…"

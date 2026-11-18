@@ -34,6 +34,16 @@ type Stack struct {
 	Unused      []Volume   `json:"unused_volumes,omitempty"`
 }
 
+// Healthy reports whether every service of the stack runs and none is unhealthy.
+func (st *Stack) Healthy() bool {
+	for _, s := range st.Services {
+		if s.State != "running" || s.Health == "unhealthy" {
+			return false
+		}
+	}
+	return true
+}
+
 // Volume is a Docker volume of a stack that no container mounts, such as the old volume of a database after a major upgrade.
 type Volume struct {
 	Name       string `json:"name"`

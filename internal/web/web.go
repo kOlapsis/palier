@@ -139,15 +139,17 @@ func (s *server) state(st *inventory.Stack) string {
 	if st.Observed {
 		return "observed only"
 	}
+	rec, _ := s.plan(st.Name)
 	if runs, _ := s.deps.Runs(st.Name); len(runs) > 0 && !runs[0].DryRun {
-		if name, ok := stateNames[runs[0].Status]; ok {
-			return name
+		pending := rec != nil && len(rec.Plan.Steps) > 0
+		switch status := runs[0].Status; {
+		case status == run.Running, status == run.Failed && !st.Healthy(), pending && stateNames[status] != "":
+			return stateNames[status]
 		}
 	}
 	if s.deps.Current().At.IsZero() {
 		return "checking versions"
 	}
-	rec, _ := s.plan(st.Name)
 	switch {
 	case rec != nil && len(rec.Plan.Incomplete) > 0:
 		return "incomplete plan"
