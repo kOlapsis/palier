@@ -106,3 +106,27 @@ func TestMergeOneStackScan(t *testing.T) {
 		t.Error("the list being read by the interface was changed in place")
 	}
 }
+
+func TestAcceptMaturingVersion(t *testing.T) {
+	rel := func(tags ...string) (out []inventory.Release) {
+		for _, t := range tags {
+			out = append(out, inventory.Release{Tag: t})
+		}
+		return out
+	}
+	list := func(l []inventory.Release) string {
+		var out []string
+		for _, r := range l {
+			out = append(out, r.Tag)
+		}
+		return strings.Join(out, " ")
+	}
+	available, maturing := accept(rel("1.2.4", "1.3.0"), rel("1.2.5", "1.3.1"), func(tag string) bool { return tag == "1.2.5" })
+	if list(available) != "1.2.4 1.2.5 1.3.0" || list(maturing) != "1.3.1" {
+		t.Errorf("available %q, maturing %q", list(available), list(maturing))
+	}
+	available, maturing = accept(nil, rel("1.3.0"), func(string) bool { return false })
+	if len(available) != 0 || list(maturing) != "1.3.0" {
+		t.Errorf("nothing accepted: available %q, maturing %q", list(available), list(maturing))
+	}
+}

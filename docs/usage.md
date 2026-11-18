@@ -45,6 +45,7 @@ The plan also says which versions it rules out and why, for example a database m
 | `palier apply <stack> --dry-run` | Dry run | Checks that each target image exists in the registry and describes what Palier would do, without changing anything. |
 | `palier apply <stack>` | Apply plan | Scans the stack again, then starts the run right away, without waiting for automatic apply. Refused if the plan is incomplete. |
 | `palier ignore <stack> <service> <version>` | Ignore *service version* | Removes this version from the proposed versions. The plan is recomputed without it. |
+| `palier accept <stack> <service> <version>` | Take *version* now | Proposes a version that is still maturing, without waiting for the end of the delay. The plan is recomputed with it. |
 | `palier postpone <stack> <YYYY-MM-DD>` | Postpone | Prevents automatic apply for this stack until that date. |
 
 Each decision is recorded with its author (`cli`, `auto`, the email of the person signed in to the web interface, or `interface` without sign-in) and its date.

@@ -462,6 +462,7 @@ func New(deps Deps) http.Handler {
 	s.mux.HandleFunc("POST /stacks/{name}/apply", s.apply(false))
 	s.mux.HandleFunc("POST /stacks/{name}/dry-run", s.apply(true))
 	s.mux.HandleFunc("POST /stacks/{name}/ignore", s.decide("ignore"))
+	s.mux.HandleFunc("POST /stacks/{name}/accept", s.decide("accept"))
 	s.mux.HandleFunc("POST /stacks/{name}/postpone", s.decide("postpone"))
 	s.mux.HandleFunc("GET /runs/{id}", s.run)
 	s.mux.HandleFunc("GET /settings", func(w http.ResponseWriter, r *http.Request) {
@@ -731,8 +732,8 @@ func (s *server) who(r *http.Request) string { return cmp.Or(who(r), s.author) }
 
 func (s *server) record(author, stack, kind, service, version, until string) error {
 	switch {
-	case kind == "ignore" && (service == "" || version == ""):
-		return errors.New("service and version to ignore are missing")
+	case (kind == "ignore" || kind == "accept") && (service == "" || version == ""):
+		return errors.New("service and version to " + kind + " are missing")
 	case kind == "postpone":
 		if _, err := time.Parse("2006-01-02", until); err != nil {
 			return errors.New("invalid postpone date, expected YYYY-MM-DD")

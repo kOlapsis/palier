@@ -34,6 +34,7 @@ import (
 	"github.com/kolapsis/palier/internal/registry"
 	"github.com/kolapsis/palier/internal/run"
 	"github.com/kolapsis/palier/internal/store"
+	"github.com/kolapsis/palier/internal/version"
 	"github.com/kolapsis/palier/internal/web"
 )
 
@@ -236,27 +237,52 @@ func (a *app) scan(ctx context.Context, only string) ([]*inventory.Stack, error)
 	for _, st := range stacks {
 		st.Scanned = time.Now()
 	}
-	rows, err := a.db.QueryContext(ctx, `SELECT stack, service, version FROM decisions WHERE kind = 'ignore'`)
+	rows, err := a.db.QueryContext(ctx, `SELECT kind, stack, service, version FROM decisions WHERE kind IN ('ignore', 'accept')`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	ignored := map[[3]string]bool{}
+	decided := map[[4]string]bool{}
 	for rows.Next() {
-		var k [3]string
-		if err := rows.Scan(&k[0], &k[1], &k[2]); err != nil {
+		var k [4]string
+		if err := rows.Scan(&k[0], &k[1], &k[2], &k[3]); err != nil {
 			return nil, err
 		}
-		ignored[k] = true
+		decided[k] = true
 	}
 	for _, st := range stacks {
 		for _, s := range st.Services {
-			drop := func(r inventory.Release) bool { return ignored[[3]string{st.Name, s.Name, r.Tag}] }
+			drop := func(r inventory.Release) bool { return decided[[4]string{"ignore", st.Name, s.Name, r.Tag}] }
 			s.Available = slices.DeleteFunc(s.Available, drop)
 			s.Maturing = slices.DeleteFunc(s.Maturing, drop)
+			s.Available, s.Maturing = accept(s.Available, s.Maturing, func(tag string) bool { return decided[[4]string{"accept", st.Name, s.Name, tag}] })
 		}
 	}
 	return stacks, rows.Err()
+}
+
+// accept moves to available the maturing versions that accepted names, and keeps available in ascending order.
+func accept(available, maturing []inventory.Release, accepted func(tag string) bool) ([]inventory.Release, []inventory.Release) {
+	var waiting []inventory.Release
+	for _, r := range maturing {
+		if accepted(r.Tag) {
+			available = append(available, r)
+		} else {
+			waiting = append(waiting, r)
+		}
+	}
+	slices.SortStableFunc(available, func(a, b inventory.Release) int {
+		v, _ := version.Parse(a.Tag)
+		w, _ := version.Parse(b.Tag)
+		switch {
+		case v.Less(w):
+			return -1
+		case w.Less(v):
+			return 1
+		}
+		return 0
+	})
+	return available, waiting
 }
 
 // merge returns old with the stacks of names replaced by their fresh scan: a Compose stack that is gone leaves the list.
@@ -869,7 +895,7 @@ func serve() error {
 			if err := a.decide(ctx, stack, kind, service, version, until, author); err != nil {
 				return err
 			}
-			ask("")
+			ask(stack)
 			return nil
 		},
 		Postponed: func(stack string) time.Time { return a.postponed(ctx, stack) },

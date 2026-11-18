@@ -56,7 +56,7 @@ func API(deps Deps) http.Handler {
 		id, err := s.deps.Apply(r.PathValue("name"), s.author, r.FormValue("dry_run") == "1")
 		reply(w, map[string]int64{"run": id}, err)
 	})
-	for _, kind := range []string{"ignore", "postpone"} {
+	for _, kind := range []string{"ignore", "accept", "postpone"} {
 		mux.HandleFunc("POST /stacks/{name}/"+kind, func(w http.ResponseWriter, r *http.Request) {
 			reply(w, map[string]bool{"ok": true}, s.record(s.author, r.PathValue("name"), kind, r.FormValue("service"), r.FormValue("version"), r.FormValue("until")))
 		})

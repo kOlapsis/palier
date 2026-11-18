@@ -97,7 +97,8 @@
 <ol class="path" aria-label="Upgrade path of {{.Name}}">{{range $i, $c := $path}}<li{{if eq $i 0}} class="from"{{else if $c.Last}} class="last"{{else if $c.Stop}} class="stop" title="Required stop"{{end}}>{{$c.Tag}}</li>{{end}}</ol>
 {{else if and .Available $.Record}}<span class="muted">stays on {{or .Version .Tag}}: the plan does not change it</span>{{else}}<span class="muted">up to date</span>{{end}}
 {{with .Available}}<details><summary>{{len .}} newer version{{plural (len .)}}</summary><p class="small-print mono">{{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</p></details>{{end}}
-{{with .Maturing}}<span class="muted">Maturing: {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>{{end}}
+{{$svc := .}}{{with .Maturing}}<span class="muted">Maturing: {{range $i, $r := .}}{{if $i}}, {{end}}{{$r.Tag}}{{end}}</span>
+<div class="actions">{{range .}}<form method="post" action="/stacks/{{$.Stack.Name}}/accept" hx-post="/stacks/{{$.Stack.Name}}/accept" hx-replace-url="true"><input type="hidden" name="service" value="{{$svc.Name}}"><input type="hidden" name="version" value="{{.Tag}}"><button class="small">Take {{.Tag}} now</button></form>{{end}}</div>{{end}}
 {{with .DetectionError}}<span class="err">{{.}}</span>{{end}}
 {{with .NotesError}}<span class="err">{{.}}</span>{{end}}
 {{with .Hidden}}<details><summary>Removed from the notes before the AI read them</summary><p class="small-print">{{range $i, $h := .}}{{if $i}}<br>{{end}}{{$h}}{{end}}</p></details>{{end}}</div>

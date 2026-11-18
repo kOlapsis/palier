@@ -482,3 +482,30 @@ func TestScanOneStack(t *testing.T) {
 		t.Error("the page of an observed stack offers a scan")
 	}
 }
+
+func TestAcceptMaturingVersion(t *testing.T) {
+	var got []string
+	st := &inventory.Stack{Name: "shm", Services: []*inventory.Service{{Name: "app", Tag: "1.2.0", Version: "1.2.0", State: "running", Maturing: []inventory.Release{{Tag: "1.3.0"}}}}}
+	deps := overviewDeps(st)
+	deps.Decide = func(stack, author, kind, service, version, until string) error {
+		got = append(got, stack+" "+kind+" "+service+" "+version)
+		return nil
+	}
+	h := New(deps)
+	post := func(form string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/stacks/shm/accept", strings.NewReader(form))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := post("service=app&version=1.3.0"); w.Header().Get("Location") != "/stacks/shm" || !slices.Equal(got, []string{"shm accept app 1.3.0"}) {
+		t.Errorf("accept: to %q, decided %v", w.Header().Get("Location"), got)
+	}
+	if w := post("service=app"); !strings.Contains(w.Header().Get("Location"), "error=") || len(got) != 1 {
+		t.Errorf("accept without a version: to %q, decided %v", w.Header().Get("Location"), got)
+	}
+	if body := get(h, "/stacks/shm").Body.String(); !strings.Contains(body, `action="/stacks/shm/accept"`) || !strings.Contains(body, "Take 1.3.0 now") {
+		t.Error("the page does not offer to take the maturing version now")
+	}
+}
