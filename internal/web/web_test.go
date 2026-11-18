@@ -261,7 +261,7 @@ func TestGroup(t *testing.T) {
 		{"e-abandoned", "abandoned", ""}, {"f-incomplete", "incomplete plan", ""}, {"g-awaiting", "awaiting decision", ""},
 		{"h-postponed", "awaiting decision", "2026-12-01"}, {"i-ready", "plan ready", ""}, {"j-computing", "computing plan", ""},
 		{"k-checking", "checking versions", ""}, {"l-partial", "detection incomplete", ""}, {"m-ok", "up to date", ""},
-		{"n-observed", "observed only", ""}, {"o-alert", "up to date", ""}, {"p-alert-running", "running", ""},
+		{"n-observed", "observed only", ""}, {"o-alert", "up to date", ""}, {"p-alert-running", "running", ""}, {"q-analyzing", "analyzing with AI", ""},
 	} {
 		views = append(views, StackView{Stack: stack(c.name, "web", "db-"+c.name), State: c.state, Postponed: c.postponed})
 	}
@@ -274,7 +274,7 @@ func TestGroup(t *testing.T) {
 	}
 	o := group(views, map[string]bool{"o-alert": true, "p-alert-running": true}, "")
 	for name, got := range map[string]string{"updating": names(o.Updating), "needs": names(o.Needs), "planned": names(o.Planned), "checking": names(o.Checking), "partial": names(o.Partial), "quiet": names(o.Quiet)} {
-		want := map[string]string{"updating": "ap", "needs": "bcdefgo", "planned": "hi", "checking": "jk", "partial": "l", "quiet": "mn"}[name]
+		want := map[string]string{"updating": "ap", "needs": "bcdefgo", "planned": "hi", "checking": "jkq", "partial": "l", "quiet": "mn"}[name]
 		if got != want {
 			t.Errorf("%s = %q, want %q", name, got, want)
 		}
@@ -507,5 +507,50 @@ func TestAcceptMaturingVersion(t *testing.T) {
 	}
 	if body := get(h, "/stacks/shm").Body.String(); !strings.Contains(body, `action="/stacks/shm/accept"`) || !strings.Contains(body, "Take 1.3.0 now") {
 		t.Error("the page does not offer to take the maturing version now")
+	}
+}
+
+func TestStateWhileTheAIAnalyzes(t *testing.T) {
+	up := &inventory.Stack{Name: "app", Services: []*inventory.Service{{Name: "app", State: "running", Available: []inventory.Release{{Tag: "2.0.0"}}}}}
+	down := &inventory.Stack{Name: "app", Services: []*inventory.Service{{Name: "app", State: "exited"}}}
+	pending := &plan.Record{Plan: &plan.Plan{Steps: []plan.Step{{}}}}
+	for _, c := range []struct {
+		status string
+		st     *inventory.Stack
+		rec    *plan.Record
+		want   string
+	}{
+		{"", up, nil, "analyzing with AI"},
+		{"", up, pending, "analyzing with AI"},
+		{"rolled_back", up, pending, "analyzing with AI"},
+		{"running", up, pending, "running"},
+		{"failed", down, nil, "failed"},
+	} {
+		s := &server{deps: Deps{
+			Current: func() Snapshot { return Snapshot{At: time.Now()} },
+			Runs: func(string) ([]run.View, error) {
+				if c.status == "" {
+					return nil, nil
+				}
+				return []run.View{{ID: 1, Status: c.status}}, nil
+			},
+			Plan:      func(string) (*plan.Record, error) { return c.rec, nil },
+			Analyzing: func(string) bool { return true },
+		}}
+		if got := s.state(c.st); got != c.want {
+			t.Errorf("last run %q, plan pending %t: %q, want %q", c.status, c.rec != nil, got, c.want)
+		}
+	}
+}
+
+func TestAnalyzingShownOnPages(t *testing.T) {
+	deps := overviewDeps(&inventory.Stack{Name: "app", Services: []*inventory.Service{{Name: "app", State: "running"}}})
+	deps.Analyzing = func(stack string) bool { return stack == "app" }
+	h := New(deps)
+	if body := get(h, "/").Body.String(); !strings.Contains(body, "Being checked") || !strings.Contains(body, "Analyzing with AI") || !strings.Contains(body, "every 3s") {
+		t.Error("the list does not show the stack as being analyzed, or does not refresh every 3 s")
+	}
+	if body := get(h, "/stacks/app").Body.String(); !strings.Contains(body, "Analyzing with AI") || !strings.Contains(body, "The AI is reading the release notes") || !strings.Contains(body, "every 3s") {
+		t.Error("the page of the stack does not say the AI is analyzing it, or does not refresh every 3 s")
 	}
 }

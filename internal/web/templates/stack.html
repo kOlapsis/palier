@@ -1,5 +1,5 @@
 {{define "title"}}Palier: {{.Stack.Name}}{{end}}
-{{define "poll"}}{{$n := 30}}{{if or scanning .At.IsZero}}{{$n = 3}}{{end}}{{with .Runs}}{{if eq (index . 0).Status "running"}}{{$n = 3}}{{end}}{{end}}{{$n}}{{end}}
+{{define "poll"}}{{$n := 30}}{{if or scanning .At.IsZero (eq .State "analyzing with AI")}}{{$n = 3}}{{end}}{{with .Runs}}{{if eq (index . 0).Status "running"}}{{$n = 3}}{{end}}{{end}}{{$n}}{{end}}
 {{define "content"}}
 {{$last := false}}{{range .Runs}}{{if and (not $last) (not .DryRun)}}{{$last = .}}{{end}}{{end}}
 {{$live := false}}{{if $last}}{{if eq $last.Status "running"}}{{$live = true}}{{end}}{{end}}
@@ -11,6 +11,7 @@
 <p class="meta">{{with .Stack.WorkingDir}}{{.}}{{end}}{{range .Stack.ConfigFiles}} · {{base .}}{{end}} · {{if .At.IsZero}}first scan in progress{{else}}last scan {{since .At}}{{end}}</p>
 </div>
 {{with .Error}}<p class="notice bad">{{.}}</p>{{end}}
+{{if eq .State "analyzing with AI"}}<p class="notice info">The AI is reading the release notes and preparing the plan of this stack. The page updates by itself.</p>{{end}}
 {{with .Postponed}}<p class="notice info">Automatic apply postponed until {{.}}.</p>{{end}}
 {{range .Stack.Errors}}<p class="notice bad">{{.}}</p>{{end}}
 

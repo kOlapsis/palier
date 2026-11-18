@@ -138,7 +138,8 @@ type app struct {
 	nc  *notes.Client
 	eng *run.Engine
 
-	notifier *notify.Notifier
+	notifier  *notify.Notifier
+	analyzing sync.Map
 }
 
 func setup() (*app, error) {
@@ -423,6 +424,8 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 		check(rec.Plan)
 	default:
 		slog.Info("computing plan with AI", "stack", st.Name, "provider", a.cfg.AIProvider, "model", a.cfg.AIModel)
+		a.analyzing.Store(st.Name, true)
+		defer a.analyzing.Delete(st.Name)
 		model := ai.Endpoint{Provider: a.cfg.AIProvider, URL: a.cfg.AIURL, Key: a.cfg.AIKey, Model: a.cfg.AIModel, Timeout: a.cfg.AITimeout}
 		digests, err := a.digests(ctx, model, st)
 		propose := func(full []notes.Note, why string) (*plan.Plan, error) {
@@ -913,7 +916,11 @@ func serve() error {
 		Runs:     func(stack string) ([]run.View, error) { return run.List(ctx, a.db, stack, 20) },
 		Backups:  func(stack string) ([]run.Archive, error) { return run.LastBackups(ctx, a.db, stack) },
 		Scanning: scanning.Load,
-		Rescan:   ask,
+		Analyzing: func(stack string) bool {
+			_, ok := a.analyzing.Load(stack)
+			return ok
+		},
+		Rescan: ask,
 		Incidents: func() []notify.Incident {
 			list, err := a.notifier.Incidents(ctx, true)
 			if err != nil {

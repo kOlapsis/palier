@@ -17,7 +17,8 @@ A large version jump can take a long time. GitLab, with 13 required stops and th
 | Status | What it means |
 |---|---|
 | up to date | No newer version is available. |
-| computing plan | Newer versions exist, and the AI has not returned its plan yet. |
+| computing plan | Newer versions exist, and no plan is stored yet. |
+| analyzing with AI | The AI is reading the release notes of the stack and preparing its plan. A plan shown meanwhile is the previous one. |
 | plan ready | A plan exists, and Palier will apply it on its own as soon as the previous stack is done. |
 | awaiting decision | A plan exists, but Palier cannot apply it on its own: a step is blocking or irreversible, the stack is postponed, or `PALIER_AUTO` or the `palier.auto` label of a service excludes it. The reason is given on the stack page. |
 | incomplete plan | The plan did not pass the checks. The reason is shown, and the plan is not applied. |

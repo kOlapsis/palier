@@ -89,6 +89,7 @@ type Deps struct {
 	Backups   func(stack string) ([]run.Archive, error)
 	Rescan    func(stack string)
 	Scanning  func() bool
+	Analyzing func(stack string) bool
 
 	Incidents    func() []notify.Incident
 	Channels     func() []notify.Channel
@@ -143,9 +144,15 @@ func (s *server) state(st *inventory.Stack) string {
 	if runs, _ := s.deps.Runs(st.Name); len(runs) > 0 && !runs[0].DryRun {
 		pending := rec != nil && len(rec.Plan.Steps) > 0
 		switch status := runs[0].Status; {
-		case status == run.Running, status == run.Failed && !st.Healthy(), pending && stateNames[status] != "":
+		case status == run.Running, status == run.Failed && (pending || !st.Healthy()):
+			return stateNames[status]
+		case s.deps.Analyzing != nil && s.deps.Analyzing(st.Name):
+		case pending && stateNames[status] != "":
 			return stateNames[status]
 		}
+	}
+	if s.deps.Analyzing != nil && s.deps.Analyzing(st.Name) {
+		return "analyzing with AI"
 	}
 	if s.deps.Current().At.IsZero() {
 		return "checking versions"
@@ -300,7 +307,7 @@ func Tone(state string) string { return tones[state] }
 
 var tones = map[string]string{
 	"up to date": "ok", "done": "ok", "safe": "ok", "yes": "ok",
-	"plan ready": "accent", "running": "run", "computing plan": "run", "checking versions": "run",
+	"plan ready": "accent", "running": "run", "computing plan": "run", "checking versions": "run", "analyzing with AI": "run",
 	"awaiting decision": "warn", "detection incomplete": "warn", "rolled back": "warn", "stopped": "warn", "rolled_back": "warn", "attention": "warn", "conditional": "warn",
 	"incomplete plan": "bad", "failed": "bad", "blocking": "bad", "no": "bad",
 }
@@ -528,7 +535,7 @@ func group(views []StackView, alerting map[string]bool, q string) (o Overview) {
 			o.Needs = append(o.Needs, v)
 		case v.State == "plan ready":
 			o.Planned = append(o.Planned, v)
-		case v.State == "computing plan" || v.State == "checking versions":
+		case v.State == "computing plan" || v.State == "checking versions" || v.State == "analyzing with AI":
 			o.Checking = append(o.Checking, v)
 		case !matches(v.Stack, q):
 		case v.State == "detection incomplete":
