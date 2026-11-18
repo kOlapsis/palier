@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -101,5 +102,36 @@ func TestSecurityFirstTogether(t *testing.T) {
 	SecurityFirst(p, st)
 	if len(p.Steps) != 1 {
 		t.Errorf("task-runners has no 2.45.9, yet a step was added: %+v", p.Steps)
+	}
+}
+
+func TestBackupFollowsTheDatabaseItDependsOn(t *testing.T) {
+	stack := func(dbRole string) *inventory.Stack {
+		return &inventory.Stack{Services: []*inventory.Service{
+			{Name: "postgres", Role: dbRole, Image: "docker.io/library/postgres", Tag: "16-alpine", Version: "16.15-alpine3.24", Available: rel("16.16-alpine3.24", "18.7-alpine3.24")},
+			{Name: "postgres-backup", Role: inventory.RoleApplication, DependsOn: []string{"postgres"}, Image: "docker.io/library/postgres", Tag: "16-alpine", Version: "16.15-alpine3.24", Available: rel("16.16-alpine3.24", "18.7-alpine3.24")},
+			{Name: "other", Role: inventory.RoleApplication, Image: "docker.io/library/postgres", Tag: "16-alpine", Version: "16.15-alpine3.24", Available: rel("18.7-alpine3.24")},
+		}}
+	}
+	st := stack(inventory.RoleDependency)
+	if Engine(st, st.Services[0]) != "postgres" || Engine(st, st.Services[1]) != "" || len(Together(st)["other"]) != 0 {
+		t.Errorf("engines %q %q, other with %v", Engine(st, st.Services[0]), Engine(st, st.Services[1]), Together(st)["other"])
+	}
+	p := Fallback(st, "x")
+	if got := targets(p); got["postgres"] != "16.16-alpine3.24" || got["postgres-backup"] != "16.16-alpine3.24" {
+		t.Errorf("the backup goes past its database: %v", got)
+	}
+	Validate(p, st)
+	if strings.Contains(reasons(p), "postgres-backup") {
+		t.Errorf("incomplete: %s", reasons(p))
+	}
+	st = stack(inventory.RoleApplication)
+	p = Fallback(st, "x")
+	var ops []string
+	for _, o := range p.Steps[0].Operations {
+		ops = append(ops, o.Op+" "+o.Service)
+	}
+	if got := targets(p); got["postgres"] != "18.7-alpine3.24" || got["postgres-backup"] != "18.7-alpine3.24" || !slices.Contains(ops, "db_dump_restore postgres") || !slices.Contains(ops, "set_image postgres-backup") {
+		t.Errorf("major: %v, %v", got, ops)
 	}
 }

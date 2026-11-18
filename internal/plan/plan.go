@@ -164,7 +164,7 @@ func Validate(p *Plan, st *inventory.Stack) {
 			}
 		}
 		for j, op := range s.Operations {
-			validateOp(p, n, op, services)
+			validateOp(p, n, op, services, st)
 			if op.Op == "compose_edit" {
 				checkFreeValues(p, n, &s.Operations[j], st)
 			}
@@ -188,7 +188,7 @@ func Validate(p *Plan, st *inventory.Stack) {
 				p.incomplete("step %d: %s %s is not a version available in the registry", n, c.Service, c.To)
 			}
 			checkChangeOps(p, n, s, c, svc, st)
-			checkDatabase(p, n, c, svc, s)
+			checkDatabase(p, n, c, svc, s, st)
 			current[c.Service] = c.To
 		}
 		s.Facts = checkFacts(p, n, s.Facts, st)
@@ -426,7 +426,7 @@ func mustParse(v string) version.V {
 	return parsed
 }
 
-func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Service) {
+func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Service, st *inventory.Stack) {
 	if !slices.Contains(Ops, op.Op) {
 		p.incomplete("step %d: operation %q is outside the vocabulary", n, op.Op)
 		return
@@ -467,7 +467,7 @@ func validateOp(p *Plan, n int, op Operation, services map[string]*inventory.Ser
 			p.incomplete("step %d: no export and reimport method for engine %q", n, op.Engine)
 		case op.ToTag == "":
 			p.incomplete("step %d: db_dump_restore without a target version", n)
-		case services[op.Service] != nil && EngineOf(services[op.Service].Image, services[op.Service].Tag) != op.Engine:
+		case services[op.Service] != nil && Engine(st, services[op.Service]) != op.Engine:
 			p.incomplete("step %d: db_dump_restore %s on %s, whose image is not a %s database", n, op.Engine, op.Service, op.Engine)
 		}
 	}
@@ -580,6 +580,14 @@ func EngineOf(image, tag string) string {
 	return ""
 }
 
+// Engine is the database engine of a service, or "" for one that follows a database of the same image and holds none.
+func Engine(st *inventory.Stack, s *inventory.Service) string {
+	if Followed(st, s) != nil {
+		return ""
+	}
+	return EngineOf(s.Image, s.Tag)
+}
+
 func engineVersion(tag string) string {
 	if e, ok := version.Engine(tag); ok {
 		return e.Tag
@@ -587,11 +595,11 @@ func engineVersion(tag string) string {
 	return tag
 }
 
-func checkDatabase(p *Plan, n int, c Change, svc *inventory.Service, s *Step) {
+func checkDatabase(p *Plan, n int, c Change, svc *inventory.Service, s *Step, st *inventory.Stack) {
 	if Level(c.From, c.To) != "major" {
 		return
 	}
-	if db := EngineOf(svc.Image, svc.Tag); db != "" && !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service }) {
+	if db := Engine(st, svc); db != "" && !slices.ContainsFunc(s.Operations, func(o Operation) bool { return o.Op == "db_dump_restore" && o.Service == c.Service }) {
 		p.incomplete("step %d: %s changes major (%s to %s) without db_dump_restore, which is required for %s", n, c.Service, c.From, c.To, db)
 	}
 }
@@ -655,7 +663,7 @@ func Fallback(st *inventory.Stack, why string) *Plan {
 			continue
 		}
 		step.Changes = append(step.Changes, Change{Service: s.Name, From: s.Version, To: target})
-		if db := EngineOf(s.Image, s.Tag); db != "" && Level(s.Version, target) == "major" {
+		if db := Engine(st, s); db != "" && Level(s.Version, target) == "major" {
 			step.Operations = append(step.Operations, Operation{Op: "db_dump_restore", Service: s.Name, Engine: db, ToImage: s.Image, ToTag: target})
 			continue
 		}

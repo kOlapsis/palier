@@ -315,7 +315,7 @@ func TestPostgresTaggedImage(t *testing.T) {
 	db := &inventory.Service{Name: "database", Image: "docker.io/tensorchord/pgvecto-rs", Tag: "pg14-v0.2.0"}
 	for to, major := range map[string]bool{"14-vectorchord0.3.0-pgvectors0.2.0": false, "pg14-v0.4.0": false, "pg16-v0.3.0": true} {
 		p := &Plan{}
-		checkDatabase(p, 1, Change{"database", "pg14-v0.2.0", to}, db, &Step{})
+		checkDatabase(p, 1, Change{"database", "pg14-v0.2.0", to}, db, &Step{}, &inventory.Stack{Services: []*inventory.Service{db}})
 		if got := len(p.Incomplete) > 0; got != major {
 			t.Errorf("pg14-v0.2.0 to %s: dump and restore required %v, want %v", to, got, major)
 		}

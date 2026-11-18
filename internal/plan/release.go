@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 
@@ -8,7 +9,8 @@ import (
 	"github.com/kolapsis/palier/internal/version"
 )
 
-// Together returns, for each service, the other services of the stack whose image declares the same OCI source and runs the same version.
+// Together returns, for each service, the other services of the stack it changes with: those of the same OCI source at
+// the same version, and the service of the same image it depends on.
 func Together(st *inventory.Stack) map[string][]*inventory.Service {
 	groups := map[string][]*inventory.Service{}
 	for _, s := range st.Services {
@@ -29,7 +31,22 @@ func Together(st *inventory.Stack) map[string][]*inventory.Service {
 			}
 		}
 	}
+	for _, s := range st.Services {
+		if d := Followed(st, s); d != nil && sameVersion(s.Version, d.Version) && !slices.Contains(out[s.Name], d) {
+			out[s.Name], out[d.Name] = append(out[s.Name], d), append(out[d.Name], s)
+		}
+	}
 	return out
+}
+
+// Followed returns the service of the same image that s depends on, a backup job next to its database for instance, or nil.
+func Followed(st *inventory.Stack, s *inventory.Service) *inventory.Service {
+	for _, name := range s.DependsOn {
+		if d := service(st, name); d != nil && d != s && d.Image == s.Image {
+			return d
+		}
+	}
+	return nil
 }
 
 func sameVersion(a, b string) bool {
@@ -66,7 +83,7 @@ func checkTogether(p *Plan, st *inventory.Stack) {
 					continue
 				}
 				if !sameVersion(to[o.Name], c.To) {
-					p.incomplete("step %d: %s and %s come from %s at the same version; they change together, to the same version", i+1, c.Service, o.Name, o.Source)
+					p.incomplete("step %d: %s and %s come from %s at the same version; they change together, to the same version", i+1, c.Service, o.Name, cmp.Or(o.Source, o.Image))
 				}
 			}
 		}
