@@ -93,7 +93,7 @@ name: palier
 
 services:
   palier:
-    image: ghcr.io/kolapsis/palier:0.6.0
+    image: ghcr.io/kolapsis/palier:0.6.1
     restart: unless-stopped
     group_add:
       - ${DOCKER_GID:?}
