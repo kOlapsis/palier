@@ -17,6 +17,7 @@ COPY --from=compose /docker-compose /out/docker-compose
 RUN setcap cap_dac_override+ep /out/docker-compose
 
 FROM scratch
+LABEL org.opencontainers.image.licenses=Apache-2.0
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/docker-compose /usr/local/bin/docker-compose
 COPY --from=build --chown=65532:65532 /out/data /var/lib/palier
