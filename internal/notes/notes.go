@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -123,7 +124,7 @@ func (c *Client) page(ctx context.Context, repo string, page int, after version.
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, false, err
 	}
@@ -169,7 +170,7 @@ func (c *Client) gitlabPage(ctx context.Context, path string, page int, after ve
 	if c.gitlabToken != "" {
 		req.Header.Set("PRIVATE-TOKEN", c.gitlabToken)
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, false, err
 	}
@@ -203,6 +204,18 @@ func (c *Client) gitlabPage(ctx context.Context, path string, page int, after ve
 		out = append(out, Note{Tag: r.TagName, URL: r.Links.Self, Published: r.ReleasedAt, Body: r.Description})
 	}
 	return out, older, nil
+}
+
+// do sends req to a forge and logs it, without its query string.
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	began := time.Now()
+	resp, err := c.http.Do(req)
+	if err != nil {
+		slog.Warn("forge request failed", "url", req.URL.Host+req.URL.Path, "duration", time.Since(began).Round(time.Millisecond).String(), "error", err)
+		return nil, err
+	}
+	slog.Info("forge request", "url", req.URL.Host+req.URL.Path, "status", resp.StatusCode, "remaining", resp.Header.Get("X-RateLimit-Remaining"), "duration", time.Since(began).Round(time.Millisecond).String())
+	return resp, nil
 }
 
 func trimV(tag string) string {

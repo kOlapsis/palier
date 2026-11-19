@@ -375,6 +375,7 @@ func (a *app) storedPlan(ctx context.Context, stack string) (*plan.Record, error
 
 // planFor returns the plan of st, computed again only when what it depends on changed.
 func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, error) {
+	began := time.Now()
 	if !slices.ContainsFunc(st.Services, func(s *inventory.Service) bool { return len(s.Available) > 0 }) {
 		_, err := a.db.ExecContext(ctx, `DELETE FROM plans WHERE stack = ?`, st.Name)
 		return nil, err
@@ -466,6 +467,7 @@ func (a *app) planFor(ctx context.Context, st *inventory.Stack) (*plan.Record, e
 		}
 		rec.Plan, rec.Source = p, "ai"
 	}
+	slog.Info("plan computed", "stack", st.Name, "source", rec.Source, "steps", len(rec.Plan.Steps), "incomplete", len(rec.Plan.Incomplete), "duration", time.Since(began).Round(time.Second).String())
 	body, err := json.Marshal(rec.Plan)
 	if err != nil {
 		return nil, err
@@ -563,13 +565,16 @@ func (a *app) digests(ctx context.Context, model ai.Endpoint, st *inventory.Stac
 		wg.Go(func() {
 			slots <- struct{}{}
 			defer func() { <-slots }()
+			began := time.Now()
 			d, err := ai.Read(ctx, model, n)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
+				slog.Warn("release note not read", "stack", st.Name, "note", n.URL, "duration", time.Since(began).Round(time.Second).String(), "error", err)
 				failed = cmp.Or(failed, err)
 				return
 			}
+			slog.Info("release note read", "stack", st.Name, "note", n.URL, "facts", len(d.Facts), "duration", time.Since(began).Round(time.Second).String())
 			out[ai.DigestKey(model, n)] = d
 			body, _ := json.Marshal(d)
 			if _, err := a.db.ExecContext(ctx, `INSERT OR REPLACE INTO digests (key, body, created) VALUES (?, ?, ?)`, ai.DigestKey(model, n), string(body), time.Now().UTC().Format(time.RFC3339)); err != nil {
@@ -810,6 +815,7 @@ func serve() error {
 			mu.Unlock()
 			began := time.Now()
 			scanning.Store(true)
+			slog.Info("scan started", "stacks", cmp.Or(strings.Join(names, ", "), "all"))
 			var stacks []*inventory.Stack
 			var err error
 			for _, name := range names {
@@ -895,6 +901,7 @@ func serve() error {
 		Current: current,
 		Plan:    func(stack string) (*plan.Record, error) { return a.storedPlan(ctx, stack) },
 		Apply: func(stack, author string, dryRun bool) (int64, error) {
+			slog.Info("apply requested", "stack", stack, "author", author, "dry_run", dryRun)
 			st, err := a.stack(ctx, stack)
 			if err != nil {
 				return 0, err
@@ -902,6 +909,7 @@ func serve() error {
 			return start(st, author, dryRun)
 		},
 		Decide: func(stack, author, kind, service, version, until string) error {
+			slog.Info("decision", "stack", stack, "author", author, "kind", kind, "service", service, "version", version, "until", until)
 			if err := a.decide(ctx, stack, kind, service, version, until, author); err != nil {
 				return err
 			}

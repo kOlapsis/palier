@@ -61,7 +61,7 @@ func (c *Client) Advisories(ctx context.Context, repo string) ([]Advisory, error
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}

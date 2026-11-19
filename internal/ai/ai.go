@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"slices"
@@ -342,6 +343,22 @@ type Endpoint struct {
 
 // call sends one request to the model and returns the text of a complete answer in the given JSON schema.
 func (e Endpoint) call(ctx context.Context, system string, content []any, schema map[string]any, effort string) (string, error) {
+	began := time.Now()
+	input := len(system)
+	for _, c := range content {
+		input += len(c.(map[string]any)["text"].(string))
+	}
+	text, err := e.send(ctx, system, content, schema, effort)
+	attrs := []any{"provider", e.Provider, "model", e.Model, "input_chars", input, "output_chars", len(text), "duration", time.Since(began).Round(time.Millisecond).String()}
+	if err != nil {
+		slog.Warn("AI request failed", append(attrs, "error", err)...)
+	} else {
+		slog.Info("AI request", attrs...)
+	}
+	return text, err
+}
+
+func (e Endpoint) send(ctx context.Context, system string, content []any, schema map[string]any, effort string) (string, error) {
 	if e.Provider == "openai" {
 		return e.chat(ctx, system, content, schema)
 	}

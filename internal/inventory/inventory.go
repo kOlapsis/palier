@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"slices"
@@ -204,6 +205,7 @@ func Scan(ctx context.Context, dc *docker.Client) ([]*Stack, error) {
 		out = append(out, st)
 	}
 	slices.SortFunc(out, func(a, b *Stack) int { return cmp.Compare(a.Name, b.Name) })
+	slog.Info("stacks found", "stacks", len(out), "containers", len(containers))
 	return out, nil
 }
 
@@ -465,10 +467,35 @@ func Detect(ctx context.Context, stacks []*Stack, reg *registry.Client, nc *note
 	var wg sync.WaitGroup
 	for _, st := range stacks {
 		for _, s := range st.Services {
-			wg.Go(func() { detect(ctx, s, reg, nc, maturation) })
+			wg.Go(func() {
+				began := time.Now()
+				detect(ctx, s, reg, nc, maturation)
+				logDetected(st.Name, s, time.Since(began))
+			})
 		}
 	}
 	wg.Wait()
+}
+
+func logDetected(stack string, s *Service, took time.Duration) {
+	var available []string
+	for _, r := range s.Available {
+		available = append(available, r.Tag)
+	}
+	attrs := []any{"stack", stack, "service", s.Name, "image", s.Image + ":" + s.Tag, "version", s.Version, "available", available,
+		"maturing", len(s.Maturing), "notes", len(s.Notes), "advisories", len(s.Advisories), "duration", took.Round(time.Millisecond).String()}
+	switch {
+	case s.BuiltLocally:
+		slog.Info("service built locally", attrs[:6]...)
+	case s.NotInRegistry:
+		slog.Warn("service not on Docker Hub", attrs[:6]...)
+	case s.DetectionError != "":
+		slog.Warn("service detection failed", append(attrs, "error", s.DetectionError)...)
+	case s.NotesError != "":
+		slog.Warn("service detected without all its notes", append(attrs, "error", s.NotesError)...)
+	default:
+		slog.Info("service detected", attrs...)
+	}
 }
 
 func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Client, maturation time.Duration) {

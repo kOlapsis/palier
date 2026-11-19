@@ -280,7 +280,14 @@ func (c *Client) send(req *http.Request) (*http.Response, error) {
 		return nil, req.Context().Err()
 	}
 	defer func() { <-slot }()
-	return c.http.Do(req)
+	began := time.Now()
+	resp, err := c.http.Do(req)
+	if err != nil {
+		slog.Warn("registry request failed", "method", req.Method, "url", req.URL.Host+req.URL.Path, "duration", time.Since(began).Round(time.Millisecond).String(), "error", err)
+		return nil, err
+	}
+	slog.Info("registry request", "method", req.Method, "url", req.URL.Host+req.URL.Path, "status", resp.StatusCode, "duration", time.Since(began).Round(time.Millisecond).String())
+	return resp, nil
 }
 
 // retryAfter is the wait a throttled registry asks for in seconds, at most two minutes, or def.
@@ -337,10 +344,12 @@ func (c *Client) do(ctx context.Context, method string, r Ref, url, accept strin
 		if resp.StatusCode == http.StatusTooManyRequests && throttled < 4 {
 			resp.Body.Close()
 			throttled++
+			wait := retryAfter(resp.Header, time.Duration(throttled)*time.Second)
+			slog.Warn("registry throttled", "url", url, "wait", wait.String())
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(retryAfter(resp.Header, time.Duration(throttled)*time.Second)):
+			case <-time.After(wait):
 			}
 			attempt--
 			continue
@@ -552,6 +561,7 @@ func (c *Client) hubGet(ctx context.Context, url string, out any) error {
 		case resp.StatusCode == http.StatusTooManyRequests && attempt < 4:
 			resp.Body.Close()
 			wait := retryAfter(resp.Header, time.Duration(attempt+1)*5*time.Second)
+			slog.Warn("registry throttled", "url", url, "wait", wait.String())
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
