@@ -757,7 +757,7 @@ func (e *Engine) check(ctx context.Context, project string, services []string, r
 			fail = fmt.Sprintf("%s is unhealthy", name)
 		}
 		if fail != "" {
-			logs, _ := e.Docker.Logs(ctx, d.ID, 20)
+			logs, _ := e.Docker.Logs(ctx, d.ID, 50)
 			return "", fmt.Errorf("%s; last log lines:\n%s", fail, strings.TrimSpace(logs))
 		}
 		if d.State.Status != "running" {
