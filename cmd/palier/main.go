@@ -686,8 +686,8 @@ func retry(last int64, statuses []string, at, now time.Time) (bool, string) {
 	return true, ""
 }
 
-// waitForScan returns at the next scan interval, on a rescan request, or as soon as a run started by another process has finished.
-func (a *app) waitForScan(ctx context.Context, rescan <-chan struct{}, last time.Time) {
+// waitForScan returns at the next scan interval or on a rescan request, and asks for one for the stack of each run finished since, which another process may have started.
+func (a *app) waitForScan(ctx context.Context, rescan <-chan struct{}, last, since time.Time, ask func(string)) {
 	deadline := time.After(time.Until(last.Add(a.cfg.ScanInterval)))
 	tick := time.NewTicker(5 * time.Second)
 	defer tick.Stop()
@@ -700,11 +700,17 @@ func (a *app) waitForScan(ctx context.Context, rescan <-chan struct{}, last time
 		case <-deadline:
 			return
 		case <-tick.C:
-			var finished sql.NullString
-			a.db.QueryRowContext(ctx, `SELECT max(finished) FROM runs`).Scan(&finished)
-			if t, err := time.Parse(time.RFC3339, finished.String); err == nil && t.After(last) {
-				return
+			rows, err := a.db.QueryContext(ctx, `SELECT DISTINCT stack FROM runs WHERE finished > ? AND author != 'auto'`, since.UTC().Format(time.RFC3339))
+			if err != nil {
+				continue
 			}
+			for rows.Next() {
+				var stack string
+				if rows.Scan(&stack) == nil {
+					ask(stack)
+				}
+			}
+			rows.Close()
 		}
 	}
 }
@@ -784,7 +790,7 @@ func serve() error {
 		}
 		go func() {
 			a.eng.Execute(ctx, id, st, p, dryRun)
-			ask("")
+			ask(st.Name)
 		}()
 		return id, nil
 	}
@@ -863,24 +869,22 @@ func serve() error {
 				a.eng.Execute(ctx, id, st, p, false)
 				rescanned := time.Now()
 				scanning.Store(true)
-				fresh, err := a.scan(ctx, "")
+				fresh, err := a.scan(ctx, st.Name)
 				scanning.Store(false)
 				if err == nil {
 					mu.Lock()
-					snap = web.Snapshot{Stacks: fresh, Began: rescanned, At: time.Now()}
+					snap = web.Snapshot{Stacks: merge(snap.Stacks, []string{st.Name}, fresh), Began: rescanned, At: snap.At, Err: snap.Err}
 					mu.Unlock()
 					for _, now := range fresh {
-						if now.Name == st.Name && !now.Observed {
-							if _, err := a.planFor(ctx, now); err != nil {
-								slog.Error("plan", "stack", now.Name, "err", err)
-							}
+						if _, err := a.planFor(ctx, now); err != nil {
+							slog.Error("plan", "stack", now.Name, "err", err)
 						}
 					}
 					a.sync(ctx, current())
 				}
 			}
 			a.sync(ctx, current())
-			a.waitForScan(ctx, rescan, next.At)
+			a.waitForScan(ctx, rescan, next.At, began, ask)
 			if ctx.Err() != nil {
 				return
 			}
