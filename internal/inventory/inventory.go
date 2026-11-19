@@ -408,7 +408,7 @@ func resolve(ctx context.Context, s *Service, ref registry.Ref, tags []string, r
 	running, parsed := version.Parse(s.Tag)
 	var candidates []version.V
 	for _, t := range tags {
-		if w, ok := version.Parse(t); ok && (!parsed || running.Extends(w)) {
+		if w, ok := version.Parse(t); ok && (parsed && running.Extends(w) || !parsed && !w.Dated()) {
 			candidates = append(candidates, w)
 		}
 	}
@@ -481,7 +481,8 @@ func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Cli
 	if errors.As(err, &refused) && (refused.Code == 401 || refused.Code == 403 || refused.Code == 404) {
 		// Docker Hub answers alike, with or without credentials, for a private repository and for a name that only exists on this machine.
 		if ref.Domain == "docker.io" {
-			s.NotInRegistry = true
+			s.BuiltLocally = strings.HasPrefix(ref.Repo, "library/")
+			s.NotInRegistry = !s.BuiltLocally
 			return
 		}
 		s.RegistryRefused = true

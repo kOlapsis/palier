@@ -103,6 +103,11 @@ func (v V) Less(w V) bool {
 	return less(v.Nums, w.Nums)
 }
 
+// Dated reports whether the tag is a build date such as "20230811" rather than a release number.
+func (v V) Dated() bool {
+	return len(v.Nums) == 1 && v.Nums[0] >= 19700101 && v.Nums[0] <= 29991231
+}
+
 // Major is the PostgreSQL major the tag names, else its first number.
 func (v V) Major() int {
 	if len(v.Engine) > 0 {

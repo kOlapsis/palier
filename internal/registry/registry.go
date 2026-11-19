@@ -76,6 +76,7 @@ type Client struct {
 	github   string
 	slots    map[string]chan struct{}
 	unlisted map[string]time.Time
+	fronts   map[string]bool
 }
 
 // New returns a registry client whose date cache lives in db, with the credentials of auths, mirror, when set, serving the Docker Hub reads by digest, and github, when set, listing the dates of GHCR tags.
@@ -84,7 +85,7 @@ func New(db *sql.DB, auths *Auths, mirror, github string) *Client {
 	if mirror != "" && !strings.Contains(mirror, "://") {
 		mirror = "https://" + mirror
 	}
-	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}, github: github, slots: map[string]chan struct{}{}, unlisted: map[string]time.Time{}}
+	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}, github: github, slots: map[string]chan struct{}{}, unlisted: map[string]time.Time{}, fronts: map[string]bool{}}
 }
 
 // StatusError is a refusal of a registry, with its HTTP status.
@@ -219,6 +220,41 @@ func runHelper(name, server string) (string, error) {
 
 // UsesCredentials reports whether requests to domain carry credentials.
 func (c *Client) UsesCredentials(domain string) bool { return c.credentials(domain) != "" }
+
+// viaHub names Docker Hub docker.io when r's registry serves it under its own name, as its token challenge names registry.docker.io.
+func (c *Client) viaHub(ctx context.Context, r Ref) Ref {
+	if r.Domain == "docker.io" {
+		return r
+	}
+	c.mu.Lock()
+	front, known := c.fronts[r.Domain]
+	c.mu.Unlock()
+	if !known {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+r.Domain+"/v2/", nil)
+		if err != nil {
+			return r
+		}
+		resp, err := c.send(req)
+		if err != nil {
+			return r
+		}
+		resp.Body.Close()
+		front = false
+		for _, m := range challengeParam.FindAllStringSubmatch(resp.Header.Get("WWW-Authenticate"), -1) {
+			front = front || m[1] == "service" && m[2] == "registry.docker.io"
+		}
+		c.mu.Lock()
+		c.fronts[r.Domain] = front
+		c.mu.Unlock()
+	}
+	if front {
+		r.Domain = "docker.io"
+		if !strings.Contains(r.Repo, "/") {
+			r.Repo = "library/" + r.Repo
+		}
+	}
+	return r
+}
 
 func apiHost(domain string) string {
 	if domain == "docker.io" {
@@ -372,6 +408,7 @@ var nextLink = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
 
 // Tags lists every tag of the repository, following pagination.
 func (c *Client) Tags(ctx context.Context, r Ref) ([]string, error) {
+	r = c.viaHub(ctx, r)
 	base := "https://" + apiHost(r.Domain)
 	url := base + "/v2/" + r.Repo + "/tags/list?n=1000"
 	var all []string
@@ -400,6 +437,7 @@ func (c *Client) Tags(ctx context.Context, r Ref) ([]string, error) {
 
 // Pushed returns when tag was pushed, as first seen by Palier; a tag rebuilt later keeps its first date.
 func (c *Client) Pushed(ctx context.Context, r Ref, tag string) (time.Time, error) {
+	r = c.viaHub(ctx, r)
 	if t, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
 		return t, err
 	}
@@ -565,6 +603,7 @@ const manifestTypes = "application/vnd.oci.image.index.v1+json, application/vnd.
 
 // Digest returns the digest the registry serves for tag, without counting as a pull.
 func (c *Client) Digest(ctx context.Context, r Ref, tag string) (string, error) {
+	r = c.viaHub(ctx, r)
 	resp, err := c.do(ctx, http.MethodHead, r, "https://"+apiHost(r.Domain)+"/v2/"+r.Repo+"/manifests/"+tag, manifestTypes)
 	if err != nil {
 		return "", err
@@ -587,6 +626,7 @@ type index struct {
 }
 
 func (c *Client) index(ctx context.Context, r Ref, digest string) (*index, error) {
+	r = c.viaHub(ctx, r)
 	var m index
 	path := "/v2/" + r.Repo + "/manifests/" + digest
 	// A mirror's tag lists are partial and its tags can be stale, so only content addressed by digest is read from it.

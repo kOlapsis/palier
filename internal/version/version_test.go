@@ -100,3 +100,11 @@ func TestBuildLine(t *testing.T) {
 		t.Error("stable-11248 is a release of its own, not a moving tag of its revisions")
 	}
 }
+
+func TestDated(t *testing.T) {
+	for tag, want := range map[string]bool{"20230811": true, "2.45.7": false, "2024.11.1": false, "1": false, "123456789": false} {
+		if v, _ := Parse(tag); v.Dated() != want {
+			t.Errorf("Dated(%s) = %v, want %v", tag, !want, want)
+		}
+	}
+}
