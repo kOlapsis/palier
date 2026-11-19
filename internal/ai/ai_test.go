@@ -52,6 +52,10 @@ func TestReadChat(t *testing.T) {
 	if err != nil || text != `{"steps":[]}` {
 		t.Fatalf("%q %v", text, err)
 	}
+	text, err = readChat([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"hm"}]},{"type":"text","text":"{\"steps\":[]}"}]}}]}`))
+	if err != nil || text != `{"steps":[]}` {
+		t.Fatalf("chunks: %q %v", text, err)
+	}
 	for _, bad := range []string{`{"choices":[{"finish_reason":"length","message":{"content":"{"}}]}`, `{"choices":[]}`, `{"choices":[{"finish_reason":"stop","message":{"refusal":"no"}}]}`, `<html>`} {
 		if _, err := readChat([]byte(bad)); err == nil {
 			t.Errorf("%s: accepted", bad)

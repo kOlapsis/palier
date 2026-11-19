@@ -466,7 +466,10 @@ func readChat(answer []byte) (string, error) {
 	var out struct {
 		Choices []struct {
 			FinishReason string `json:"finish_reason"`
-			Message      struct{ Content, Refusal string }
+			Message      struct {
+				Content json.RawMessage
+				Refusal string
+			}
 		}
 	}
 	if err := json.Unmarshal(answer, &out); err != nil {
@@ -482,5 +485,18 @@ func readChat(answer []byte) (string, error) {
 	case c.FinishReason != "stop":
 		return "", fmt.Errorf("AI response cut off (%s)", c.FinishReason)
 	}
-	return c.Message.Content, nil
+	var text string
+	if json.Unmarshal(c.Message.Content, &text) == nil {
+		return text, nil
+	}
+	var chunks []struct{ Type, Text string }
+	if err := json.Unmarshal(c.Message.Content, &chunks); err != nil {
+		return "", fmt.Errorf("unreadable AI answer: %w", err)
+	}
+	for _, chunk := range chunks {
+		if chunk.Type == "text" {
+			text += chunk.Text
+		}
+	}
+	return text, nil
 }
