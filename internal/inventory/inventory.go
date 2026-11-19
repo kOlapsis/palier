@@ -75,6 +75,8 @@ type Service struct {
 	Role            string           `json:"role"`
 	Available       []Release        `json:"available,omitempty"`
 	Maturing        []Release        `json:"maturing,omitempty"`
+	Ignored         []string         `json:"ignored,omitempty"`
+	Via             []string         `json:"via,omitempty"`
 	DetectionError  string           `json:"detection_error,omitempty"`
 	ImageID         string           `json:"image_id"`
 	Source          string           `json:"source,omitempty"`

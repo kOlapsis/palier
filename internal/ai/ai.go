@@ -306,6 +306,9 @@ func Propose(ctx context.Context, e Endpoint, st *inventory.Stack, digests map[s
 			slices.Sort(checks)
 			fmt.Fprintf(&prompt, "<card service=%q>\nRequired upgrade stops (latest patch of each minor): %s\nChecks available for exec_check and gates: %s\n</card>\n", s.Name, strings.Join(card.Stops, ", "), strings.Join(checks, ", "))
 		}
+		if len(s.Via) > 0 {
+			fmt.Fprintf(&prompt, "<operator_stops service=%q>\nThe operator requires one step that ends exactly at each of these versions, in this order: %s\n</operator_stops>\n", s.Name, strings.Join(s.Via, ", "))
+		}
 	}
 	var services []serviceInput
 	together := plan.Together(st)

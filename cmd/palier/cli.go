@@ -42,6 +42,10 @@ Usage:
   palier log <run> [-f]                    log of a run, -f to follow it
   palier ignore <stack> <service> <version>
                                            never propose this version again
+  palier via <stack> <service> <version>
+                                           add a step that stops at this version
+  palier forget <stack> <service> <version>
+                                           drop the ignore, accept or via decided on this version
   palier accept <stack> <service> <version>
                                            propose this version without waiting for its maturation
   palier postpone <stack> <YYYY-MM-DD>     no automatic apply before this date
@@ -139,6 +143,12 @@ func (c *cli) run(cmd string, args []string) error {
 	case cmd == "ignore" && len(args) == 3:
 		return c.decide(args[0], "ignore", url.Values{"service": {args[1]}, "version": {args[2]}},
 			fmt.Sprintf("%s %s of %s will not be proposed again.", args[1], args[2], args[0]))
+	case cmd == "via" && len(args) == 3:
+		return c.decide(args[0], "via", url.Values{"service": {args[1]}, "version": {args[2]}},
+			fmt.Sprintf("The plan of %s stops at %s %s.", args[0], args[1], args[2]))
+	case cmd == "forget" && len(args) == 3:
+		return c.decide(args[0], "forget", url.Values{"service": {args[1]}, "version": {args[2]}},
+			fmt.Sprintf("Decisions on %s %s of %s dropped.", args[1], args[2], args[0]))
 	case cmd == "accept" && len(args) == 3:
 		return c.decide(args[0], "accept", url.Values{"service": {args[1]}, "version": {args[2]}},
 			fmt.Sprintf("%s %s of %s is proposed without waiting for its maturation.", args[1], args[2], args[0]))
@@ -369,6 +379,12 @@ func (c *cli) show(stack string) error {
 				tags = append(tags, clean(r.Tag))
 			}
 			c.line(c.dim(clean(s.Name) + ": maturing " + strings.Join(tags, ", ")))
+		}
+		for _, v := range s.Via {
+			c.line(c.dim(clean(s.Name) + ": the plan stops at " + clean(v) + ", palier forget to remove this step"))
+		}
+		for _, v := range s.Ignored {
+			c.line(c.dim(clean(s.Name) + ": " + clean(v) + " ignored, palier forget to propose it again"))
 		}
 		if s.Republished {
 			c.line(c.dim(clean(s.Name) + ": tag republished in the registry with different content, not a new version"))

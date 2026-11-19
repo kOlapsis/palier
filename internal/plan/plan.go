@@ -210,6 +210,7 @@ func Validate(p *Plan, st *inventory.Stack) {
 	p.Withheld = withheld(p, st, current)
 	for _, svc := range st.Services {
 		checkStops(p, svc)
+		checkVia(p, svc)
 	}
 	checkSuspicious(p, st)
 	p.Auto = nil
@@ -292,6 +293,17 @@ func checkStops(p *Plan, svc *inventory.Service) {
 		}
 		if !slices.Contains(targets, highest) {
 			p.incomplete("%s must go through the required stop %s (%s, latest patch of %s)", svc.Name, stop, highest, stop)
+		}
+	}
+}
+
+// checkVia requires a step that ends at each version the operator chose to go through.
+func checkVia(p *Plan, svc *inventory.Service) {
+	for _, v := range svc.Via {
+		if !slices.ContainsFunc(p.Steps, func(s Step) bool {
+			return slices.ContainsFunc(s.Changes, func(c Change) bool { return c.Service == svc.Name && c.To == v })
+		}) {
+			p.incomplete("%s must go through %s, a step added by hand", svc.Name, v)
 		}
 	}
 }
@@ -641,45 +653,79 @@ func checkFacts(p *Plan, n int, facts []Fact, st *inventory.Stack) []Fact {
 	return kept
 }
 
-// Fallback is the plan without analysis: applications to their highest version, dependencies inside their major, and
-// the services of one release to the highest version they all allow.
+// Fallback is the plan without analysis: one step to each version chosen by hand, then applications to their highest
+// version, dependencies inside their major, and the services of one release to the highest version they all allow.
 func Fallback(st *inventory.Stack, why string) *Plan {
-	step := Step{Risk: "unknown", Reversible: "unknown", Why: why}
-	var changed []string
+	at := map[string]string{}
+	for _, s := range st.Services {
+		at[s.Name] = s.Version
+	}
+	together := Together(st)
+	p := &Plan{}
+	for k := 0; ; k++ {
+		to := map[string]string{}
+		for _, s := range st.Services {
+			if k >= len(s.Via) {
+				continue
+			}
+			to[s.Name] = s.Via[k]
+			for _, o := range together[s.Name] {
+				if t := sameVersionTag(o, s.Via[k]); t != "" && to[o.Name] == "" {
+					to[o.Name] = t
+				}
+			}
+		}
+		if len(to) == 0 {
+			break
+		}
+		p.Steps = append(p.Steps, fallbackStep(st, at, to, why))
+	}
 	allowed := func(s *inventory.Service, tag string) bool {
-		cur, _ := version.Parse(s.Version)
+		cur, _ := version.Parse(at[s.Name])
 		v, _ := version.Parse(tag)
 		return s.Role != inventory.RoleDependency || v.Major() == cur.Major()
 	}
-	together := Together(st)
+	to := map[string]string{}
 	for _, s := range st.Services {
-		target := ""
-		for _, r := range s.Available {
+		from := slices.IndexFunc(s.Available, func(r inventory.Release) bool { return r.Tag == at[s.Name] }) + 1
+		for _, r := range s.Available[from:] {
 			if allowed(s, r.Tag) && !slices.ContainsFunc(together[s.Name], func(o *inventory.Service) bool {
 				t := sameVersionTag(o, r.Tag)
 				return t == "" || !allowed(o, t)
 			}) {
-				target = r.Tag
+				to[s.Name] = r.Tag
 			}
 		}
+	}
+	if len(to) > 0 {
+		p.Steps = append(p.Steps, fallbackStep(st, at, to, why))
+	}
+	return p
+}
+
+// fallbackStep moves each service named in to from its version in at, and records the new versions in at.
+func fallbackStep(st *inventory.Stack, at, to map[string]string, why string) Step {
+	step := Step{Risk: "unknown", Reversible: "unknown", Why: why}
+	var changed []string
+	for _, s := range st.Services {
+		target := to[s.Name]
 		if target == "" {
 			continue
 		}
-		step.Changes = append(step.Changes, Change{Service: s.Name, From: s.Version, To: target})
-		if db := Engine(st, s); db != "" && Level(s.Version, target) == "major" {
+		from := at[s.Name]
+		at[s.Name] = target
+		step.Changes = append(step.Changes, Change{Service: s.Name, From: from, To: target})
+		if db := Engine(st, s); db != "" && Level(from, target) == "major" {
 			step.Operations = append(step.Operations, Operation{Op: "db_dump_restore", Service: s.Name, Engine: db, ToImage: s.Image, ToTag: target})
 			continue
 		}
 		step.Operations = append(step.Operations, Operation{Op: "set_image", Service: s.Name, Image: s.Image, Tag: target})
 		changed = append(changed, s.Name)
 	}
-	if len(step.Changes) == 0 {
-		return &Plan{}
-	}
 	if len(changed) > 0 {
 		step.Operations = append(step.Operations, Operation{Op: "recreate", Services: changed})
 	}
-	return &Plan{Steps: []Step{step}}
+	return step
 }
 
 // Level is "patch", "minor" or "major" for a change between two versions.

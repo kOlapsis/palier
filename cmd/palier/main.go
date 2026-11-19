@@ -241,16 +241,20 @@ func (a *app) scan(ctx context.Context, only string) ([]*inventory.Stack, error)
 	for _, st := range stacks {
 		st.Scanned = time.Now()
 	}
-	rows, err := a.db.QueryContext(ctx, `SELECT kind, stack, service, version FROM decisions WHERE kind IN ('ignore', 'accept')`)
+	rows, err := a.db.QueryContext(ctx, `SELECT kind, stack, service, version FROM decisions WHERE kind IN ('ignore', 'accept', 'via') ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	decided := map[[4]string]bool{}
+	var ignored [][4]string
 	for rows.Next() {
 		var k [4]string
 		if err := rows.Scan(&k[0], &k[1], &k[2], &k[3]); err != nil {
 			return nil, err
+		}
+		if k[0] == "ignore" && !decided[k] {
+			ignored = append(ignored, k)
 		}
 		decided[k] = true
 	}
@@ -260,6 +264,16 @@ func (a *app) scan(ctx context.Context, only string) ([]*inventory.Stack, error)
 			s.Available = slices.DeleteFunc(s.Available, drop)
 			s.Maturing = slices.DeleteFunc(s.Maturing, drop)
 			s.Available, s.Maturing = accept(s.Available, s.Maturing, func(tag string) bool { return decided[[4]string{"accept", st.Name, s.Name, tag}] })
+			for _, k := range ignored {
+				if k[1] == st.Name && k[2] == s.Name {
+					s.Ignored = append(s.Ignored, k[3])
+				}
+			}
+			for _, r := range s.Available {
+				if decided[[4]string{"via", st.Name, s.Name, r.Tag}] {
+					s.Via = append(s.Via, r.Tag)
+				}
+			}
 		}
 	}
 	return stacks, rows.Err()
@@ -331,6 +345,7 @@ func inputHash(st *inventory.Stack, cfg config.Config) string {
 		Name, Version, Role string
 		DependsOn           []string
 		Available           []inventory.Release
+		Via                 []string
 		Notes               []string
 	}
 	in := struct {
@@ -348,7 +363,7 @@ func inputHash(st *inventory.Stack, cfg config.Config) string {
 		in.Files[f] = string(data)
 	}
 	for _, s := range st.Services {
-		v := svc{Name: s.Name, Version: s.Version, Role: s.Role, DependsOn: s.DependsOn, Available: s.Available}
+		v := svc{Name: s.Name, Version: s.Version, Role: s.Role, DependsOn: s.DependsOn, Available: s.Available, Via: s.Via}
 		for _, n := range s.Notes {
 			v.Notes = append(v.Notes, n.Tag+"\x00"+n.Body)
 		}
@@ -604,6 +619,11 @@ func aiFailure(err error) string {
 func (a *app) decide(ctx context.Context, stack, kind, service, version, until, author string) error {
 	_, err := a.db.ExecContext(ctx, `INSERT INTO decisions (stack, kind, service, version, until, author, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		stack, kind, service, version, until, author, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
+func (a *app) forget(ctx context.Context, stack, service, version string) error {
+	_, err := a.db.ExecContext(ctx, `DELETE FROM decisions WHERE stack = ? AND service = ? AND version = ? AND kind IN ('ignore', 'accept', 'via')`, stack, service, version)
 	return err
 }
 
@@ -911,6 +931,14 @@ func serve() error {
 		Decide: func(stack, author, kind, service, version, until string) error {
 			slog.Info("decision", "stack", stack, "author", author, "kind", kind, "service", service, "version", version, "until", until)
 			if err := a.decide(ctx, stack, kind, service, version, until, author); err != nil {
+				return err
+			}
+			ask(stack)
+			return nil
+		},
+		Forget: func(stack, author, service, version string) error {
+			slog.Info("decisions removed", "stack", stack, "author", author, "service", service, "version", version)
+			if err := a.forget(ctx, stack, service, version); err != nil {
 				return err
 			}
 			ask(stack)

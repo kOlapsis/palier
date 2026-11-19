@@ -104,7 +104,11 @@
 <details><summary>Ignore a version…</summary>
 <div class="actions">{{range .Plan.Steps}}{{range .Changes}}<form method="post" action="/stacks/{{$.Stack.Name}}/ignore" hx-post="/stacks/{{$.Stack.Name}}/ignore" hx-replace-url="true"><input type="hidden" name="service" value="{{.Service}}"><input type="hidden" name="version" value="{{.To}}"><button class="small">Ignore {{.Service}} {{.To}}</button></form>{{end}}{{end}}</div>
 </details>
+<details><summary>Go through a version…</summary>
+{{range $.Stack.Services}}{{if .Available}}<form class="field" method="post" action="/stacks/{{$.Stack.Name}}/via" hx-post="/stacks/{{$.Stack.Name}}/via" hx-replace-url="true"><input type="hidden" name="service" value="{{.Name}}"><label>{{.Name}} stops at<select name="version">{{range .Available}}<option>{{.Tag}}</option>{{end}}</select></label><button class="small">Add a step</button></form>{{end}}{{end}}
+</details>
 {{end}}{{end}}
+{{range $svc := .Stack.Services}}{{range .Via}}<form class="field" method="post" action="/stacks/{{$.Stack.Name}}/forget" hx-post="/stacks/{{$.Stack.Name}}/forget" hx-replace-url="true"><input type="hidden" name="service" value="{{$svc.Name}}"><input type="hidden" name="version" value="{{.}}"><p class="muted">The plan stops at {{$svc.Name}} {{.}}.</p><button class="small">Remove this step</button></form>{{end}}{{range .Ignored}}<form class="field" method="post" action="/stacks/{{$.Stack.Name}}/forget" hx-post="/stacks/{{$.Stack.Name}}/forget" hx-replace-url="true"><input type="hidden" name="service" value="{{$svc.Name}}"><input type="hidden" name="version" value="{{.}}"><p class="muted">{{$svc.Name}} {{.}} is ignored.</p><button class="small">Stop ignoring</button></form>{{end}}{{end}}
 </div></section>
 {{with .Runs}}<section class="panel runs"><h2>Runs</h2>
 {{range .}}<a class="row tbl cols-run" href="/runs/{{.ID}}"><span class="mono">{{.ID}}</span><span class="muted">by {{.Author}}<span class="sub">{{when .Started}}{{if .DryRun}} · dry run{{end}}</span></span>{{template "pill" .Status}}</a>

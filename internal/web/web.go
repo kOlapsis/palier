@@ -85,6 +85,7 @@ type Deps struct {
 	Plan      func(stack string) (*plan.Record, error)
 	Apply     func(stack, author string, dryRun bool) (int64, error)
 	Decide    func(stack, author, kind, service, version, until string) error
+	Forget    func(stack, author, service, version string) error
 	Postponed func(stack string) time.Time
 	Automatic func(stack string, p *plan.Plan) (bool, string)
 	Run       func(id int64) (*run.View, error)
@@ -477,6 +478,10 @@ func New(deps Deps) http.Handler {
 	s.mux.HandleFunc("POST /stacks/{name}/ignore", s.decide("ignore"))
 	s.mux.HandleFunc("POST /stacks/{name}/accept", s.decide("accept"))
 	s.mux.HandleFunc("POST /stacks/{name}/postpone", s.decide("postpone"))
+	s.mux.HandleFunc("POST /stacks/{name}/via", s.decide("via"))
+	s.mux.HandleFunc("POST /stacks/{name}/forget", func(w http.ResponseWriter, r *http.Request) {
+		back(w, r, s.forget(s.who(r), r.PathValue("name"), r.FormValue("service"), r.FormValue("version")))
+	})
 	s.mux.HandleFunc("GET /runs/{id}", s.run)
 	s.mux.HandleFunc("GET /settings", func(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusOK, "settings.html", struct {
@@ -745,14 +750,32 @@ func (s *server) who(r *http.Request) string { return cmp.Or(who(r), s.author) }
 
 func (s *server) record(author, stack, kind, service, version, until string) error {
 	switch {
-	case (kind == "ignore" || kind == "accept") && (service == "" || version == ""):
+	case (kind == "ignore" || kind == "accept" || kind == "via") && (service == "" || version == ""):
 		return errors.New("service and version to " + kind + " are missing")
+	case kind == "via" && !s.available(stack, service, version):
+		return fmt.Errorf("%s %s is not a version Palier can update %s to", service, version, service)
 	case kind == "postpone":
 		if _, err := time.Parse("2006-01-02", until); err != nil {
 			return errors.New("invalid postpone date, expected YYYY-MM-DD")
 		}
 	}
 	return s.deps.Decide(stack, author, kind, service, version, until)
+}
+
+func (s *server) forget(author, stack, service, version string) error {
+	if service == "" || version == "" {
+		return errors.New("service and version are missing")
+	}
+	return s.deps.Forget(stack, author, service, version)
+}
+
+func (s *server) available(stack, service, version string) bool {
+	st, _ := s.find(stack)
+	if st == nil {
+		return false
+	}
+	i := slices.IndexFunc(st.Services, func(svc *inventory.Service) bool { return svc.Name == service })
+	return i >= 0 && slices.ContainsFunc(st.Services[i].Available, func(r inventory.Release) bool { return r.Tag == version })
 }
 
 func (s *server) run(w http.ResponseWriter, r *http.Request) {

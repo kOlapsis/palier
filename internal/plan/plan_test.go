@@ -400,3 +400,34 @@ func TestBuildLineMovesAsOneRelease(t *testing.T) {
 		}
 	}
 }
+
+func TestVia(t *testing.T) {
+	st := func() *inventory.Stack {
+		return &inventory.Stack{Services: []*inventory.Service{
+			{Name: "n8n", Role: inventory.RoleApplication, Image: "docker.n8n.io/n8nio/n8n", Version: "2.22.6", Source: "n8n", Available: rel("2.40.1", "2.48.6", "3.3.0"), Via: []string{"2.48.6"}},
+			{Name: "runners", Role: inventory.RoleApplication, Image: "docker.n8n.io/n8nio/runners", Version: "2.22.6", Source: "n8n", Available: rel("2.40.1", "2.48.6", "3.3.0")},
+		}}
+	}
+	p := Fallback(st(), "x")
+	Validate(p, st())
+	if len(p.Incomplete) > 0 || len(p.Steps) != 2 {
+		t.Fatalf("%s %+v", reasons(p), p.Steps)
+	}
+	for i, want := range []string{"2.48.6", "3.3.0"} {
+		for _, c := range p.Steps[i].Changes {
+			if c.To != want {
+				t.Errorf("step %d: %+v", i+1, c)
+			}
+		}
+	}
+	direct := &Plan{Steps: []Step{step(Change{"n8n", "2.22.6", "3.3.0"}, Change{"runners", "2.22.6", "3.3.0"})}}
+	Validate(direct, st())
+	if !strings.Contains(reasons(direct), "n8n must go through 2.48.6") {
+		t.Fatal(reasons(direct))
+	}
+	last := st()
+	last.Services[0].Via = []string{"3.3.0"}
+	if p := Fallback(last, "x"); len(p.Steps) != 1 {
+		t.Fatalf("%+v", p.Steps)
+	}
+}

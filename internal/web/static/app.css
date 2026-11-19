@@ -209,7 +209,7 @@ button:disabled { opacity: .5; cursor: default; }
 form { margin: 0; }
 label { font-size: 13px; color: var(--muted); }
 .field { display: flex; flex-direction: column; gap: 6px; }
-input { min-height: 44px; width: 100%; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
+input, select { min-height: 44px; width: 100%; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
 input::placeholder { color: var(--faint); }
 input[type=date] { width: auto; }
 details > summary { cursor: pointer; padding: 6px 0; color: var(--muted); }
