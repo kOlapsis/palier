@@ -45,6 +45,18 @@ All configuration goes through environment variables. The `/settings` page of th
 
 Palier talks to the Anthropic API by default. `PALIER_AI_PROVIDER=openai` sends the same instructions and the same strict JSON schema to any API compatible with OpenAI's Chat Completions and structured outputs (`response_format` of type `json_schema`). The guarantees do not depend on the model: the operations come from a closed list, every fact needs a quote found word for word in the notes, and the code validates the plan before anything runs. A weaker model gives plans that are more often incomplete or refused, never a plan applied without validation. Changing the provider, the address or the model computes the plans again.
 
+Mistral, through its OpenAI-compatible API:
+
+```yaml
+services:
+  palier:
+    environment:
+      PALIER_AI_PROVIDER: openai
+      PALIER_AI_URL: https://api.mistral.ai/v1
+      PALIER_AI_KEY: ...
+      PALIER_AI_MODEL: mistral-large-latest
+```
+
 A model you host, with Ollama in the same Compose project as Palier (to compare it with your current provider first, see [Try a local model](local-model.md)):
 
 ```yaml
