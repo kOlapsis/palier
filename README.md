@@ -207,3 +207,7 @@ docker compose -f docs/compose.yaml up
 ```
 
 then open http://127.0.0.1:8000.
+
+## License
+
+Palier is released under the [Apache License 2.0](LICENSE).
