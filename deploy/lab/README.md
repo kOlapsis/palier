@@ -48,6 +48,7 @@ All commands are `deploy/lab/lab <command>`.
 deploy/lab/lab scenario whoami-reset
 deploy/lab/lab scenario ai-local                                   # whoami, outline, immich; Anthropic then qwen3 4B
 deploy/lab/lab scenario ai-local MODEL=qwen3:8b STACKS=whoami PROVIDERS=openai
+deploy/lab/lab scenario ai-local STACKS=whoami PROVIDERS=mistral         # the Mistral API, LAB_MISTRAL_KEY in lab.env, without Ollama
 ```
 
 Each plan is summed up on one line per step, followed by what Palier refused in it; the full JSON stays in `/tmp/ai-<provider>-<stack>.json` on the machine. A model takes 2.5 GB (4B) to 5 GB (8B) of disk in the `ollama-models` volume: check `df -h /` first. Ollama is stopped at the end; `docker compose --profile ai-local rm -sf ollama` and `docker volume rm palier_ollama-models` free the space. [Try a local model](../../docs/local-model.md) gives the same steps for a Palier outside the bench.

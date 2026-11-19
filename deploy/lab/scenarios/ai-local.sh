@@ -1,14 +1,19 @@
-# Computes the plans of whoami, Outline and Immich in a scratch data volume with each provider of PROVIDERS: anthropic, openai (a local model served by Ollama) and openai-cloud (the OpenAI API with LAB_OPENAI_KEY and LAB_OPENAI_MODEL).
+# Computes the plans of whoami, Outline and Immich in a scratch data volume with each provider of PROVIDERS: anthropic, openai (a local model served by Ollama) openai-cloud (the OpenAI API with LAB_OPENAI_KEY and LAB_OPENAI_MODEL) and mistral (the Mistral API with LAB_MISTRAL_KEY and MISTRAL_MODEL).
 MODEL=${MODEL:-qwen3:4b-instruct-2507-q4_K_M}
-$PALIER --profile ai-local up -d --quiet-pull ollama 2>/dev/null
-until $PALIER exec -T ollama ollama list >/dev/null 2>&1; do sleep 1; done
-$PALIER exec -T ollama ollama pull "$MODEL" >/dev/null && echo "model $MODEL ready"
+PROVIDERS=${PROVIDERS:-anthropic openai}
+case " $PROVIDERS " in *" openai "*) OLLAMA=1 ;; *) OLLAMA= ;; esac
+if [ -n "$OLLAMA" ]; then
+	$PALIER --profile ai-local up -d --quiet-pull ollama 2>/dev/null
+	until $PALIER exec -T ollama ollama list >/dev/null 2>&1; do sleep 1; done
+	$PALIER exec -T ollama ollama pull "$MODEL" >/dev/null && echo "model $MODEL ready"
+fi
 docker volume rm -f palier_ai-local >/dev/null
 for stack in ${STACKS:-whoami outline immich}; do
-	for provider in ${PROVIDERS:-anthropic openai}; do
+	for provider in $PROVIDERS; do
 		set --
 		[ "$provider" = openai ] && set -- -e PALIER_AI_PROVIDER=openai -e PALIER_AI_URL=http://ollama:11434/v1 -e PALIER_AI_MODEL="$MODEL" -e PALIER_AI_KEY=
 		[ "$provider" = openai-cloud ] && set -- -e PALIER_AI_PROVIDER=openai -e PALIER_AI_MODEL="$(sed -n 's/^LAB_OPENAI_MODEL=//p' /opt/palier/compose.env)" -e PALIER_AI_KEY="$(sed -n 's/^LAB_OPENAI_KEY=//p' /opt/palier/compose.env)"
+		[ "$provider" = mistral ] && set -- -e PALIER_AI_PROVIDER=openai -e PALIER_AI_URL=https://api.mistral.ai/v1 -e PALIER_AI_MODEL="${MISTRAL_MODEL:-mistral-large-latest}" -e PALIER_AI_KEY="$(sed -n 's/^LAB_MISTRAL_KEY=//p' /opt/palier/compose.env)"
 		out=/tmp/ai-$provider-$stack
 		start=$(date +%s)
 		$PALIER run --rm --no-deps -T -v palier_ai-local:/var/lib/palier -e PALIER_LISTEN= "$@" \
@@ -30,4 +35,4 @@ for x in p.get("suspicious") or []:
 PY
 	done
 done
-$PALIER --profile ai-local stop ollama >/dev/null
+[ -z "$OLLAMA" ] || $PALIER --profile ai-local stop ollama >/dev/null
