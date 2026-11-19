@@ -78,6 +78,7 @@ type Client struct {
 	unlisted map[string]time.Time
 	fronts   map[string]bool
 	listing  map[string]*sync.Mutex
+	cut      map[string]time.Time
 }
 
 // New returns a registry client whose date cache lives in db, with the credentials of auths, mirror, when set, serving the Docker Hub reads by digest, and github, when set, listing the dates of GHCR tags.
@@ -86,7 +87,7 @@ func New(db *sql.DB, auths *Auths, mirror, github string) *Client {
 	if mirror != "" && !strings.Contains(mirror, "://") {
 		mirror = "https://" + mirror
 	}
-	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}, github: github, slots: map[string]chan struct{}{}, unlisted: map[string]time.Time{}, fronts: map[string]bool{}, listing: map[string]*sync.Mutex{}}
+	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}, github: github, slots: map[string]chan struct{}{}, unlisted: map[string]time.Time{}, fronts: map[string]bool{}, listing: map[string]*sync.Mutex{}, cut: map[string]time.Time{}}
 }
 
 // StatusError is a refusal of a registry, with its HTTP status.
@@ -458,6 +459,12 @@ func (c *Client) Pushed(ctx context.Context, r Ref, tag string) (time.Time, erro
 		if t, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
 			return t, err
 		}
+		c.mu.Lock()
+		before, cut := c.cut[r.Name()]
+		c.mu.Unlock()
+		if cut {
+			return before, nil
+		}
 	} else if c.listDates(ctx, r, tag) {
 		if t, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
 			return t, err
@@ -509,6 +516,10 @@ func (c *Client) hubDates(ctx context.Context, r Ref, tag string) error {
 	ns, name, _ := strings.Cut(r.Repo, "/")
 	url := "https://hub.docker.com/v2/namespaces/" + ns + "/repositories/" + name + "/tags?page_size=100&ordering=last_updated"
 	found, pages := false, 0
+	var oldest time.Time
+	c.mu.Lock()
+	delete(c.cut, r.Name())
+	c.mu.Unlock()
 	for url != "" && !found {
 		pages++
 		var page struct {
@@ -521,7 +532,10 @@ func (c *Client) hubDates(ctx context.Context, r Ref, tag string) error {
 		}
 		var refused *StatusError
 		if err := c.hubGet(ctx, url, &page); errors.As(err, &refused) && refused.Code == http.StatusForbidden && pages > 1 {
-			slog.Warn("tag dates list cut", "image", r.Name(), "pages", pages-1, "err", err)
+			slog.Warn("tag dates list cut", "image", r.Name(), "pages", pages-1, "older_than", oldest.Format(time.RFC3339), "err", err)
+			c.mu.Lock()
+			c.cut[r.Name()] = oldest
+			c.mu.Unlock()
 			break
 		} else if err != nil {
 			return err
@@ -534,6 +548,9 @@ func (c *Client) hubDates(ctx context.Context, r Ref, tag string) error {
 			if pushed.IsZero() {
 				continue
 			}
+			if oldest.IsZero() || pushed.Before(oldest) {
+				oldest = pushed
+			}
 			if _, err := c.db.ExecContext(ctx, `INSERT OR IGNORE INTO tag_dates (image, tag, pushed) VALUES (?, ?, ?)`, r.Name(), t.Name, pushed.UTC().Format(time.RFC3339)); err != nil {
 				return err
 			}
@@ -542,7 +559,7 @@ func (c *Client) hubDates(ctx context.Context, r Ref, tag string) error {
 		url = page.Next
 	}
 	slog.Info("tag dates listed", "image", r.Name(), "requests", pages, "found", found)
-	if url == "" {
+	if !found {
 		c.mu.Lock()
 		c.dated[r.Name()] = time.Now()
 		c.mu.Unlock()
