@@ -1,3 +1,6 @@
+// Copyright 2026 Benjamin Touchard (Kolapsis)
+// SPDX-License-Identifier: Apache-2.0
+
 // Package version parses and orders image tags written as dotted versions.
 package version
 

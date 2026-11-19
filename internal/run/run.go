@@ -1,3 +1,6 @@
+// Copyright 2026 Benjamin Touchard (Kolapsis)
+// SPDX-License-Identifier: Apache-2.0
+
 // Package run applies a plan to a stack with a checkpoint, verifies it, and rolls the whole stack back on failure.
 package run
 

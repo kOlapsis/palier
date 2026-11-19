@@ -1,3 +1,6 @@
+// Copyright 2026 Benjamin Touchard (Kolapsis)
+// SPDX-License-Identifier: Apache-2.0
+
 // Package compose edits Compose files in place and runs docker compose on a project.
 package compose
 

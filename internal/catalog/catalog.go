@@ -1,3 +1,6 @@
+// Copyright 2026 Benjamin Touchard (Kolapsis)
+// SPDX-License-Identifier: Apache-2.0
+
 // Package catalog holds the cards Palier ships: documentation excerpts, required upgrade stops, check commands and bulk data paths of known images.
 package catalog
 

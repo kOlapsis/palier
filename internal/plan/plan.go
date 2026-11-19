@@ -1,3 +1,6 @@
+// Copyright 2026 Benjamin Touchard (Kolapsis)
+// SPDX-License-Identifier: Apache-2.0
+
 // Package plan holds the update plan of a stack and checks it against the stack and its release notes.
 package plan
 

@@ -1,3 +1,6 @@
+// Copyright 2026 Benjamin Touchard (Kolapsis)
+// SPDX-License-Identifier: Apache-2.0
+
 // Package notify tells people what Palier needs or did: an alert or a piece of information when a problem opens and when it is resolved, and a weekly report.
 package notify
 
