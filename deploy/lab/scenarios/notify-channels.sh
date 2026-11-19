@@ -33,7 +33,8 @@ for r in reqs:
     print("   ", text.replace("\n", "\n    ")[:900])
 ' "${s#*:}" "$START"
 done
-echo "== ntfy ($NTFY)"
+echo "== ntfy (${NTFY:-off, set LAB_NTFY_URL in lab.env})"
+[ -n "$NTFY" ] || exit 0
 curl -s "$NTFY/json?poll=1&since=$START" | python3 -c '
 import json, sys
 for line in sys.stdin:
