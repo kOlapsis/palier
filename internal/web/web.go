@@ -207,10 +207,13 @@ func Summarize(list []notify.Incident) Problems {
 	}
 	p.Alerts, p.More = shorten(p.Alerts, 3)
 	for st, l := range p.ByStack {
+		slices.SortStableFunc(l, func(a, b notify.Incident) int { return cmp.Compare(rank[a.Level], rank[b.Level]) })
 		p.ByStack[st], p.MoreStack[st] = shorten(l, 2)
 	}
 	return p
 }
+
+var rank = map[string]int{notify.Alert: 0, notify.Info: 1, notify.Notice: 2}
 
 // shorten keeps the first n incidents and counts the others, but shows a single other one rather than "and 1 more".
 func shorten(l []notify.Incident, n int) ([]notify.Incident, int) {

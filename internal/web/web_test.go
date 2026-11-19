@@ -210,6 +210,10 @@ func TestSummarize(t *testing.T) {
 	if p := Summarize(list); len(p.ByStack["grafana"]) != 2 || p.MoreStack["grafana"] != 2 {
 		t.Errorf("grafana with four: %d shown, %d more", len(p.ByStack["grafana"]), p.MoreStack["grafana"])
 	}
+	immich := []notify.Incident{{Stack: "immich", Level: "notice", Title: "immich: backup is not on Docker Hub"}, {Stack: "immich", Level: "alert", Title: "immich: 1 critical or high security advisory"}}
+	if g := Summarize(immich).ByStack["immich"]; g[0].Title != "1 critical or high security advisory" {
+		t.Errorf("the alert comes first on the card of its stack: %+v", g)
+	}
 	if p := Summarize(list[:4]); len(p.Alerts) != 4 || p.More != 0 {
 		t.Errorf("four alerts: %d shown, %d more", len(p.Alerts), p.More)
 	}
