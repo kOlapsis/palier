@@ -22,7 +22,7 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_WEBHOOK_SECRET` | empty | Signs each webhook with HMAC-SHA256 in `X-Palier-Signature`. |
 | `PALIER_NTFY_URL`, `PALIER_SLACK_URL`, `PALIER_DISCORD_URL`, `PALIER_TELEGRAM_URL` | empty | Notification channels. See [notification channels](#notification-channels). |
 | `PALIER_NTFY_LEVEL`, `PALIER_SLACK_LEVEL`, `PALIER_DISCORD_LEVEL`, `PALIER_TELEGRAM_LEVEL` | `info` | `alert` or `info`, as `PALIER_EMAIL_LEVEL`. |
-| `PALIER_GITHUB_TOKEN` | empty | Reads GitHub release notes and security advisories without the anonymous limit. A classic token with the `read:packages` scope also lists the publication dates of GHCR tags in one request. |
+| `PALIER_GITHUB_TOKEN` | empty | Reads GitHub release notes and security advisories without the anonymous limit. A classic token with the `read:packages` scope also lists the publication dates of GHCR tags in one request. It does not sign Palier in to `ghcr.io`: see [GHCR and `PALIER_GITHUB_TOKEN`](#ghcr-and-palier_github_token). |
 | `PALIER_GITLAB_TOKEN` | empty | Reads GitLab release notes (gitlab.com) without the anonymous limit, and those of private projects. |
 | `PALIER_REGISTRY_MIRROR` | empty | Docker Hub mirror (`mirror.gcr.io`, for example), used for reads by digest. |
 | `DOCKER_CONFIG` | `$HOME/.docker` | Folder of the `config.json` that holds the credentials of private registries. |
@@ -163,6 +163,25 @@ Palier reads the Docker `config.json`, in the usual format: its `auths` section,
 ```
 
 Docker Hub credentials are also used for the Docker Hub API, which gives the publication date of tags, a hundred at a time: with them, the request limit is higher than with anonymous access.
+
+Palier reads `config.json` when it starts: restart it after you change the file.
+
+### GHCR and `PALIER_GITHUB_TOKEN`
+
+`PALIER_GITHUB_TOKEN` does not give access to the images of `ghcr.io`, even though GHCR is the registry of GitHub. They are two services:
+
+| | Used for | Read from |
+|---|---|---|
+| The GitHub API | Release notes, security advisories, publication dates of GHCR tags | `PALIER_GITHUB_TOKEN` |
+| The registry `ghcr.io` | The tags and digests Palier reads, and the image Docker pulls during an update | `config.json` |
+
+A private image on GHCR therefore needs an entry for `ghcr.io` in `config.json`, whether `PALIER_GITHUB_TOKEN` is set or not. Without it, Palier reports that `ghcr.io` refuses to list the tags, and an update or a rollback that has to pull the image fails with `unauthorized`.
+
+```sh
+docker login ghcr.io -u <your GitHub login>
+```
+
+The password is a classic personal access token with the `read:packages` scope. A fine-grained token cannot read packages. The same token can also be the value of `PALIER_GITHUB_TOKEN`.
 
 ### Credential helpers
 

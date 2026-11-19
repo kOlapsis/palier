@@ -81,11 +81,11 @@ DOCKER_GID=$(stat -c %g /var/run/docker.sock) docker compose up -d
 | What | Why |
 |---|---|
 | `PALIER_AI_KEY` | Needed in practice. The AI reads the notes and security advisories, builds the plan and judges each step. Without it, Palier works on version numbers only. A model you host needs no key: see [AI provider](configuration.md#ai-provider). |
-| Docker Hub credentials (mounted `config.json`, `DOCKER_CONFIG`) | Docker Hub heavily limits anonymous access. With credentials, Palier reads tags, digests and publication dates without being blocked. |
+| Registry credentials (mounted `config.json`, `DOCKER_CONFIG`) | Docker Hub heavily limits anonymous access. With credentials, Palier reads tags, digests and publication dates without being blocked. A private image needs its registry in this file, `ghcr.io` included. |
 | `PALIER_GITHUB_TOKEN` | GitHub release notes and security advisories are limited to 60 requests per hour without a token. |
 | `PALIER_GITLAB_TOKEN` | Same for projects hosted on gitlab.com. |
 
-A GitHub token with no particular permission is enough: Palier only reads public data.
+A GitHub token with no particular permission is enough: Palier only reads public data. This token is for the GitHub API only. It does not sign Palier in to `ghcr.io`: a private image on GHCR needs `docker login ghcr.io`, as explained in [GHCR and `PALIER_GITHUB_TOKEN`](configuration.md#ghcr-and-palier_github_token).
 
 ## Three things to get right
 
