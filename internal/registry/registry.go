@@ -77,6 +77,7 @@ type Client struct {
 	slots    map[string]chan struct{}
 	unlisted map[string]time.Time
 	fronts   map[string]bool
+	listing  map[string]*sync.Mutex
 }
 
 // New returns a registry client whose date cache lives in db, with the credentials of auths, mirror, when set, serving the Docker Hub reads by digest, and github, when set, listing the dates of GHCR tags.
@@ -85,7 +86,7 @@ func New(db *sql.DB, auths *Auths, mirror, github string) *Client {
 	if mirror != "" && !strings.Contains(mirror, "://") {
 		mirror = "https://" + mirror
 	}
-	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}, github: github, slots: map[string]chan struct{}{}, unlisted: map[string]time.Time{}, fronts: map[string]bool{}}
+	return &Client{http: &http.Client{Timeout: time.Minute}, db: db, auths: auths, mirror: mirror, authz: map[string]string{}, helped: map[string]helped{}, dated: map[string]time.Time{}, github: github, slots: map[string]chan struct{}{}, unlisted: map[string]time.Time{}, fronts: map[string]bool{}, listing: map[string]*sync.Mutex{}}
 }
 
 // StatusError is a refusal of a registry, with its HTTP status.
@@ -451,15 +452,13 @@ func (c *Client) Pushed(ctx context.Context, r Ref, tag string) (time.Time, erro
 		return t, err
 	}
 	if r.Domain == "docker.io" {
-		if err := c.hubDates(ctx, r); err != nil {
+		if err := c.hubDates(ctx, r, tag); err != nil {
 			return time.Time{}, err
 		}
 		if t, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
 			return t, err
 		}
-		return time.Time{}, fmt.Errorf("%s:%s is not in the Docker Hub tag list", r.Name(), tag)
-	}
-	if c.listDates(ctx, r, tag) {
+	} else if c.listDates(ctx, r, tag) {
 		if t, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
 			return t, err
 		}
@@ -487,8 +486,20 @@ func (c *Client) storedDate(ctx context.Context, r Ref, tag string) (time.Time, 
 
 const hubRefill = 10 * time.Minute
 
-// hubDates stores the push date of every tag of a Docker Hub repository, read a hundred at a time.
-func (c *Client) hubDates(ctx context.Context, r Ref) error {
+// hubDates stores the push dates of a Docker Hub repository, most recent first, until it meets tag.
+func (c *Client) hubDates(ctx context.Context, r Ref, tag string) error {
+	c.mu.Lock()
+	lock := c.listing[r.Name()]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		c.listing[r.Name()] = lock
+	}
+	c.mu.Unlock()
+	lock.Lock()
+	defer lock.Unlock()
+	if _, ok, err := c.storedDate(ctx, r, tag); ok || err != nil {
+		return err
+	}
 	c.mu.Lock()
 	recent := time.Since(c.dated[r.Name()]) < hubRefill
 	c.mu.Unlock()
@@ -496,8 +507,10 @@ func (c *Client) hubDates(ctx context.Context, r Ref) error {
 		return nil
 	}
 	ns, name, _ := strings.Cut(r.Repo, "/")
-	url := "https://hub.docker.com/v2/namespaces/" + ns + "/repositories/" + name + "/tags?page_size=100"
-	for url != "" {
+	url := "https://hub.docker.com/v2/namespaces/" + ns + "/repositories/" + name + "/tags?page_size=100&ordering=last_updated"
+	found, pages := false, 0
+	for url != "" && !found {
+		pages++
 		var page struct {
 			Next    string
 			Results []struct {
@@ -506,7 +519,11 @@ func (c *Client) hubDates(ctx context.Context, r Ref) error {
 				LastUpdated   time.Time `json:"last_updated"`
 			}
 		}
-		if err := c.hubGet(ctx, url, &page); err != nil {
+		var refused *StatusError
+		if err := c.hubGet(ctx, url, &page); errors.As(err, &refused) && refused.Code == http.StatusForbidden && pages > 1 {
+			slog.Warn("tag dates list cut", "image", r.Name(), "pages", pages-1, "err", err)
+			break
+		} else if err != nil {
 			return err
 		}
 		for _, t := range page.Results {
@@ -520,12 +537,16 @@ func (c *Client) hubDates(ctx context.Context, r Ref) error {
 			if _, err := c.db.ExecContext(ctx, `INSERT OR IGNORE INTO tag_dates (image, tag, pushed) VALUES (?, ?, ?)`, r.Name(), t.Name, pushed.UTC().Format(time.RFC3339)); err != nil {
 				return err
 			}
+			found = found || t.Name == tag
 		}
 		url = page.Next
 	}
-	c.mu.Lock()
-	c.dated[r.Name()] = time.Now()
-	c.mu.Unlock()
+	slog.Info("tag dates listed", "image", r.Name(), "requests", pages, "found", found)
+	if url == "" {
+		c.mu.Lock()
+		c.dated[r.Name()] = time.Now()
+		c.mu.Unlock()
+	}
 	return nil
 }
 
@@ -569,8 +590,9 @@ func (c *Client) hubGet(ctx context.Context, url string, out any) error {
 			}
 			continue
 		case resp.StatusCode != http.StatusOK:
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 			resp.Body.Close()
-			return fmt.Errorf("GET %s: %s", url, resp.Status)
+			return &StatusError{Code: resp.StatusCode, msg: fmt.Sprintf("GET %s: %s: %s", url, resp.Status, strings.TrimSpace(string(b)))}
 		}
 		defer resp.Body.Close()
 		return json.NewDecoder(resp.Body).Decode(out)
