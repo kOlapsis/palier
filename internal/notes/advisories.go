@@ -128,7 +128,7 @@ func (a Advisory) Affects(v version.V) bool {
 		if i < len(a.Patched) {
 			patched = a.Patched[i]
 		}
-		if fixed, ok := fixedFor(patched, v); ok && !Less(v, fixed) {
+		if fixed, ok := fixedFor(patched, v); ok && !Less(v, fixed) || laterMajor(patched, v) {
 			continue
 		}
 		return true
@@ -201,6 +201,17 @@ func splitVersions(s string) []version.V {
 		}
 	}
 	return out
+}
+
+// laterMajor reports whether v belongs to a major newer than every patched version, a line released with the fix.
+func laterMajor(patched string, v version.V) bool {
+	fixes := splitVersions(patched)
+	for _, f := range fixes {
+		if len(f.Nums) == 0 || len(v.Nums) == 0 || f.Nums[0] >= v.Nums[0] {
+			return false
+		}
+	}
+	return len(fixes) > 0
 }
 
 func fixedFor(patched string, v version.V) (version.V, bool) {

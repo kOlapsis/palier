@@ -44,6 +44,7 @@ func TestAdvisoryRanges(t *testing.T) {
 		{ID: "badge", Affected: []string{">= 2.0.0 && <= 2.1.3 "}, Patched: []string{"2.2.0"}},
 		{ID: "dos", Affected: []string{"<=2.5.3"}, Patched: []string{"2.5.4"}},
 		{ID: "unreadable", Affected: []string{"see description"}, Patched: []string{""}},
+		{ID: "output-buffers", Affected: []string{">= 1.0"}, Patched: []string{"1.0.9, 2.0.3, 2.1.1"}},
 	}
 	affected := func(tag string) []string {
 		v, _ := version.Parse(tag)
@@ -55,7 +56,7 @@ func TestAdvisoryRanges(t *testing.T) {
 		}
 		return ids
 	}
-	for tag, want := range map[string]string{"2.5.5": "host-header", "2.5.9": "", "2.1.0": "host-header ssti badge dos", "1.23.5": "ssti dos"} {
+	for tag, want := range map[string]string{"2.5.5": "host-header", "2.5.9": "", "2.1.0": "host-header ssti badge dos", "1.23.5": "ssti dos", "2.0.1": "ssti badge dos output-buffers", "3.0.0": ""} {
 		if got := strings.Join(affected(tag), " "); got != want {
 			t.Errorf("%s affected by %q, want %q", tag, got, want)
 		}
