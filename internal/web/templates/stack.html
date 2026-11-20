@@ -75,7 +75,7 @@
 <div><strong>{{.Name}}</strong><span class="sub">{{label .Role}}</span>{{with .DependsOn}}<span class="sub">depends on {{join .}}</span>{{end}}</div>
 <div><span class="mono">{{.Tag}}</span><span class="sub mono wrap">{{.Image}}</span>
 {{if and .Version (ne .Version .Tag)}}<span class="sub">version {{.Version}}, read from {{if eq .VersionSource "digest"}}the digest{{else if eq .VersionSource "annotation"}}the registry's OCI annotation{{else}}the OCI label{{end}}</span>{{end}}
-{{if .Republished}}<span class="sub">Tag republished in the registry with different content: this is not a new version.</span>{{end}}</div>
+{{if eq .VersionSource "image"}}<span class="sub">No version published: the image is compared by digest and build date.</span>{{end}}{{if .Republished}}<span class="sub">Tag republished in the registry with different content: this is not a new version.</span>{{end}}</div>
 <div><span class="state{{if ne .State "running"}} bad{{end}}">{{.State}}</span>{{with .Health}}<span class="sub">{{.}}</span>{{end}}{{if .Restarts}}<span class="sub">{{.Restarts}} restart{{plural .Restarts}}</span>{{end}}</div>
 <div class="col">{{$path := crumbs . $.Record}}{{if .BuiltLocally}}<span class="muted">built locally: no registry to check</span>{{else if .NotInRegistry}}<span class="muted">not in its registry: built locally, or private without credentials</span>{{else if .DetectionError}}<span class="muted">versions unknown</span>{{else if $.At.IsZero}}<span class="muted">checking versions</span>{{else if gt (len $path) 1}}
 <ol class="path" aria-label="Upgrade path of {{.Name}}">{{range $i, $c := $path}}<li{{if eq $i 0}} class="from"{{else if $c.Last}} class="last"{{else if $c.Stop}} class="stop" title="Required stop"{{end}}>{{$c.Tag}}</li>{{end}}</ol>

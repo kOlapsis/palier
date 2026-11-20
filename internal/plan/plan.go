@@ -681,13 +681,16 @@ func Fallback(st *inventory.Stack, why string) *Plan {
 		p.Steps = append(p.Steps, fallbackStep(st, at, to, why))
 	}
 	allowed := func(s *inventory.Service, tag string) bool {
-		cur, _ := version.Parse(at[s.Name])
-		v, _ := version.Parse(tag)
-		return s.Role != inventory.RoleDependency || v.Major() == cur.Major()
+		cur, ok1 := version.Parse(at[s.Name])
+		v, ok2 := version.Parse(tag)
+		return s.Role != inventory.RoleDependency || ok1 && ok2 && v.Major() == cur.Major()
 	}
 	to := map[string]string{}
 	for _, s := range st.Services {
-		from := slices.IndexFunc(s.Available, func(r inventory.Release) bool { return r.Tag == at[s.Name] }) + 1
+		from := 0
+		if at[s.Name] != s.Version {
+			from = slices.IndexFunc(s.Available, func(r inventory.Release) bool { return r.Tag == at[s.Name] }) + 1
+		}
 		for _, r := range s.Available[from:] {
 			if allowed(s, r.Tag) && !slices.ContainsFunc(together[s.Name], func(o *inventory.Service) bool {
 				t := sameVersionTag(o, r.Tag)

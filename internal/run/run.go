@@ -499,7 +499,12 @@ func (e *Engine) operation(ctx context.Context, id int64, st *inventory.Stack, c
 	services := op.Targets()
 	switch op.Op {
 	case "set_image":
-		return e.setImage(id, cp, op)
+		if err := e.setImage(id, cp, op); err != nil {
+			return err
+		}
+		e.event(id, "pull %s", op.Service)
+		_, err := compose.Run(ctx, e.DockerHost, cp.Project, "pull", op.Service)
+		return err
 	case "compose_edit":
 		return e.composeEdit(ctx, id, cp, op)
 	case "recreate":

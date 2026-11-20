@@ -407,7 +407,7 @@ func assignRoles(st *Stack) {
 
 const maxDigestChecks = 30
 
-// resolve reads the version from the tag when no tag is more precise, else from the digest, else from the OCI label.
+// resolve reads the version from the tag when no tag is more precise, else from the digest, else from the OCI label, else keeps the tag of a repository without versions.
 func resolve(ctx context.Context, s *Service, ref registry.Ref, tags []string, reg *registry.Client) error {
 	running, parsed := version.Parse(s.Tag)
 	var candidates []version.V
@@ -418,16 +418,12 @@ func resolve(ctx context.Context, s *Service, ref registry.Ref, tags []string, r
 	}
 	if parsed && len(candidates) == 0 {
 		s.current, s.VersionSource, s.Version = running, "tag", running.Tag
-		d, err := reg.Digest(ctx, ref, s.Tag)
-		if err != nil || slices.Contains(s.digests, d) || len(s.digests) == 0 {
-			return err
+		if len(s.digests) == 0 {
+			return nil
 		}
-		platforms, err := reg.PlatformDigests(ctx, ref, d)
-		if err != nil {
-			return err
-		}
-		s.Republished = !slices.ContainsFunc(platforms, func(p string) bool { return slices.Contains(s.digests, p) })
-		return nil
+		same, err := serves(ctx, s, ref, s.Tag, reg)
+		s.Republished = err == nil && !same
+		return err
 	}
 	slices.SortFunc(candidates, func(a, b version.V) int {
 		switch {
@@ -461,7 +457,51 @@ func resolve(ctx context.Context, s *Service, ref registry.Ref, tags []string, r
 		s.current, s.VersionSource, s.Version = v, "label", v.Tag
 		return nil
 	}
+	if !parsed && len(candidates) == 0 && len(s.digests) > 0 {
+		s.VersionSource, s.Version = "image", s.Tag
+		return nil
+	}
 	return fmt.Errorf("running version unknown: tag %q is not a precise version, no precise registry tag has its digest, and neither the registry nor the image gives org.opencontainers.image.version", s.Tag)
+}
+
+// serves reports whether the registry gives tag the image the service runs.
+func serves(ctx context.Context, s *Service, ref registry.Ref, tag string, reg *registry.Client) (bool, error) {
+	d, err := reg.Digest(ctx, ref, tag)
+	if err != nil || slices.Contains(s.digests, d) {
+		return err == nil, err
+	}
+	platforms, err := reg.PlatformDigests(ctx, ref, d)
+	return slices.ContainsFunc(platforms, func(p string) bool { return slices.Contains(s.digests, p) }), err
+}
+
+// newerImage offers, for a repository without versions, the other image its running tag now names, else latest when built later.
+func newerImage(ctx context.Context, s *Service, ref registry.Ref, tags []string, reg *registry.Client, maturation time.Duration) error {
+	target := s.Tag
+	same, err := serves(ctx, s, ref, s.Tag, reg)
+	if err == nil && same && s.Tag != "latest" && slices.Contains(tags, "latest") {
+		target = "latest"
+		if same, err = serves(ctx, s, ref, target, reg); err == nil && !same {
+			var running, last time.Time
+			if running, err = reg.Created(ctx, ref, s.Tag); err == nil {
+				last, err = reg.Created(ctx, ref, target)
+			}
+			same = !last.After(running)
+		}
+	}
+	if err != nil || same {
+		return err
+	}
+	created, err := reg.Created(ctx, ref, target)
+	if err != nil {
+		return err
+	}
+	r := Release{Tag: target, Pushed: created}
+	if time.Since(created) < maturation {
+		s.Maturing = append(s.Maturing, r)
+	} else {
+		s.Available = append(s.Available, r)
+	}
+	return nil
 }
 
 // Detect fills the newer versions of every service, holding back those pushed less than maturation ago.
@@ -528,6 +568,12 @@ func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Cli
 	}
 	if err := resolve(ctx, s, ref, tags, reg); err != nil {
 		s.DetectionError = err.Error()
+		return
+	}
+	if s.VersionSource == "image" {
+		if err := newerImage(ctx, s, ref, tags, reg, maturation); err != nil {
+			s.DetectionError = err.Error()
+		}
 		return
 	}
 	newer := version.Newer(s.current, tags)

@@ -238,6 +238,21 @@ func TestFallbackDatabaseMajor(t *testing.T) {
 	}
 }
 
+func TestFallbackMovingTag(t *testing.T) {
+	for _, tag := range []string{"latest", "sha-4bfc5bb"} {
+		st := &inventory.Stack{Services: []*inventory.Service{{Name: "app", Role: inventory.RoleApplication, Image: "docker.io/excalidraw/excalidraw", Tag: tag, Version: tag, Available: rel("latest")}}}
+		p := Fallback(st, "x")
+		Validate(p, st)
+		if len(p.Incomplete) > 0 || len(p.Steps) != 1 || p.Steps[0].Changes[0] != (Change{"app", tag, "latest"}) {
+			t.Fatalf("%s: %v %+v", tag, p.Incomplete, p.Steps)
+		}
+		st.Services[0].Role = inventory.RoleDependency
+		if p := Fallback(st, "x"); len(p.Steps) != 0 {
+			t.Fatalf("%s: a dependency without a version moved: %+v", tag, p.Steps)
+		}
+	}
+}
+
 func TestAutomaticPerService(t *testing.T) {
 	two := func(auto map[string]string) *Plan {
 		return &Plan{Auto: auto, Steps: []Step{step(Change{"outline", "1.10.1", "1.11.0"}), step(Change{"redis", "7.2.4", "7.2.16"})}}

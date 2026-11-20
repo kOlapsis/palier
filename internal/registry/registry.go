@@ -720,6 +720,11 @@ func (c *Client) AnnotatedVersion(ctx context.Context, r Ref, digest string) (st
 	return "", nil
 }
 
+// Created returns when the image tag names for this machine's platform was built.
+func (c *Client) Created(ctx context.Context, r Ref, tag string) (time.Time, error) {
+	return c.configCreated(ctx, c.viaHub(ctx, r), tag)
+}
+
 func (c *Client) configCreated(ctx context.Context, r Ref, tag string) (time.Time, error) {
 	base := "https://" + apiHost(r.Domain) + "/v2/" + r.Repo
 	ref := tag
