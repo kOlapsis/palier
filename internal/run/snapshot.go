@@ -237,11 +237,11 @@ const (
 walk /from /to ""
 df -Pk /to | tail -n 1 | { read -r _ total _ avail _; echo "$SIZE $avail $total"; }`
 	copyScript = walkScript + `M=copy
-walk /from /to ""`
+walk /from /to "" && sync`
 	restoreScript = walkScript + `M=wipe
 walk /to /to ""
 M=copy
-walk /from /to ""`
+walk /from /to "" && sync`
 )
 
 // helper runs script in a throwaway container with /from and /to mounted, the exclusions of snap in its environment, and returns its output.
