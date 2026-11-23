@@ -26,6 +26,7 @@ import (
 	"github.com/kolapsis/palier/internal/inventory"
 	"github.com/kolapsis/palier/internal/plan"
 	"github.com/kolapsis/palier/internal/registry"
+	"github.com/kolapsis/palier/internal/version"
 )
 
 // Statuses of a run.
@@ -207,8 +208,9 @@ func (e *Engine) Execute(ctx context.Context, id int64, st *inventory.Stack, p *
 				err = fmt.Errorf("Palier was stopped during step %d", i+1)
 			}
 			e.event(id, "step %d failed: %v", i+1, err)
+			pulled := e.imageIDs(context.WithoutCancel(ctx), targets(step))
 			if e.rollback(context.WithoutCancel(ctx), id, cp, err) {
-				e.dropImages(context.WithoutCancel(ctx), id, append(replaced, targets(step)...))
+				e.dropImages(context.WithoutCancel(ctx), id, append(replaced, pulled...))
 			}
 			return
 		}
@@ -254,6 +256,20 @@ func targets(step plan.Step) []string {
 		}
 	}
 	return refs
+}
+
+// imageIDs returns the image each reference names on this machine now.
+func (e *Engine) imageIDs(ctx context.Context, refs []string) []string {
+	var ids []string
+	for _, ref := range refs {
+		var img struct {
+			ID string `json:"Id"`
+		}
+		if e.Docker.Get(ctx, "/images/"+ref+"/json", &img) == nil && img.ID != "" {
+			ids = append(ids, img.ID)
+		}
+	}
+	return ids
 }
 
 // dropImages removes the images a run replaced or pulled in vain; Docker keeps those a container still uses.
@@ -502,7 +518,10 @@ func (e *Engine) operation(ctx context.Context, id int64, st *inventory.Stack, c
 		if err := e.setImage(id, cp, op); err != nil {
 			return err
 		}
-		e.event(id, "pull %s", op.Service)
+		if _, ok := version.Parse(op.Tag); ok {
+			return nil
+		}
+		e.event(id, "pull %s: the tag %s is not a version, the registry may give it another image", op.Service, op.Tag)
 		_, err := compose.Run(ctx, e.DockerHost, cp.Project, "pull", op.Service)
 		return err
 	case "compose_edit":
