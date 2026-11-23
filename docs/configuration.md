@@ -15,7 +15,7 @@ All configuration goes through environment variables. The `/settings` page of th
 | `PALIER_AI_MODEL` | `claude-sonnet-5-5` | Model used for plans. Required with `openai`. |
 | `PALIER_AI_TIMEOUT` | `30m` | Longest wait for one answer of the model (Go duration). Raise it for a model on CPU: without an answer in time, Palier keeps a plan computed from versions alone, marked incomplete. |
 | `PALIER_SCAN_INTERVAL` | `1h` | Interval between two scans (Go duration: `30m`, `2h`…). |
-| `PALIER_MATURATION` | `72h` | Minimum age of a version before it is proposed. A version that fixes a vulnerability in the running version does not wait. |
+| `PALIER_MATURATION` | `72h` | Minimum age of a version before it is proposed. A version that fixes a vulnerability in the running version does not wait. The [`palier.maturation`](#paliermaturation) label overrides it for one service. |
 | `PALIER_STABLE_SECONDS` | `60` | Time a service must stay stable at each verification. |
 | `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off`. See [automatic apply](usage.md#automatic-apply). The [`palier.auto`](#palierauto) label overrides it for one service. |
 | `PALIER_WEBHOOK_URL` | empty | Address that receives events as JSON. See [the webhook](usage.md#the-webhook). |
@@ -306,6 +306,18 @@ services:
     image: gitlab/gitlab-ce:18.5.3-ce.0
     labels:
       palier.auto: patch
+```
+
+### `palier.maturation`
+
+The maturation delay of this service, instead of `PALIER_MATURATION`, written like it: `24h`, `168h`, or `0s` to propose each version as soon as it is published. A version that fixes a vulnerability in the running version still does not wait. Another value is reported on the stack and `PALIER_MATURATION` applies.
+
+```yaml
+services:
+  postgres:
+    image: postgres:16.10
+    labels:
+      palier.maturation: 168h
 ```
 
 ### `palier.depends_on`

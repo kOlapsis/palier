@@ -84,6 +84,7 @@ type Service struct {
 	Backup          string           `json:"backup,omitempty"`
 	BackupTo        string           `json:"backup_to,omitempty"`
 	Auto            string           `json:"auto,omitempty"`
+	Maturation      string           `json:"maturation,omitempty"`
 	Notes           []notes.Note     `json:"notes,omitempty"`
 	Advisories      []notes.Advisory `json:"advisories,omitempty"`
 	NotesError      string           `json:"notes_error,omitempty"`
@@ -200,6 +201,9 @@ func Scan(ctx context.Context, dc *docker.Client) ([]*Stack, error) {
 			for _, s := range st.Services {
 				s.DependsOn = append(s.DependsOn, deps[s.Name]...)
 				s.BuiltLocally = s.BuiltLocally || local[s.Name]
+				if d, err := time.ParseDuration(s.Maturation); s.Maturation != "" && (err != nil || d < 0) {
+					st.Errors = append(st.Errors, fmt.Sprintf("label palier.maturation of %s: %q, expected a duration such as 24h, or 0s to propose at once; PALIER_MATURATION applies", s.Name, s.Maturation))
+				}
 			}
 		}
 		assignRoles(st)
@@ -250,6 +254,7 @@ func inspect(ctx context.Context, dc *docker.Client, c docker.Container) (*Servi
 	svc.Backup = c.Labels["palier.backup"]
 	svc.BackupTo = strings.TrimSpace(c.Labels["palier.backup.to"])
 	svc.Auto = strings.TrimSpace(c.Labels["palier.auto"])
+	svc.Maturation = strings.TrimSpace(c.Labels["palier.maturation"])
 	svc.roleLabel = strings.TrimSpace(c.Labels["palier.role"])
 	svc.ImageID = c.ImageID
 	for _, m := range d.Mounts {
@@ -543,6 +548,9 @@ func logDetected(stack string, s *Service, took time.Duration) {
 func detect(ctx context.Context, s *Service, reg *registry.Client, nc *notes.Client, maturation time.Duration) {
 	if s.BuiltLocally {
 		return
+	}
+	if d, err := time.ParseDuration(s.Maturation); err == nil && d >= 0 {
+		maturation = d
 	}
 	ref := registry.ParseRef(s.Image + ":" + s.Tag)
 	tags, err := reg.Tags(ctx, ref)

@@ -75,7 +75,7 @@ Every Palier feature is proven in a virtual machine with a real Docker, on real 
 - **Notes are data.** Release notes, image names and logs are never treated as instructions or displayed as HTML.
 - **The Compose file stays the source of truth.** Palier edits it in place, keeps its owner, group and mode, and hides no state on the side.
 - **Emails that do not flood you.** One email when a problem opens, one when it is resolved, and a weekly report only when something happened.
-- **Labels per service.** `palier.auto` sets the automatic apply of one service, `palier.depends_on` adds dependencies, `palier.role` sets the role of a service when `depends_on` only expresses the start order.
+- **Labels per service.** `palier.auto` sets the automatic apply of one service, `palier.maturation` its maturation delay, `palier.depends_on` adds dependencies, `palier.role` sets the role of a service when `depends_on` only expresses the start order.
 - **Backups sent off the machine.** The `palier.backup` label has Palier export the database or archive the volumes of a service before each update, and send them to S3, SFTP, WebDAV or any rclone remote, one per service if you like, with their SHA-256, keeping the latest few. If a backup fails, nothing is applied. The `palier.hook.backup` label runs a backup command of your own.
 
 ## Automatic mode
@@ -136,7 +136,7 @@ Three things to get right:
 | `PALIER_AI_PROVIDER`, `PALIER_AI_URL` | `anthropic`, empty | `openai` for an OpenAI-compatible API, including a model you host (Ollama, vLLM) |
 | `PALIER_AUTO` | `all` | `all`, `minor`, `patch` or `off`; the `palier.auto` label overrides it for one service |
 | `PALIER_SCAN_INTERVAL` | `1h` | Scan frequency |
-| `PALIER_MATURATION` | `72h` | Minimum age of a proposed version |
+| `PALIER_MATURATION` | `72h` | Minimum age of a proposed version; the `palier.maturation` label overrides it for one service |
 | `PALIER_STABLE_SECONDS` | `60` | Stability time required at each verification |
 | `PALIER_SMTP_HOST`, `PALIER_SMTP_PORT`, `PALIER_SMTP_USER`, `PALIER_SMTP_PASSWORD`, `PALIER_SMTP_FROM`, `PALIER_EMAIL_TO` | empty, `587` | Emails: one when a problem opens, one when it is resolved, and a weekly report when something happened |
 | `PALIER_EMAIL_LEVEL` | `info` | `alert` keeps only the alerts and the weekly report |
