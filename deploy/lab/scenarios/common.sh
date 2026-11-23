@@ -21,6 +21,26 @@ old_volume_counts() {
 	echo "old volume outline_postgres-data, read again by $1: $(pg_counts pgold)"
 	docker rm -f pgold >/dev/null
 }
+# settled <stack> <since>: waits until Palier has scanned the stack since <since> (date -u +%FT%T) and computed its plan again; a stack with nothing to do has no plan.
+settled() {
+	none=0
+	for i in $(seq 1 60); do
+		case $($PALIER exec -T palier palier show "$1" --json 2>/dev/null | python3 -c '
+import json, sys
+v = json.load(sys.stdin)
+r = v.get("record")
+print("wait" if v["stack"].get("scanned", "")[:19] < sys.argv[1] else "plan" if r and r.get("created", "")[:19] >= sys.argv[1] else "stale" if r else "none")' "$2" 2>/dev/null) in
+		plan) return 0 ;;
+		none) none=$((none + 1)); [ $none -lt 4 ] || return 0 ;;
+		esac
+		sleep 2
+	done
+	echo "  $1: not scanned since $2"
+}
+# rescan <stack>: a full scan, then the plan of the stack.
+rescan() { since=$(date -u +%FT%T); $PALIER exec -T palier palier scan >/dev/null 2>&1; settled "$1" "$since"; }
+# lab_image <reference> <command>: builds an image that runs the command, with a layer of its own: without one, its build date is that of busybox.
+lab_image() { printf 'FROM busybox:1.37.0\nRUN echo %s >/built\nCMD ["sh", "-c", "%s"]\n' "$(date +%s.%N)" "$2" | docker build -q -t "$1" - >/dev/null; }
 mounts_of() { docker inspect "$1" --format '{{range .Mounts}}{{.Name}}:{{.Destination}} {{end}}'; }
 gitlab_state() {
 	echo "  gitlab: $(docker inspect gitlab-gitlab-1 --format '{{.Config.Image}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}')"
