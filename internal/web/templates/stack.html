@@ -44,9 +44,9 @@
 {{with .Plan}}<div class="inset">
 {{if or $.Auto $.AutoWhy}}<p class="muted">{{if $.Auto}}Automatic apply will pick it up.{{else}}No automatic apply: {{$.AutoWhy}}.{{end}}</p>{{end}}
 {{with .Refined}}<p class="muted">{{.}}</p>{{end}}
-{{if not .Steps}}<p class="muted">Nothing to apply.</p>{{end}}
+{{if not .Steps}}<p class="muted">Nothing to apply{{if .Incomplete}}:{{else}}.{{end}}</p>{{with .Incomplete}}<ul class="muted">{{range .}}<li>{{.}}</li>{{end}}</ul>{{end}}{{end}}
 {{with .Suspicious}}<div class="notice bad">The release notes contain text that seems written to steer an AI; the plan waits for you:<ul>{{range .}}<li>“{{.}}”</li>{{end}}</ul></div>{{end}}
-{{with .Incomplete}}<div class="notice bad">Incomplete plan, it will not be applied:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{if .Steps}}{{with .Incomplete}}<div class="notice bad">Incomplete plan, it will not be applied:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}{{end}}
 {{with .Withheld}}<div class="notice info">Versions left out:<ul>{{range .}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
 {{if and .Steps (not $live)}}<div class="actions">
 <form method="post" action="/stacks/{{$.Stack.Name}}/dry-run"><button>Dry run</button></form>

@@ -187,7 +187,12 @@ func Validate(p *Plan, st *inventory.Stack) {
 			if c.From != current[c.Service] {
 				p.incomplete("step %d: %s starts from %s but will be at %s", n, c.Service, c.From, current[c.Service])
 			}
-			if !slices.ContainsFunc(svc.Available, func(r inventory.Release) bool { return r.Tag == c.To }) && !citedImageChange(p, s, c, st) {
+			named := func(r inventory.Release) bool { return r.Tag == c.To }
+			switch {
+			case slices.ContainsFunc(svc.Available, named) || citedImageChange(p, s, c, st):
+			case slices.ContainsFunc(svc.Maturing, named):
+				p.incomplete("step %d: %s %s is still maturing; it is proposed once its maturation delay is over, or at once with palier accept", n, c.Service, c.To)
+			default:
 				p.incomplete("step %d: %s %s is not a version available in the registry", n, c.Service, c.To)
 			}
 			checkChangeOps(p, n, s, c, svc, st)
@@ -749,10 +754,10 @@ func Automatic(p *Plan, auto string) (bool, string) {
 	switch {
 	case len(p.Suspicious) > 0:
 		return false, "the release notes contain text that seems written to steer an AI"
-	case len(p.Incomplete) > 0:
-		return false, "incomplete plan"
 	case len(p.Steps) == 0:
 		return false, "nothing to apply"
+	case len(p.Incomplete) > 0:
+		return false, "incomplete plan"
 	}
 	for i, s := range p.Steps {
 		if s.Risk == "blocking" {

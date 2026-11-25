@@ -466,6 +466,26 @@ func TestStateForgetsARunThatNoLongerMatters(t *testing.T) {
 	}
 }
 
+func TestStateOfAPlanWithoutStep(t *testing.T) {
+	st := &inventory.Stack{Name: "app", Services: []*inventory.Service{{Name: "app", State: "running"}}}
+	for _, c := range []struct {
+		plan *plan.Plan
+		want string
+	}{
+		{&plan.Plan{Incomplete: []string{"tymeslot has no available version"}}, "up to date"},
+		{&plan.Plan{Steps: []plan.Step{{}}, Incomplete: []string{"step 1: app 1.49.0 is still maturing"}}, "incomplete plan"},
+	} {
+		s := &server{deps: Deps{
+			Current: func() Snapshot { return Snapshot{At: time.Now()} },
+			Runs:    func(string) ([]run.View, error) { return nil, nil },
+			Plan:    func(string) (*plan.Record, error) { return &plan.Record{Plan: c.plan}, nil },
+		}}
+		if got := s.state(st); got != c.want {
+			t.Errorf("%d steps: %q, want %q", len(c.plan.Steps), got, c.want)
+		}
+	}
+}
+
 func TestScanOneStack(t *testing.T) {
 	var asked []string
 	deps := overviewDeps(&inventory.Stack{Name: "whoami"}, &inventory.Stack{Name: "outside", Observed: true})

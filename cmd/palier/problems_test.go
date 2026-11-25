@@ -133,3 +133,23 @@ func TestAcceptMaturingVersion(t *testing.T) {
 		t.Errorf("nothing accepted: available %q, maturing %q", list(available), list(maturing))
 	}
 }
+
+func TestChoosableNotes(t *testing.T) {
+	list := []notes.Note{{Tag: "v1.48.2"}, {Tag: "v1.49.0"}, {Tag: ""}, {Tag: "nightly"}}
+	tags := func(l []notes.Note) []string {
+		var out []string
+		for _, n := range l {
+			out = append(out, n.Tag)
+		}
+		return out
+	}
+	if got := tags(choosable(slices.Clone(list), []inventory.Release{{Tag: "1.48.2-slim"}})); !slices.Equal(got, []string{"v1.48.2", "", "nightly"}) {
+		t.Errorf("1.49.0 maturing: %q", got)
+	}
+	if got := tags(choosable(slices.Clone(list), nil)); !slices.Equal(got, []string{"", "nightly"}) {
+		t.Errorf("nothing available: %q", got)
+	}
+	if got := tags(choosable(slices.Clone(list), []inventory.Release{{Tag: "1.48.2-slim"}, {Tag: "1.49.0-slim"}})); len(got) != 4 {
+		t.Errorf("1.49.0 available: %q", got)
+	}
+}

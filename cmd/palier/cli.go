@@ -475,8 +475,9 @@ func (c *cli) plan(v web.StackView) {
 		c.line(c.dim(clean(p.Refined)))
 	}
 	switch {
-	case len(p.Steps) == 0:
+	case len(p.Steps) == 0 && len(p.Incomplete) == 0:
 		c.line("Nothing to apply.")
+	case len(p.Steps) == 0:
 	case v.Auto:
 		c.line("Automatic apply will pick it up.")
 	case v.AutoWhy != "":
@@ -488,7 +489,13 @@ func (c *cli) plan(v web.StackView) {
 			c.line(c.paint("bad", "  “"+clean(q)+"”"))
 		}
 	}
-	if len(p.Incomplete) > 0 {
+	switch {
+	case len(p.Steps) == 0 && len(p.Incomplete) > 0:
+		c.line("Nothing to apply:")
+		for _, r := range p.Incomplete {
+			c.line("  - " + clean(r))
+		}
+	case len(p.Incomplete) > 0:
 		c.line(c.paint("bad", "Incomplete plan, it will not be applied:"))
 		for _, r := range p.Incomplete {
 			c.line(c.paint("bad", "  - "+clean(r)))

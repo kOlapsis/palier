@@ -264,6 +264,7 @@ func (a *app) scan(ctx context.Context, only string) ([]*inventory.Stack, error)
 			s.Available = slices.DeleteFunc(s.Available, drop)
 			s.Maturing = slices.DeleteFunc(s.Maturing, drop)
 			s.Available, s.Maturing = accept(s.Available, s.Maturing, func(tag string) bool { return decided[[4]string{"accept", st.Name, s.Name, tag}] })
+			s.Notes = choosable(s.Notes, s.Available)
 			for _, k := range ignored {
 				if k[1] == st.Name && k[2] == s.Name {
 					s.Ignored = append(s.Ignored, k[3])
@@ -277,6 +278,18 @@ func (a *app) scan(ctx context.Context, only string) ([]*inventory.Stack, error)
 		}
 	}
 	return stacks, rows.Err()
+}
+
+// choosable keeps the notes of no version and those of versions up to the highest available one, which a plan can reach.
+func choosable(list []notes.Note, available []inventory.Release) []notes.Note {
+	var last version.V
+	if len(available) > 0 {
+		last, _ = version.Parse(strings.TrimPrefix(available[len(available)-1].Tag, "v"))
+	}
+	return slices.DeleteFunc(list, func(n notes.Note) bool {
+		v, ok := version.Parse(strings.TrimPrefix(n.Tag, "v"))
+		return n.Tag != "" && ok && (len(available) == 0 || notes.Less(last, v))
+	})
 }
 
 // accept moves to available the maturing versions that accepted names, and keeps available in ascending order.

@@ -446,3 +446,13 @@ func TestVia(t *testing.T) {
 		t.Fatalf("%+v", p.Steps)
 	}
 }
+
+func TestValidateMaturingTarget(t *testing.T) {
+	st := &inventory.Stack{Services: []*inventory.Service{{Name: "app", Role: inventory.RoleApplication, Image: "docker.io/luka1thb/tymeslot", Version: "1.48.1-slim", Maturing: rel("1.49.0-slim")}}}
+	p := &Plan{Steps: []Step{step(Change{"app", "1.48.1-slim", "1.49.0-slim"})}}
+	p.Steps[0].Operations = []Operation{{Op: "set_image", Service: "app", Image: "docker.io/luka1thb/tymeslot", Tag: "1.49.0-slim"}, {Op: "recreate", Services: []string{"app"}}}
+	Validate(p, st)
+	if !strings.Contains(strings.Join(p.Incomplete, "\n"), "1.49.0-slim is still maturing") {
+		t.Errorf("%q", p.Incomplete)
+	}
+}

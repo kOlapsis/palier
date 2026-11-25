@@ -162,7 +162,7 @@ func (s *server) state(st *inventory.Stack) string {
 		return "checking versions"
 	}
 	switch {
-	case rec != nil && len(rec.Plan.Incomplete) > 0:
+	case rec != nil && len(rec.Plan.Steps) > 0 && len(rec.Plan.Incomplete) > 0:
 		return "incomplete plan"
 	case rec != nil && len(rec.Plan.Steps) > 0:
 		if ok, _ := s.automatic(st.Name, rec.Plan); ok {
@@ -704,7 +704,7 @@ func (s *server) view(st *inventory.Stack, at time.Time) StackView {
 	v := StackView{Stack: st, At: at, State: s.state(st), Paths: map[string][]Crumb{}}
 	if rec, err := s.plan(st.Name); err != nil {
 		v.Error = err.Error()
-	} else if v.Record = rec; rec != nil {
+	} else if v.Record = rec; rec != nil && len(rec.Plan.Steps) > 0 {
 		v.Auto, v.AutoWhy = s.automatic(st.Name, rec.Plan)
 	}
 	for _, svc := range st.Services {
